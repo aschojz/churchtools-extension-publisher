@@ -153,7 +153,17 @@ export class PText extends PShape<Konva.Text> {
 export class PImage extends PShape<Konva.Image> {
     loaded = false;
     private static imageCache = new Map<string, HTMLImageElement>();
+    
+    /**
+     * Set of layers that have pending draw operations scheduled for the next animation frame.
+     * Used to batch multiple image load completions into a single redraw operation.
+     */
     private static pendingDraws = new Set<Konva.Layer>();
+    
+    /**
+     * Animation frame ID for the scheduled batch draw operation.
+     * Used to cancel and reschedule the draw when new images complete loading.
+     */
     private static drawTimeout: number | null = null;
     
     constructor(url: PlaceholderType, props: Omit<Konva.ImageConfig, 'image'>) {
@@ -192,6 +202,26 @@ export class PImage extends PShape<Konva.Image> {
         }
     }
     
+    /**
+     * Executes the batch draw operation for all pending layers.
+     * This is the callback for requestAnimationFrame.
+     */
+    private static executeBatchDraw() {
+        try {
+            // Check if layer is still valid before calling batchDraw
+            PImage.pendingDraws.forEach(l => {
+                // Only draw if layer hasn't been destroyed (getStage returns null when destroyed)
+                if (l.getStage()) {
+                    l.batchDraw();
+                }
+            });
+        } finally {
+            // Always clean up, even if batchDraw throws
+            PImage.pendingDraws.clear();
+            PImage.drawTimeout = null;
+        }
+    }
+    
     private scheduleBatchDraw() {
         const layer = this.shape.getLayer();
         if (!layer) return;
@@ -205,21 +235,7 @@ export class PImage extends PShape<Konva.Image> {
         }
         
         // Batch all draws in next animation frame
-        PImage.drawTimeout = requestAnimationFrame(() => {
-            try {
-                // Check if layer is still valid before calling batchDraw
-                PImage.pendingDraws.forEach(l => {
-                    // Only draw if layer hasn't been destroyed
-                    if (l.getStage()) {
-                        l.batchDraw();
-                    }
-                });
-            } finally {
-                // Always clean up, even if batchDraw throws
-                PImage.pendingDraws.clear();
-                PImage.drawTimeout = null;
-            }
-        });
+        PImage.drawTimeout = requestAnimationFrame(PImage.executeBatchDraw);
     }
     getState(): KImage {
         return {
