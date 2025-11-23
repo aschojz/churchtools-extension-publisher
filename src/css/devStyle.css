@@ -1,0 +1,4 @@
+@import './rtl.css' layer(base);
+@import './reset.css' layer(theme);
+@import '../assets/fontawesome/css/all.css' layer(components);
+@import '../../node_modules/@churchtools/styleguide/dist/styleguide.css';

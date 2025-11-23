@@ -1,9 +1,19 @@
-import type { Person } from './utils/ct-types';
+import { createApp } from 'vue';
+
 import { churchtoolsClient } from '@churchtools/churchtools-client';
+import { ctStyleguide } from '@churchtools/styleguide';
+import { ctUtils } from '@churchtools/utils';
+import { VueQueryPlugin } from '@tanstack/vue-query';
+import { createPinia } from 'pinia';
+import App from './App.vue';
+import './tailwind.css';
+import '/node_modules/@churchtools/styleguide/dist/styleguide.css';
 
 // only import reset.css in development mode to keep the production bundle small and to simulate CT environment
 if (import.meta.env.MODE === 'development') {
-    import('./utils/reset.css');
+    import('./css/fontawesome.css');
+    import('./css/reset.css');
+    import('./css/rtl.css');
 }
 
 declare const window: Window &
@@ -11,6 +21,11 @@ declare const window: Window &
         settings: {
             base_url?: string;
         };
+        tx?: (e: string) => string;
+        t: (key?: string | undefined, ...args: unknown[]) => string;
+        i18n: (key: string, ...args: unknown[]) => string;
+        escapeHtmlMD?: (e: string) => string;
+        escapeHtmlRelaxed?: (e: string) => string;
     };
 
 const baseUrl = window.settings?.base_url ?? import.meta.env.VITE_BASE_URL;
@@ -25,10 +40,17 @@ if (import.meta.env.MODE === 'development' && username && password) {
 const KEY = import.meta.env.VITE_KEY;
 export { KEY };
 
-const user = await churchtoolsClient.get<Person>(`/whoami`);
+const pinia = createPinia();
+if (import.meta.env.MODE === 'development') {
+    window.tx = (e: string) => e;
+    window.t = (key?: string | undefined) => key ?? '';
+    window.escapeHtmlMD = (e: string) => e;
+    window.escapeHtmlRelaxed = (e: string) => e;
+}
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <div style="display: flex; place-content: center; place-items: center; height: 100vh;">
-    <h1>Welcome ${[user.firstName, user.lastName].join(' ')}</h1>
-  </div>
-`;
+const app = createApp(App);
+app.use(ctUtils, { baseUrl, pinia, t: window.t ?? ((e: string) => e) });
+app.use(ctStyleguide, { baseUrl, t: window.t ?? ((e: string) => e) });
+app.use(pinia);
+app.use(VueQueryPlugin);
+app.mount('#app');

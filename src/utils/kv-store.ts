@@ -1,7 +1,7 @@
 /**
  * This module provides easy to use access to KV storage
  */
-import { churchtoolsClient } from "@churchtools/churchtools-client";
+import { churchtoolsClient } from '@churchtools/churchtools-client';
 import type {
     CustomModule,
     CustomModuleCreate,
@@ -9,7 +9,7 @@ import type {
     CustomModuleDataCategoryCreate,
     CustomModuleDataValue,
     CustomModuleDataValueCreate,
-} from "./ct-types";
+} from './ct-types';
 
 /**
  * ────────────────────────────────────────────────
@@ -21,22 +21,13 @@ import type {
  * @param extensionkey optional - defaults to module with shorty=extensionkey
  * @returns  the custom module
  */
-export async function getModule(
-    extensionkey: string = import.meta.env.VITE_KEY,
-): Promise<CustomModule> {
-    //console.log("Extension Key:", extensionkey);
-    const allModules: Array<CustomModule> =
-        await churchtoolsClient.get(`/custommodules`);
-    //console.log("Retrieving Modules", allModules);
+export async function getModule(extensionkey: string = import.meta.env.VITE_KEY): Promise<CustomModule> {
+    const allModules: Array<CustomModule> = await churchtoolsClient.get(`/custommodules`);
 
-    const module = allModules.find(
-        (item: CustomModule) => item.shorty === extensionkey,
-    );
+    const module = allModules.find((item: CustomModule) => item.shorty === extensionkey);
 
     if (!module) {
-        throw new Error(
-            `Module for extension key "${extensionkey}" not found.`,
-        );
+        throw new Error(`Module for extension key "${extensionkey}" not found.`);
     }
 
     console.log(`Module ${extensionkey} found:`, module);
@@ -47,7 +38,7 @@ export async function getModule(
 export async function getOrCreateModule(
     extensionkey: string,
     name: string,
-    description: string
+    description: string,
 ): Promise<CustomModule> {
     try {
         return await getModule(extensionkey);
@@ -56,11 +47,7 @@ export async function getOrCreateModule(
     }
 }
 
-async function createModule(
-    extensionkey: string,
-    name: string,
-    description: string
-): Promise<CustomModule> {
+async function createModule(extensionkey: string, name: string, description: string): Promise<CustomModule> {
     const createData: CustomModuleCreate = {
         name: name,
         shorty: extensionkey,
@@ -68,13 +55,7 @@ async function createModule(
         sortKey: 100,
     };
 
-    const newModule = await churchtoolsClient.post<CustomModule>(
-        '/custommodules',
-        createData
-    );
-
-    console.log(`Created new module for ${extensionkey}:`, newModule);
-    return newModule;
+    return await churchtoolsClient.post<CustomModule>('/custommodules', createData);
 }
 
 /**
@@ -103,24 +84,17 @@ async function resolveModuleId(moduleId?: number): Promise<number> {
  */
 export async function getCustomDataCategories<T extends object>(
     moduleId?: number,
-): Promise<(T & Omit<CustomModuleDataCategory, "data">)[]> {
+): Promise<(T & Omit<CustomModuleDataCategory, 'data'>)[]> {
     moduleId = await resolveModuleId(moduleId);
 
     const categories: CustomModuleDataCategory[] = await churchtoolsClient.get(
         `/custommodules/${moduleId}/customdatacategories`,
     );
 
-    return categories.map((category) => {
+    return categories.map(category => {
         const { data, ...rest } = category;
-
-        let parsedData: T;
-
-        parsedData = safeParseJSON(data, {} as T);
-
-        return {
-            ...rest,
-            ...parsedData,
-        };
+        const parsedData = safeParseJSON(data, {} as T);
+        return { ...rest, ...parsedData };
     });
 }
 
@@ -133,7 +107,7 @@ export async function getCustomDataCategory<T extends object>(
     shorty: string,
 ): Promise<CustomModuleDataCategory | undefined> {
     const categories = await getCustomDataCategories<T>();
-    return categories.find((category) => category.shorty === shorty);
+    return categories.find(category => category.shorty === shorty);
 }
 
 /**
@@ -148,12 +122,7 @@ export async function createCustomDataCategory(
     moduleId?: number,
 ): Promise<CustomModuleDataCategory> {
     moduleId = await resolveModuleId(moduleId);
-    const newCategory: CustomModuleDataCategory = await churchtoolsClient.post(
-        `/custommodules/${moduleId}/customdatacategories`,
-        payload,
-    );
-    console.log(`Created category in module ${moduleId}:`, newCategory);
-    return newCategory;
+    return churchtoolsClient.post<CustomModuleDataCategory>(`/custommodules/${moduleId}/customdatacategories`, payload);
 }
 
 /**
@@ -167,15 +136,7 @@ export async function updateCustomDataCategory(
     moduleId?: number,
 ): Promise<void> {
     moduleId = await resolveModuleId(moduleId);
-    const updatedCategory: CustomModuleDataCategory =
-        await churchtoolsClient.put(
-            `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}`,
-            payload,
-        );
-    console.log(
-        `Updated category ${dataCategoryId} in module ${moduleId}:`,
-        updatedCategory,
-    );
+    return churchtoolsClient.put(`/custommodules/${moduleId}/customdatacategories/${dataCategoryId}`, payload);
 }
 
 /**
@@ -183,15 +144,9 @@ export async function updateCustomDataCategory(
  * implements DELETE `/custommodules/{moduleId}/customdatacategories/{dataCategoryId}`
  * @param moduleId - optional module id - otherwise tries default
  */
-export async function deleteCustomDataCategory(
-    dataCategoryId: number,
-    moduleId?: number,
-): Promise<void> {
+export async function deleteCustomDataCategory(dataCategoryId: number, moduleId?: number): Promise<void> {
     moduleId = await resolveModuleId(moduleId);
-    await churchtoolsClient.deleteApi(
-        `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}`,
-    );
-    console.log(`Deleted category ${dataCategoryId} from module ${moduleId}`);
+    return churchtoolsClient.deleteApi(`/custommodules/${moduleId}/customdatacategories/${dataCategoryId}`);
 }
 
 /**
@@ -208,29 +163,22 @@ export async function deleteCustomDataCategory(
 export async function getCustomDataValues<T extends object>(
     dataCategoryId: number,
     moduleId?: number,
-): Promise<(T & Omit<CustomModuleDataValue, "value">)[]> {
+): Promise<(T & Omit<CustomModuleDataValue, 'value'>)[]> {
     moduleId = await resolveModuleId(moduleId);
 
-    const values: (Omit<CustomModuleDataValue, "value"> & { value: string })[] =
-        await churchtoolsClient.get(
-            `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}/customdatavalues`,
-        );
+    const values: (Omit<CustomModuleDataValue, 'value'> & { value: string })[] = await churchtoolsClient.get(
+        `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}/customdatavalues`,
+    );
 
-    return values.map((val) => {
+    return values.map(val => {
         const { value, ...rest } = val;
 
         if (value == null) {
-            throw new Error(
-                `Custom data value ${val.id} has null or undefined 'value' field.`,
-            );
+            throw new Error(`Custom data value ${val.id} has null or undefined 'value' field.`);
         }
 
-        let parsedData = safeParseJSON(value, {} as T);
-
-        return {
-            ...rest,
-            ...parsedData,
-        };
+        const parsedData = safeParseJSON(value, {} as T);
+        return { ...rest, ...parsedData };
     });
 }
 
@@ -239,18 +187,11 @@ export async function getCustomDataValues<T extends object>(
  * implements POST `/custommodules/{moduleId}/customdatacategories/{dataCategoryId}/customdatavalues`
  * @param moduleId - optional module id - otherwise tries default
  */
-export async function createCustomDataValue(
-    payload: CustomModuleDataValueCreate,
-    moduleId?: number,
-): Promise<void> {
+export async function createCustomDataValue(payload: CustomModuleDataValueCreate, moduleId?: number): Promise<void> {
     moduleId = await resolveModuleId(moduleId);
-    const newValue: string = await churchtoolsClient.post(
+    return churchtoolsClient.post(
         `/custommodules/${moduleId}/customdatacategories/${payload.dataCategoryId}/customdatavalues`,
         payload,
-    );
-    console.log(
-        `Created data value in category ${payload.dataCategoryId}:`,
-        newValue,
     );
 }
 
@@ -266,13 +207,9 @@ export async function updateCustomDataValue(
     moduleId?: number,
 ): Promise<void> {
     moduleId = await resolveModuleId(moduleId);
-    const updatedValue: CustomModuleDataValue = await churchtoolsClient.put(
+    return churchtoolsClient.put(
         `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}/customdatavalues/${valueId}`,
         payload,
-    );
-    console.log(
-        `Updated data value ${valueId} in category ${dataCategoryId}:`,
-        updatedValue,
     );
 }
 
@@ -281,17 +218,10 @@ export async function updateCustomDataValue(
  * implements DELETE `/custommodules/{moduleId}/customdatacategories/{dataCategoryId}/customdatavalues/{valueId}`
  * @param moduleId - optional module id - otherwise tries default
  */
-export async function deleteCustomDataValue(
-    dataCategoryId: number,
-    valueId: number,
-    moduleId?: number,
-): Promise<void> {
+export async function deleteCustomDataValue(dataCategoryId: number, valueId: number, moduleId?: number): Promise<void> {
     moduleId = await resolveModuleId(moduleId);
-    await churchtoolsClient.deleteApi(
+    return churchtoolsClient.deleteApi(
         `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}/customdatavalues/${valueId}`,
-    );
-    console.log(
-        `Deleted data value ${valueId} from category ${dataCategoryId}`,
     );
 }
 
@@ -306,7 +236,7 @@ function safeParseJSON<T>(json: string | null | undefined, fallback: T): T {
     try {
         return JSON.parse(json) as T;
     } catch (err) {
-        console.warn("Failed to parse JSON:", err);
+        console.warn('Failed to parse JSON:', err);
         return fallback;
     }
 }

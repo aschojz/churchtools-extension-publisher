@@ -1,18 +1,46 @@
 {
-    "name": "extension-boilerplate",
+    "name": "extension-publisher",
     "private": true,
     "version": "0.0.1",
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "tsc && vite build",
+        "build": "vue-tsc && vite build",
         "preview": "vite preview",
         "deploy": "npm run build && node scripts/package.js"
     },
     "devDependencies": {
         "@churchtools/churchtools-client": "^1.4.0",
+        "@churchtools/fontawesome-pro": "^6.5.2",
+        "@churchtools/styleguide": "file:../churchtools/frontend-packages/styleguide",
+        "@churchtools/utils": "file:../churchtools/frontend-packages/utils",
+        "@fortawesome/fontawesome-free": "^7.0.1",
+        "@tailwindcss/vite": "^4.1.14",
+        "@tanstack/vue-query": "^5.87.4",
         "@types/node": "^24.3.0",
+        "@vitejs/plugin-vue": "^6.0.1",
+        "@vue/eslint-config-prettier": "^10.2.0",
+        "@vue/eslint-config-typescript": "^14.6.0",
+        "@vue/tsconfig": "^0.8.1",
+        "@vueuse/core": "^14.0.0",
+        "colorthief": "^2.6.0",
+        "eslint": "^9.35.0",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-vue": "^10.4.0",
+        "pinia": "^3.0.3",
+        "prettier": "^3.6.2",
+        "prettier-plugin-organize-imports": "^4.2.0",
+        "prettier-plugin-tailwindcss": "^0.6.14",
+        "tailwindcss": "^4.1.13",
         "typescript": "^5.9.2",
-        "vite": "^7.1.2"
+        "vite": "^7.1.2",
+        "vite-plugin-eslint": "^1.8.1",
+        "vue-component-type-helpers": "^3.0.6",
+        "vue-tsc": "^3.1.1"
+    },
+    "dependencies": {
+        "konva": "^10.0.12",
+        "vue": "^3.5.22",
+        "vue-router": "^4.6.3"
     }
 }

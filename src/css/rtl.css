@@ -1,0 +1,98 @@
+/* Reversible icons */
+
+[dir='rtl'] .fa-ban,
+[dir='rtl'] .fa-bell-slash,
+[dir='rtl'] .fa-bell-slash-o,
+[dir='rtl'] .fa-bolt,
+[dir='rtl'] .fa-bullhorn,
+[dir='rtl'] .fa-book,
+[dir='rtl'] .fa-area-chart,
+[dir='rtl'] .fa-bar-chart,
+[dir='rtl'] .fa-bar-chart-o,
+[dir='rtl'] .fa-line-chart,
+[dir='rtl'] .fa-pie-chart,
+[dir='rtl'] .fa-expand,
+[dir='rtl'] .fa-compress,
+[dir='rtl'] .fa-spinner,
+[dir='rtl'] .fa-tasks,
+[dir='rtl'] .fa-pen,
+[dir='rtl'] .fa-align-left,
+[dir='rtl'] .fa-external-link-alt {
+    filter: progid:DXImageTransform.Microsoft.BasicImage(rotation=0, mirror=1); /* IE8 */
+    transform: scale(-1, 1);
+}
+
+[dir='ltr'] .fa-ban,
+[dir='ltr'] .fa-bell-slash,
+[dir='ltr'] .fa-bell-slash-o,
+[dir='ltr'] .fa-bolt,
+[dir='ltr'] .fa-bullhorn,
+[dir='ltr'] .fa-book,
+[dir='ltr'] .fa-area-chart,
+[dir='ltr'] .fa-bar-chart,
+[dir='ltr'] .fa-bar-chart-o,
+[dir='ltr'] .fa-line-chart,
+[dir='ltr'] .fa-pie-chart,
+[dir='ltr'] .fa-expand,
+[dir='ltr'] .fa-compress,
+[dir='ltr'] .fa-spinner,
+[dir='ltr'] .fa-tasks,
+[dir='ltr'] .fa-pen,
+[dir='ltr'] .fa-align-left,
+[dir='ltr'] .fa-external-link-alt {
+    transform: none;
+}
+
+/* Reverse direction of spin */
+[dir='rtl'] .fa-spin {
+    animation-direction: reverse;
+}
+[dir='ltr'] .fa-spin {
+    animation-direction: normal;
+}
+
+/* angle-start/end */
+.fa-angle-start:before {
+    content: '\f104';
+}
+.fa-angle-end:before {
+    content: '\f105';
+}
+[dir='rtl'] .fa-angle-start:before {
+    content: '\f105';
+}
+[dir='rtl'] .fa-angle-end:before {
+    content: '\f104';
+}
+[dir='ltr'] .fa-angle-start:before {
+    content: '\f104';
+}
+[dir='ltr'] .fa-angle-end:before {
+    content: '\f105';
+}
+
+/* arrow-start/end */
+.fa-arrow-start:before {
+    content: '\f060';
+}
+.fa-arrow-end:before {
+    content: '\f061';
+}
+[dir='rtl'] .fa-arrow-start:before {
+    content: '\f061';
+}
+[dir='ltr'] .fa-arrow-start:before {
+    content: '\f060';
+}
+[dir='rtl'] .fa-arrow-end:before {
+    content: '\f060';
+}
+[dir='ltr'] .fa-arrow-end:before {
+    content: '\f061';
+}
+[dir='ltr'] .fa-arrow-end-from-bracket:before {
+    content: '\f08b';
+}
+[dir='trl'] .fa-arrow-end-from-bracket:before {
+    content: '\e668';
+}
