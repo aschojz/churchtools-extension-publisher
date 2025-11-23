@@ -50,11 +50,12 @@ const updateShapesOnly = () => {
             if (newState.placeholders && props.variables) {
                 replacePlaceholders(newState);
                 // Update shape properties directly instead of recreating
-                Object.keys(newState).forEach(key => {
-                    if (key !== 'type' && key !== 'placeholders' && key !== 'children') {
-                        const setter = `${key}`;
-                        if (typeof (shape.shape as any)[setter] === 'function') {
-                            (shape.shape as any)[setter](newState[key as keyof typeof newState]);
+                Object.entries(newState).forEach(([key, value]) => {
+                    if (key !== 'type' && key !== 'placeholders' && key !== 'children' && key !== 'url') {
+                        // Use Konva's setter methods (e.g., x(), y(), fill())
+                        const shapeInstance = shape.shape as Konva.Shape | Konva.Group;
+                        if (typeof shapeInstance[key as keyof typeof shapeInstance] === 'function') {
+                            (shapeInstance[key as keyof typeof shapeInstance] as Function)(value);
                         }
                     }
                 });

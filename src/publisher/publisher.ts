@@ -152,12 +152,11 @@ export class Publisher {
 
     clearAll() {
         // Performance optimization: Batch destroy operations
+        // We only need to destroy children that aren't the Transformer
         const childrenToDestroy = this.defaultLayer.children.filter(child => child.className !== 'Transformer');
         childrenToDestroy.forEach(child => child.destroy());
         
-        this.stage?.clear();
-        // this.defaultLayer.add(this.transformer);
-        // this.defaultLayer.add(this.selectionRectangle);
+        // Re-add the layer to the stage after clearing
         this.stage?.add(this.defaultLayer);
         this.state = [];
     }

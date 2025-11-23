@@ -171,8 +171,8 @@ export class PImage extends PShape<Konva.Image> {
         const imageUrl = typeof url === 'string' ? url : url.value;
         
         // Performance optimization: Use image cache
-        if (PImage.imageCache.has(imageUrl)) {
-            const cachedImage = PImage.imageCache.get(imageUrl)!;
+        const cachedImage = PImage.imageCache.get(imageUrl);
+        if (cachedImage) {
             this.shape.image(cachedImage);
             this.loaded = true;
             // Use batchDraw to reduce redraws
