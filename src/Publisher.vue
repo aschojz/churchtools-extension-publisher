@@ -22,7 +22,7 @@ const { template } = useTemplate(toRef(() => parseInt(props.id)));
             @data-loaded="variables = $event"
             @scale="scale = Number($event)"
         />
-        <Main :scale="scale" :style="`--scale: ${scale}`" :variables="variables" />
+        <Main :scale="scale" :style="`--scale: ${scale}`" :template="template" :variables="variables" />
         <SidebarRight />
     </div>
 </template>

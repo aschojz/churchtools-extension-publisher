@@ -65,11 +65,19 @@ export function useTemplate(id: MaybeRef<number | null>) {
         }
     };
 
-    const { data } =
+    const { data, isPending: isPendingPages } =
         toValue(id) !== null
             ? useCustomModuleDataValuesQuery<PublisherTemplatePage>(moduleId, id as MaybeRef<number>)
-            : { data: ref(undefined) };
-    const surveyEntries = computed(() => data.value ?? []);
+            : { data: ref(undefined), isPending: ref(true) };
+    const templatePages = computed(() => data.value ?? []);
 
-    return { template, createSurveyEntry, surveyEntries, isPending, deleteSurveyEntry, updateSurveyEntry };
+    return {
+        template,
+        createSurveyEntry,
+        templatePages,
+        isPending,
+        isPendingPages,
+        deleteSurveyEntry,
+        updateSurveyEntry,
+    };
 }

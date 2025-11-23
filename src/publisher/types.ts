@@ -14,6 +14,10 @@ interface KBaseShape {
 export interface KRect extends KBaseShape, Konva.RectConfig {
     type: 'rect';
 }
+export interface KPath extends KBaseShape, Konva.PathConfig {
+    type: 'path';
+}
+
 export interface KCircle extends KBaseShape, Konva.CircleConfig {
     type: 'circle';
 }
@@ -25,7 +29,7 @@ export interface KImage extends KBaseShape, Omit<Konva.ImageConfig, 'image'> {
     type: 'image';
     url: string;
 }
-export type KShape = KRect | KText | KCircle | KImage;
+export type KShape = KRect | KText | KCircle | KImage | KPath;
 
 export interface KGroup extends Konva.GroupConfig {
     type: 'group';

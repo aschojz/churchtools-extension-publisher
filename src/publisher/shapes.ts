@@ -1,11 +1,11 @@
 import Konva from 'konva';
-import { type KCircle, type KGroup, type KImage, type KRect, type KShape, type KText } from './types';
+import { type KCircle, type KGroup, type KImage, type KPath, type KRect, type KShape, type KText } from './types';
 export type PlaceholderType = { value: string; placeholder: string } | string;
 
 export abstract class PShape<S extends Konva.Shape | Konva.Group> {
     private _shape: S;
     private _placeholders: Record<string, string> | undefined;
-    private _children: (PCircle | PImage | PRect | PText | PGroup)[] = [];
+    private _children: (PCircle | PImage | PRect | PText | PGroup | PPath)[] = [];
     constructor() {
         this._shape = {} as S;
         this._placeholders = {};
@@ -25,7 +25,7 @@ export abstract class PShape<S extends Konva.Shape | Konva.Group> {
     get children() {
         return this._children;
     }
-    set children(children: (PCircle | PImage | PRect | PText | PGroup)[]) {
+    set children(children: (PCircle | PImage | PRect | PText | PGroup | PPath)[]) {
         this._children = children;
     }
 
@@ -44,6 +44,33 @@ export class PRect extends PShape<Konva.Rect> {
             y: props.y,
             width: props.width,
             height: props.height,
+        });
+        this.placeholders = props.placeholders;
+    }
+
+    getState(): KRect {
+        return {
+            type: 'rect',
+            x: this.shape.x(),
+            y: this.shape.y(),
+            width: this.shape.width(),
+            height: this.shape.height(),
+            fill: this.shape.fill(),
+            placeholders: this.placeholders,
+        };
+    }
+}
+
+export class PPath extends PShape<Konva.Path> {
+    constructor(props: Konva.PathConfig & { placeholders?: { fill?: string } }) {
+        super();
+
+        this.shape = new Konva.Path({
+            type: 'path',
+            draggable: true,
+            ...props,
+            x: props.x,
+            y: props.y,
         });
         this.placeholders = props.placeholders;
     }
@@ -193,6 +220,9 @@ export class PGroup extends PShape<Konva.Group> {
     addText(props: KText & { placeholders?: { text?: string } }) {
         this.addShape(new PText(props));
     }
+    addPath(props: KPath & { placeholders?: { fill?: string } }) {
+        this.addShape(new PPath(props));
+    }
     addImage(url: string, props: Omit<Konva.ImageConfig, 'image'>) {
         this.addShape(new PImage(url, props));
     }
@@ -218,6 +248,9 @@ export class PGroup extends PShape<Konva.Group> {
                 break;
             case 'group':
                 this.addGroup(shape);
+                break;
+            case 'path':
+                this.addPath(shape);
                 break;
         }
     }

@@ -1,7 +1,7 @@
 import Konva from 'konva';
 import { addObjectSnapping } from './objectSnapping';
-import { PCircle, PGroup, PImage, PRect, PText } from './shapes';
-import { type KGroup, type KLayer, type KShape } from './types';
+import { PCircle, PGroup, PImage, PPath, PRect, PText } from './shapes';
+import { type KGroup, type KLayer, type KPath, type KShape } from './types';
 
 export class Publisher {
     stage: Konva.Stage | null;
@@ -18,7 +18,7 @@ export class Publisher {
     x2: number | undefined;
     y2: number | undefined;
 
-    state: (PCircle | PImage | PRect | PText | PGroup)[] = [];
+    state: (PCircle | PImage | PRect | PText | PGroup | PPath)[] = [];
 
     constructor() {
         this.stage = null;
@@ -149,7 +149,7 @@ export class Publisher {
         this.stage?.add(this.defaultLayer);
         this.state = [];
     }
-    addShape(shape: PCircle | PImage | PRect | PText | PGroup) {
+    addShape(shape: PCircle | PImage | PRect | PText | PGroup | PPath) {
         this.defaultLayer.add(shape.shape);
         this.state.push(shape);
         this.transformer.moveToTop();
@@ -159,6 +159,9 @@ export class Publisher {
     }
     addCircle(props: Konva.CircleConfig & { placeholders?: { fill?: string } }) {
         this.addShape(new PCircle(props));
+    }
+    addPath(props: KPath & { placeholders?: { fill?: string } }) {
+        this.addShape(new PPath(props));
     }
     addText(props: Konva.TextConfig & { placeholders?: { text?: string } }) {
         this.addShape(new PText(props));
@@ -186,6 +189,9 @@ export class Publisher {
                 break;
             case 'group':
                 this.addGroup(shape);
+                break;
+            case 'path':
+                this.addPath(shape);
                 break;
         }
     }

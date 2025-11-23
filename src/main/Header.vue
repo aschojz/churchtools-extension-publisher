@@ -6,9 +6,9 @@ import { nextTick, onMounted, ref } from 'vue';
 import useImage from '../composables/useImage';
 import type { PublisherTemplate } from '../composables/useTemplates';
 import { useStore } from '../store';
-import { createCustomDataValue, getCustomDataCategory } from '../utils/kv-store';
+import { createCustomDataValue } from '../utils/kv-store';
 
-defineProps<{
+const props = defineProps<{
     template: PublisherTemplate;
 }>();
 const emit = defineEmits<{
@@ -50,13 +50,12 @@ const variables = ref<Record<string, string | number>>({});
 const store = useStore();
 const onSave = async () => {
     const state = store.publishers?.map(publisher => publisher.getState());
-    const templatesCategory = await getCustomDataCategory('templates');
-    if (templatesCategory) {
+    state?.forEach(template => {
         createCustomDataValue({
-            dataCategoryId: templatesCategory.id,
-            value: JSON.stringify({ name: 'Foobar', templates: state }),
+            dataCategoryId: props.template.id,
+            value: JSON.stringify(template),
         });
-    }
+    });
 };
 </script>
 <template>

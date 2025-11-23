@@ -43,11 +43,7 @@ const init = () => {
     });
     publisher.value?.loadState(replacedPlaceholdersInState.value);
 };
-watch(
-    () => props.variables,
-    () => init(),
-    { deep: true },
-);
+watch([() => props.variables, () => props.config], () => init(), { deep: true });
 
 watch(publisher, () => init(), { once: true });
 onMounted(() => {
