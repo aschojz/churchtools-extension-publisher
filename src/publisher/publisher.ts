@@ -151,12 +151,11 @@ export class Publisher {
     }
 
     clearAll() {
+        // Performance optimization: Batch destroy operations
+        const childrenToDestroy = this.defaultLayer.children.filter(child => child.className !== 'Transformer');
+        childrenToDestroy.forEach(child => child.destroy());
+        
         this.stage?.clear();
-        this.defaultLayer.children.forEach(child => {
-            if (child.className !== 'Transformer') {
-                child.destroy();
-            }
-        });
         // this.defaultLayer.add(this.transformer);
         // this.defaultLayer.add(this.selectionRectangle);
         this.stage?.add(this.defaultLayer);
