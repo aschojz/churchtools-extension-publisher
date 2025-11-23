@@ -305,7 +305,7 @@ export class PGroup extends PShape<Konva.Group> {
     }
     addGroup(props: KGroup) {
         const group = new PGroup(props);
-        props.children.forEach(child => this.renderShape(child));
+        // Children are already processed in the PGroup constructor
         this.shape.add(group.shape);
     }
 
