@@ -155,6 +155,7 @@ const drawGuides = (guides: GuideLine[], layer: Publisher['defaultLayer']) => {
                 strokeWidth: 1,
                 name: 'guid-line',
                 dash: [4, 6],
+                listening: false, // Performance: Guide lines don't need event listening
             });
             layer.add(line);
             line.absolutePosition({
@@ -168,6 +169,7 @@ const drawGuides = (guides: GuideLine[], layer: Publisher['defaultLayer']) => {
                 strokeWidth: 1,
                 name: 'guid-line',
                 dash: [4, 6],
+                listening: false, // Performance: Guide lines don't need event listening
             });
             layer.add(line);
             line.absolutePosition({
@@ -179,39 +181,61 @@ const drawGuides = (guides: GuideLine[], layer: Publisher['defaultLayer']) => {
 };
 
 export function addObjectSnapping(t: Publisher) {
+    let rafId: number | null = null;
+    
     t.defaultLayer.on('dragmove', e => {
-        // clear all previous lines on the screen
-        t.defaultLayer.find('.guid-line').forEach(l => l.destroy());
-
-        // find possible snapping lines
-        const lineGuideStops = getLineGuideStops(e.target, t.stage);
-        // find snapping points of current object
-        const itemBounds = getObjectSnappingEdges(e.target);
-
-        // now find where can we snap current object
-        const guides = getGuides(lineGuideStops, itemBounds);
-
-        // do nothing of no snapping
-        if (!guides.length) {
+        // Performance optimization: Use requestAnimationFrame to throttle dragmove events
+        if (rafId) {
             return;
         }
+        
+        rafId = requestAnimationFrame(() => {
+            rafId = null;
+            
+            // clear all previous lines on the screen
+            t.defaultLayer.find('.guid-line').forEach(l => l.destroy());
 
-        drawGuides(guides, t.defaultLayer);
+            // find possible snapping lines
+            const lineGuideStops = getLineGuideStops(e.target, t.stage);
+            // find snapping points of current object
+            const itemBounds = getObjectSnappingEdges(e.target);
 
-        const absPos = e.target.absolutePosition();
-        // now force object position
-        guides.forEach(lg => {
-            switch (lg.orientation) {
-                case 'V': {
-                    absPos.x = lg.lineGuide + lg.offset;
-                    break;
-                }
-                case 'H': {
-                    absPos.y = lg.lineGuide + lg.offset;
-                    break;
-                }
+            // now find where can we snap current object
+            const guides = getGuides(lineGuideStops, itemBounds);
+
+            // do nothing of no snapping
+            if (!guides.length) {
+                return;
             }
+
+            drawGuides(guides, t.defaultLayer);
+
+            const absPos = e.target.absolutePosition();
+            // now force object position
+            guides.forEach(lg => {
+                switch (lg.orientation) {
+                    case 'V': {
+                        absPos.x = lg.lineGuide + lg.offset;
+                        break;
+                    }
+                    case 'H': {
+                        absPos.y = lg.lineGuide + lg.offset;
+                        break;
+                    }
+                }
+            });
+            e.target.absolutePosition(absPos);
         });
-        e.target.absolutePosition(absPos);
+    });
+    
+    // Performance optimization: Use batchDraw on dragend to ensure clean state
+    t.defaultLayer.on('dragend', () => {
+        // Cancel any pending animation frame
+        if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+        }
+        t.defaultLayer.find('.guid-line').forEach(l => l.destroy());
+        t.defaultLayer.batchDraw();
     });
 }

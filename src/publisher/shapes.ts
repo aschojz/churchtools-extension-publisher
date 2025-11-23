@@ -152,6 +152,8 @@ export class PText extends PShape<Konva.Text> {
 
 export class PImage extends PShape<Konva.Image> {
     loaded = false;
+    private static imageCache = new Map<string, HTMLImageElement>();
+    
     constructor(url: PlaceholderType, props: Omit<Konva.ImageConfig, 'image'>) {
         super();
         this.shape = new Konva.Image({
@@ -166,12 +168,26 @@ export class PImage extends PShape<Konva.Image> {
         });
         this.placeholders = props.placeholders;
 
-        const image = new Image();
-        image.onload = () => {
-            this.shape.image(image);
+        const imageUrl = typeof url === 'string' ? url : url.value;
+        
+        // Performance optimization: Use image cache
+        const cachedImage = PImage.imageCache.get(imageUrl);
+        if (cachedImage) {
+            this.shape.image(cachedImage);
             this.loaded = true;
-        };
-        image.src = typeof url === 'string' ? url : url.value;
+            // Use batchDraw to reduce redraws
+            this.shape.getLayer()?.batchDraw();
+        } else {
+            const image = new Image();
+            image.onload = () => {
+                this.shape.image(image);
+                this.loaded = true;
+                PImage.imageCache.set(imageUrl, image);
+                // Use batchDraw to reduce redraws
+                this.shape.getLayer()?.batchDraw();
+            };
+            image.src = imageUrl;
+        }
     }
     getState(): KImage {
         return {

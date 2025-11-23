@@ -5,7 +5,15 @@ import { type KGroup, type KLayer, type KPath, type KShape } from './types';
 
 export class Publisher {
     stage: Konva.Stage | null;
-    transformer = new Konva.Transformer();
+    transformer = new Konva.Transformer({
+        // Performance optimization: Reduce transformer overhead
+        anchorSize: 8,
+        borderStrokeWidth: 1,
+        anchorCornerRadius: 2,
+        enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
+        rotateEnabled: true,
+        keepRatio: false,
+    });
     defaultLayer = new Konva.Layer();
     selectionRectangle = new Konva.Rect({
         fill: 'rgba(0,0,255,0.5)',
@@ -31,6 +39,11 @@ export class Publisher {
                 width: width,
                 height: height,
             });
+            
+            // Performance optimization: Set pixelRatio to 1 for better performance
+            // on high DPI displays, or set to window.devicePixelRatio only if needed
+            this.stage.setAttr('pixelRatio', 1);
+            
             this.stage.add(this.defaultLayer);
             this.defaultLayer.add(this.transformer);
             // this.defaultLayer.add(this.selectionRectangle);
@@ -138,14 +151,12 @@ export class Publisher {
     }
 
     clearAll() {
-        this.stage?.clear();
-        this.defaultLayer.children.forEach(child => {
-            if (child.className !== 'Transformer') {
-                child.destroy();
-            }
-        });
-        // this.defaultLayer.add(this.transformer);
-        // this.defaultLayer.add(this.selectionRectangle);
+        // Performance optimization: Batch destroy operations
+        // We only need to destroy children that aren't the Transformer
+        const childrenToDestroy = this.defaultLayer.children.filter(child => child.className !== 'Transformer');
+        childrenToDestroy.forEach(child => child.destroy());
+        
+        // Re-add the layer to the stage after clearing
         this.stage?.add(this.defaultLayer);
         this.state = [];
     }
@@ -153,6 +164,7 @@ export class Publisher {
         this.defaultLayer.add(shape.shape);
         this.state.push(shape);
         this.transformer.moveToTop();
+        // Note: batchDraw is called in loadState to batch all additions
     }
     addRect(props: Konva.RectConfig & { placeholders?: { fill?: string } }) {
         this.addShape(new PRect(props));
@@ -203,6 +215,8 @@ export class Publisher {
     }
 
     loadState(state: KLayer) {
+        // Performance optimization: Batch all shape additions
         state.children.forEach(shape => this.renderShape(shape));
+        this.defaultLayer.batchDraw();
     }
 }
