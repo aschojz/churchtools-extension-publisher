@@ -153,6 +153,8 @@ export class PText extends PShape<Konva.Text> {
 export class PImage extends PShape<Konva.Image> {
     loaded = false;
     private static imageCache = new Map<string, HTMLImageElement>();
+    private static pendingDraws = new Set<Konva.Layer>();
+    private static drawTimeout: number | null = null;
     
     constructor(url: PlaceholderType, props: Omit<Konva.ImageConfig, 'image'>) {
         super();
@@ -175,19 +177,39 @@ export class PImage extends PShape<Konva.Image> {
         if (cachedImage) {
             this.shape.image(cachedImage);
             this.loaded = true;
-            // Use batchDraw to reduce redraws
-            this.shape.getLayer()?.batchDraw();
+            // Defer draw until next animation frame
+            this.scheduleBatchDraw();
         } else {
             const image = new Image();
             image.onload = () => {
                 this.shape.image(image);
                 this.loaded = true;
                 PImage.imageCache.set(imageUrl, image);
-                // Use batchDraw to reduce redraws
-                this.shape.getLayer()?.batchDraw();
+                // Defer draw until next animation frame
+                this.scheduleBatchDraw();
             };
             image.src = imageUrl;
         }
+    }
+    
+    private scheduleBatchDraw() {
+        const layer = this.shape.getLayer();
+        if (!layer) return;
+        
+        // Collect layers that need redrawing
+        PImage.pendingDraws.add(layer);
+        
+        // Clear existing timeout and schedule new one
+        if (PImage.drawTimeout !== null) {
+            cancelAnimationFrame(PImage.drawTimeout);
+        }
+        
+        // Batch all draws in next animation frame
+        PImage.drawTimeout = requestAnimationFrame(() => {
+            PImage.pendingDraws.forEach(l => l.batchDraw());
+            PImage.pendingDraws.clear();
+            PImage.drawTimeout = null;
+        });
     }
     getState(): KImage {
         return {
@@ -212,7 +234,14 @@ export class PGroup extends PShape<Konva.Group> {
             x: props.x ?? 0,
             y: props.y ?? 0,
         });
+        
+        // Performance optimization: Disable listening during construction
+        this.shape.listening(false);
+        
         props.children.forEach(child => this.renderShape(child));
+        
+        // Re-enable listening after all children are added
+        this.shape.listening(true);
     }
     getState(): KGroup {
         return {

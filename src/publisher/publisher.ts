@@ -44,6 +44,9 @@ export class Publisher {
             // on high DPI displays, or set to window.devicePixelRatio only if needed
             this.stage.setAttr('pixelRatio', 1);
             
+            // Performance optimization: Disable listening during initialization
+            this.defaultLayer.listening(false);
+            
             this.stage.add(this.defaultLayer);
             this.defaultLayer.add(this.transformer);
             // this.defaultLayer.add(this.selectionRectangle);
@@ -151,8 +154,10 @@ export class Publisher {
     }
 
     clearAll() {
-        // Performance optimization: Batch destroy operations
-        // We only need to destroy children that aren't the Transformer
+        // Performance optimization: Disable listening during batch operations
+        this.defaultLayer.listening(false);
+        
+        // Batch destroy operations - only destroy children that aren't the Transformer
         const childrenToDestroy = this.defaultLayer.children.filter(child => child.className !== 'Transformer');
         childrenToDestroy.forEach(child => child.destroy());
         
@@ -164,7 +169,8 @@ export class Publisher {
         this.defaultLayer.add(shape.shape);
         this.state.push(shape);
         this.transformer.moveToTop();
-        // Note: batchDraw is called in loadState to batch all additions
+        // Note: batchDraw is called in loadState after all shapes are added
+        // to avoid multiple redraws during initialization
     }
     addRect(props: Konva.RectConfig & { placeholders?: { fill?: string } }) {
         this.addShape(new PRect(props));
@@ -215,8 +221,16 @@ export class Publisher {
     }
 
     loadState(state: KLayer) {
-        // Performance optimization: Batch all shape additions
+        // Performance optimization: Disable listening during batch operations
+        this.defaultLayer.listening(false);
+        
+        // Batch all shape additions
         state.children.forEach(shape => this.renderShape(shape));
+        
+        // Re-enable listening after all shapes are added
+        this.defaultLayer.listening(true);
+        
+        // Single draw after all shapes are added
         this.defaultLayer.batchDraw();
     }
 }
