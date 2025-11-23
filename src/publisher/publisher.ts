@@ -1,7 +1,7 @@
 import Konva from 'konva';
 import { addObjectSnapping } from './objectSnapping';
 import { PCircle, PGroup, PImage, PRect, PText } from './shapes';
-import { type KGroup, type KLayer, type KShape } from './state';
+import { type KGroup, type KLayer, type KShape } from './types';
 
 export class Publisher {
     stage: Konva.Stage | null;

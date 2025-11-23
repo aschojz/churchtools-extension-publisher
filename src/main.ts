@@ -6,6 +6,7 @@ import { ctUtils } from '@churchtools/utils';
 import { VueQueryPlugin } from '@tanstack/vue-query';
 import { createPinia } from 'pinia';
 import App from './App.vue';
+import { router } from './router';
 import './tailwind.css';
 import '/node_modules/@churchtools/styleguide/dist/styleguide.css';
 
@@ -51,6 +52,7 @@ if (import.meta.env.MODE === 'development') {
 const app = createApp(App);
 app.use(ctUtils, { baseUrl, pinia, t: window.t ?? ((e: string) => e) });
 app.use(ctStyleguide, { baseUrl, t: window.t ?? ((e: string) => e) });
+app.use(router);
 app.use(pinia);
 app.use(VueQueryPlugin);
 app.mount('#app');

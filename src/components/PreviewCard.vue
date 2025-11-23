@@ -2,7 +2,7 @@
 import { Button, Card } from '@churchtools/styleguide';
 import { CtColor, CtIcon } from '@churchtools/utils';
 import { computed } from 'vue';
-const props = defineProps<{
+const { orientation = 'landscape', ...props } = defineProps<{
     template: {
         name: string;
         description: string;
@@ -16,8 +16,8 @@ const emit = defineEmits<{
     (e: 'click'): void;
 }>();
 
-const width = computed(() => (props.orientation === 'landscape' ? props.template.width : props.template.height));
-const height = computed(() => (props.orientation === 'landscape' ? props.template.height : props.template.width));
+const width = computed(() => (orientation === 'landscape' ? props.template.width : props.template.height));
+const height = computed(() => (orientation === 'landscape' ? props.template.height : props.template.width));
 </script>
 <template>
     <Card

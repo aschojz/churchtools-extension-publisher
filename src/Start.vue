@@ -1,17 +1,13 @@
 <script setup lang="ts">
 import { ContentWrapper } from '@churchtools/styleguide';
 import { CtIcon, tx } from '@churchtools/utils';
-import { emit } from 'process';
 import { computed, ref } from 'vue';
 import { ComponentProps } from 'vue-component-type-helpers';
+import { useRouter } from 'vue-router';
 import DialogAddTemplate from './components/DialogAddTemplate.vue';
 import PreviewCard from './components/PreviewCard.vue';
 import { usePublisherPermissions } from './composables/usePermissions';
-import { useTemplates, type PublisherTemplate } from './composables/useTemplates';
-
-const emit = defineEmits<{
-    (e: 'select-template', template: PublisherTemplate): void;
-}>();
+import { useTemplates } from './composables/useTemplates';
 
 const { templates } = useTemplates();
 const { canCreateCategories } = usePublisherPermissions();
@@ -28,6 +24,7 @@ const actions = computed(() => {
 });
 
 const newTemplateIsOpen = ref(false);
+const router = useRouter();
 </script>
 <template>
     <ContentWrapper :actions="actions" icon="fas fa-paintbrush" :max-width="true" :title="tx('Publisher')">
@@ -37,8 +34,8 @@ const newTemplateIsOpen = ref(false);
                 :key="template.id"
                 :editable="true"
                 :template="template"
-                @click="emit('select-template', template)"
-            ></PreviewCard>
+                @click="router.push({ name: 'publisher', params: { id: template.id } })"
+            />
         </div>
         <DialogAddTemplate v-if="newTemplateIsOpen" @close="newTemplateIsOpen = false" />
     </ContentWrapper>

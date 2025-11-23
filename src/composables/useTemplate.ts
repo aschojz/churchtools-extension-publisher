@@ -32,9 +32,9 @@ export function useTemplate(id: MaybeRef<number | null>) {
                   updateCustomDataValue: async () => {},
               };
 
-    const createSurveyEntry = async (surveyEntry: PublisherTemplatePageNew) => {
+    const createSurveyEntry = async (template: PublisherTemplatePageNew) => {
         await createCustomDataValue({
-            ...surveyEntry,
+            ...template,
             dataCategoryId: toValue(id)!,
             meta: {
                 createdDate: new Date().toISOString(),
@@ -53,7 +53,7 @@ export function useTemplate(id: MaybeRef<number | null>) {
         });
     };
 
-    const { category: survey, isPending } =
+    const { category: template, isPending } =
         toValue(id) !== null
             ? useCustomModuleDataCategoryQuery<PublisherTemplate>(moduleId, id as MaybeRef<number>)
             : { category: ref(undefined), isPending: ref(true) };
@@ -71,5 +71,5 @@ export function useTemplate(id: MaybeRef<number | null>) {
             : { data: ref(undefined) };
     const surveyEntries = computed(() => data.value ?? []);
 
-    return { survey, createSurveyEntry, surveyEntries, isPending, deleteSurveyEntry, updateSurveyEntry };
+    return { template, createSurveyEntry, surveyEntries, isPending, deleteSurveyEntry, updateSurveyEntry };
 }
