@@ -35,6 +35,38 @@ const replacePlaceholders = (obj: KLayer['children'][number]) => {
         }
     }
 };
+
+const updateShapesOnly = () => {
+    // Performance optimization: Only update shapes instead of full re-initialization
+    if (!publisher.value) return;
+    
+    const stateCopy = replacedPlaceholdersInState.value;
+    
+    // Update existing shapes instead of clearing and re-adding
+    const shapes = publisher.value.state;
+    if (shapes.length === stateCopy.children.length) {
+        shapes.forEach((shape, index) => {
+            const newState = stateCopy.children[index];
+            if (newState.placeholders && props.variables) {
+                replacePlaceholders(newState);
+                // Update shape properties directly instead of recreating
+                Object.keys(newState).forEach(key => {
+                    if (key !== 'type' && key !== 'placeholders' && key !== 'children') {
+                        const setter = `${key}`;
+                        if (typeof (shape.shape as any)[setter] === 'function') {
+                            (shape.shape as any)[setter](newState[key as keyof typeof newState]);
+                        }
+                    }
+                });
+            }
+        });
+        publisher.value.defaultLayer.batchDraw();
+    } else {
+        // Full re-init only if shape count changed
+        init();
+    }
+};
+
 const init = () => {
     publisher.value?.clearAll();
     publisher.value?.init(document.getElementById(`container-${props.index}`) as HTMLDivElement, {
@@ -43,7 +75,11 @@ const init = () => {
     });
     publisher.value?.loadState(replacedPlaceholdersInState.value);
 };
-watch([() => props.variables, () => props.config], () => init(), { deep: true });
+
+// Performance optimization: Only update shapes on variable changes, not full re-init
+watch(() => props.variables, () => updateShapesOnly(), { deep: true });
+// Full re-init only on config changes (structure changes)
+watch(() => props.config, () => init(), { deep: true });
 
 watch(publisher, () => init(), { once: true });
 onMounted(() => {

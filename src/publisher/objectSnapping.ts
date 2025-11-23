@@ -155,6 +155,7 @@ const drawGuides = (guides: GuideLine[], layer: Publisher['defaultLayer']) => {
                 strokeWidth: 1,
                 name: 'guid-line',
                 dash: [4, 6],
+                listening: false, // Performance: Guide lines don't need event listening
             });
             layer.add(line);
             line.absolutePosition({
@@ -168,6 +169,7 @@ const drawGuides = (guides: GuideLine[], layer: Publisher['defaultLayer']) => {
                 strokeWidth: 1,
                 name: 'guid-line',
                 dash: [4, 6],
+                listening: false, // Performance: Guide lines don't need event listening
             });
             layer.add(line);
             line.absolutePosition({
@@ -213,5 +215,11 @@ export function addObjectSnapping(t: Publisher) {
             }
         });
         e.target.absolutePosition(absPos);
+    });
+    
+    // Performance optimization: Use batchDraw on dragend to ensure clean state
+    t.defaultLayer.on('dragend', () => {
+        t.defaultLayer.find('.guid-line').forEach(l => l.destroy());
+        t.defaultLayer.batchDraw();
     });
 }
