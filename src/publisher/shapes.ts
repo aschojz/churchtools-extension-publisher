@@ -198,6 +198,12 @@ export class PImage extends PShape<Konva.Image> {
                 // Defer draw until next animation frame
                 this.scheduleBatchDraw();
             };
+            image.onerror = () => {
+                // On error, still mark as loaded and schedule a draw
+                // This ensures the canvas updates even if an image fails to load
+                this.loaded = true;
+                this.scheduleBatchDraw();
+            };
             image.src = imageUrl;
         }
     }
@@ -229,7 +235,7 @@ export class PImage extends PShape<Konva.Image> {
         // Collect layers that need redrawing
         PImage.pendingDraws.add(layer);
         
-        // Clear existing timeout and schedule new one
+        // Clear existing animation frame and schedule new one
         if (PImage.drawTimeout !== null) {
             cancelAnimationFrame(PImage.drawTimeout);
         }
