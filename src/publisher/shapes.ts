@@ -305,7 +305,7 @@ export class PGroup extends PShape<Konva.Group> {
     }
     addGroup(props: KGroup) {
         const group = new PGroup(props);
-        // Children are already processed in the PGroup constructor
+        // Children are already processed in the PGroup constructor - avoid duplicate processing
         this.shape.add(group.shape);
     }
 
