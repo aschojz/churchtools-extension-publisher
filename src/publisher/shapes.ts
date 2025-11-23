@@ -206,9 +206,13 @@ export class PImage extends PShape<Konva.Image> {
         
         // Batch all draws in next animation frame
         PImage.drawTimeout = requestAnimationFrame(() => {
-            PImage.pendingDraws.forEach(l => l.batchDraw());
-            PImage.pendingDraws.clear();
-            PImage.drawTimeout = null;
+            try {
+                PImage.pendingDraws.forEach(l => l.batchDraw());
+            } finally {
+                // Always clean up, even if batchDraw throws
+                PImage.pendingDraws.clear();
+                PImage.drawTimeout = null;
+            }
         });
     }
     getState(): KImage {

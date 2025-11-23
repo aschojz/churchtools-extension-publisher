@@ -44,9 +44,6 @@ export class Publisher {
             // on high DPI displays, or set to window.devicePixelRatio only if needed
             this.stage.setAttr('pixelRatio', 1);
             
-            // Performance optimization: Disable listening during initialization
-            this.defaultLayer.listening(false);
-            
             this.stage.add(this.defaultLayer);
             this.defaultLayer.add(this.transformer);
             // this.defaultLayer.add(this.selectionRectangle);
@@ -160,6 +157,9 @@ export class Publisher {
         // Batch destroy operations - only destroy children that aren't the Transformer
         const childrenToDestroy = this.defaultLayer.children.filter(child => child.className !== 'Transformer');
         childrenToDestroy.forEach(child => child.destroy());
+        
+        // Re-enable listening after cleanup
+        this.defaultLayer.listening(true);
         
         // Re-add the layer to the stage after clearing
         this.stage?.add(this.defaultLayer);
