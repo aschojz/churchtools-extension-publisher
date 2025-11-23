@@ -1,5 +1,5 @@
 import Konva from 'konva';
-import { type KCircle, type KGroup, type KImage, type KRect, type KShape, type KText } from './state';
+import { type KCircle, type KGroup, type KImage, type KRect, type KShape, type KText } from './types';
 export type PlaceholderType = { value: string; placeholder: string } | string;
 
 export abstract class PShape<S extends Konva.Shape | Konva.Group> {

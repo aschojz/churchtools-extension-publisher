@@ -2,7 +2,7 @@
 import { useEventListener } from '@vueuse/core';
 import Konva from 'konva';
 import { computed, onMounted, watch } from 'vue';
-import { type KLayer } from '../publisher/state';
+import { type KLayer } from '../publisher/types';
 import { useStore } from '../store';
 
 const props = defineProps<{

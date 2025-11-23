@@ -2,7 +2,7 @@
 import { onMounted } from 'vue';
 import { useFonts } from '../composables/useFont';
 import { Publisher } from '../publisher';
-import type { KLayer } from '../publisher/state';
+import type { KLayer } from '../publisher/types';
 import { useStore } from '../store';
 import KonvaCanvas from './KonvaCanvas.vue';
 
@@ -208,7 +208,7 @@ onMounted(() => {
 <template>
     <div class="bg-basic-bright publisher__main">
         <KonvaCanvas
-            v-for="(canva, index) in state"
+            v-for="(canva, index) in state.slice(0, 1)"
             :key="index"
             :config="canva"
             :index="index"

@@ -31,22 +31,3 @@ export interface KGroup extends Konva.GroupConfig {
     type: 'group';
     children: (KShape | KGroup)[];
 }
-
-export const state: KLayer[] = [
-    {
-        type: 'layer',
-        children: [
-            { type: 'rect', x: 60, y: 60, width: 100, height: 90, fill: 'red' },
-            {
-                type: 'rect',
-                x: 250,
-                y: 100,
-                width: 150,
-                height: 90,
-                fill: 'green',
-            },
-        ],
-        width: 700,
-        height: 1080,
-    },
-];
