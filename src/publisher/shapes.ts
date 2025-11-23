@@ -207,7 +207,13 @@ export class PImage extends PShape<Konva.Image> {
         // Batch all draws in next animation frame
         PImage.drawTimeout = requestAnimationFrame(() => {
             try {
-                PImage.pendingDraws.forEach(l => l.batchDraw());
+                // Check if layer is still valid before calling batchDraw
+                PImage.pendingDraws.forEach(l => {
+                    // Only draw if layer hasn't been destroyed
+                    if (l.getStage()) {
+                        l.batchDraw();
+                    }
+                });
             } finally {
                 // Always clean up, even if batchDraw throws
                 PImage.pendingDraws.clear();
