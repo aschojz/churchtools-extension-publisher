@@ -6,6 +6,9 @@ import {
     keepRotatedFrameInDocument,
     normalizeRotation,
     resizeLayoutFrame,
+    snapLayoutPoint,
+    snapLayoutSize,
+    snapRotation,
 } from './layoutEditing';
 
 describe('layout editing', () => {
@@ -62,5 +65,12 @@ describe('layout editing', () => {
                 90,
             ),
         ).toBeNull();
+    });
+
+    it('snaps positions, sizes and rotations only when enabled', () => {
+        expect(snapLayoutPoint({ x: 113, y: 129 }, true)).toEqual({ x: 120, y: 120 });
+        expect(snapLayoutSize({ width: 753, height: 307 }, true)).toEqual({ width: 760, height: 300 });
+        expect(snapRotation(22, true)).toBe(15);
+        expect(snapRotation(22, false)).toBe(22);
     });
 });

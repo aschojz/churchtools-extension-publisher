@@ -26,6 +26,9 @@ const templateOverrides = ref<EventTemplateOverrides>({});
 const selectedTemplateId = ref<TemplateId>('split');
 const layoutChanged = ref(false);
 const selectedLayoutElement = ref<LayoutElementId | null>(null);
+const snapEnabled = ref(true);
+const layoutStep = computed(() => (snapEnabled.value ? 20 : 5));
+const rotationStep = computed(() => (snapEnabled.value ? 15 : 5));
 const layoutElementLabels: Record<LayoutElementId, string> = {
     title: 'Titel',
     dateTime: 'Datum/Uhrzeit',
@@ -351,6 +354,10 @@ const exportPng = async () => {
                     <div>
                         <h2>Layout anpassen</h2>
                         <p>Wähle Titel, Datum/Uhrzeit oder Ort aus. Anschließend kannst du den Bereich verschieben, skalieren oder drehen.</p>
+                        <label class="layout-controls__snap">
+                            <input v-model="snapEnabled" type="checkbox" />
+                            Am 20-Pixel-Raster und an 15°-Winkeln ausrichten
+                        </label>
                         <p v-if="selectedLayoutElement" class="layout-controls__selection" role="status">
                             Ausgewählt: {{ layoutElementLabels[selectedLayoutElement] }}
                         </p>
@@ -366,20 +373,20 @@ const exportPng = async () => {
                             </button>
                         </div>
                         <div v-if="selectedLayoutElement" class="layout-controls__directions" aria-label="Element verschieben">
-                            <button type="button" aria-label="Nach links verschieben" @click="nudgeLayoutElement(-20, 0)">←</button>
-                            <button type="button" aria-label="Nach oben verschieben" @click="nudgeLayoutElement(0, -20)">↑</button>
-                            <button type="button" aria-label="Nach unten verschieben" @click="nudgeLayoutElement(0, 20)">↓</button>
-                            <button type="button" aria-label="Nach rechts verschieben" @click="nudgeLayoutElement(20, 0)">→</button>
+                            <button type="button" aria-label="Nach links verschieben" @click="nudgeLayoutElement(-layoutStep, 0)">←</button>
+                            <button type="button" aria-label="Nach oben verschieben" @click="nudgeLayoutElement(0, -layoutStep)">↑</button>
+                            <button type="button" aria-label="Nach unten verschieben" @click="nudgeLayoutElement(0, layoutStep)">↓</button>
+                            <button type="button" aria-label="Nach rechts verschieben" @click="nudgeLayoutElement(layoutStep, 0)">→</button>
                         </div>
                         <div v-if="selectedLayoutElement" class="layout-controls__sizes" aria-label="Elementgröße ändern">
-                            <button type="button" @click="resizeLayoutElement(-20, 0)">Schmaler</button>
-                            <button type="button" @click="resizeLayoutElement(20, 0)">Breiter</button>
-                            <button type="button" @click="resizeLayoutElement(0, -20)">Flacher</button>
-                            <button type="button" @click="resizeLayoutElement(0, 20)">Höher</button>
+                            <button type="button" @click="resizeLayoutElement(-layoutStep, 0)">Schmaler</button>
+                            <button type="button" @click="resizeLayoutElement(layoutStep, 0)">Breiter</button>
+                            <button type="button" @click="resizeLayoutElement(0, -layoutStep)">Flacher</button>
+                            <button type="button" @click="resizeLayoutElement(0, layoutStep)">Höher</button>
                         </div>
                         <div v-if="selectedLayoutElement" class="layout-controls__rotations" aria-label="Element drehen">
-                            <button type="button" @click="rotateLayoutElement(-5)">−5° drehen</button>
-                            <button type="button" @click="rotateLayoutElement(5)">+5° drehen</button>
+                            <button type="button" @click="rotateLayoutElement(-rotationStep)">−{{ rotationStep }}° drehen</button>
+                            <button type="button" @click="rotateLayoutElement(rotationStep)">+{{ rotationStep }}° drehen</button>
                         </div>
                     </div>
                     <button
@@ -414,6 +421,7 @@ const exportPng = async () => {
                     ref="templateRef"
                     :template="templateProps"
                     :template-id="selectedTemplateId"
+                    :snap-enabled="snapEnabled"
                     @image-status="imageStatus = $event"
                     @layout-change="layoutChanged = $event"
                     @selection-change="selectedLayoutElement = $event"

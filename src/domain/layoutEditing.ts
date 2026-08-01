@@ -26,6 +26,8 @@ export type LayoutRotations = Record<LayoutElementId, number>;
 
 export const MIN_ELEMENT_WIDTH = 120;
 export const MIN_ELEMENT_HEIGHT = 50;
+export const SNAP_GRID_SIZE = 20;
+export const SNAP_ROTATION_STEP = 15;
 
 export const TEMPLATE_ELEMENT_FRAMES: Record<TemplateId, Record<LayoutElementId, LayoutFrame>> = {
     split: {
@@ -79,6 +81,27 @@ export const resizeLayoutFrame = (frame: LayoutFrame, size: LayoutSize): LayoutF
 });
 
 export const normalizeRotation = (rotation: number) => ((rotation % 360) + 540) % 360 - 180;
+
+export const snapValue = (value: number, step: number) => Math.round(value / step) * step;
+
+export const snapLayoutPoint = (point: LayoutPoint, enabled: boolean): LayoutPoint =>
+    enabled
+        ? {
+              x: snapValue(point.x, SNAP_GRID_SIZE),
+              y: snapValue(point.y, SNAP_GRID_SIZE),
+          }
+        : point;
+
+export const snapLayoutSize = (size: LayoutSize, enabled: boolean): LayoutSize =>
+    enabled
+        ? {
+              width: snapValue(size.width, SNAP_GRID_SIZE),
+              height: snapValue(size.height, SNAP_GRID_SIZE),
+          }
+        : size;
+
+export const snapRotation = (rotation: number, enabled: boolean) =>
+    enabled ? snapValue(rotation, SNAP_ROTATION_STEP) : rotation;
 
 export const keepRotatedFrameInDocument = (
     frame: LayoutFrame,

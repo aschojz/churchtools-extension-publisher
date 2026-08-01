@@ -15,6 +15,9 @@ import {
     type LayoutElementId,
     type LayoutFrame,
     resizeLayoutFrame,
+    snapLayoutPoint,
+    snapLayoutSize,
+    snapRotation,
     TEMPLATE_ELEMENT_FRAMES,
 } from '../domain/layoutEditing';
 import type { TemplateId } from '../domain/templates';
@@ -29,6 +32,7 @@ type ImageStatus = 'idle' | 'loading' | 'loaded' | 'error';
 const props = defineProps<{
     template: EventTemplateProps;
     templateId: TemplateId;
+    snapEnabled: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -66,7 +70,7 @@ const stageConfig = computed(() => ({
     scaleX: previewScale.value,
     scaleY: previewScale.value,
 }));
-const transformerConfig = {
+const transformerConfig = computed(() => ({
     rotateEnabled: true,
     flipEnabled: false,
     keepRatio: false,
@@ -77,6 +81,10 @@ const transformerConfig = {
     borderStroke: '#2479c5',
     borderStrokeWidth: 4,
     rotateAnchorOffset: 45,
+    rotationSnaps: props.snapEnabled
+        ? [-180, -165, -150, -135, -120, -105, -90, -75, -60, -45, -30, -15, 0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180]
+        : [],
+    rotationSnapTolerance: 5,
     boundBoxFunc: (oldBox: Box, newBox: Box) => {
         const insideDocument =
             newBox.x >= 0 &&
@@ -85,7 +93,7 @@ const transformerConfig = {
             newBox.y + newBox.height <= DOCUMENT_HEIGHT;
         return newBox.width >= 120 && newBox.height >= 50 && insideDocument ? newBox : oldBox;
     },
-};
+}));
 
 const imageCrop = computed(() => {
     if (!image.value) {
@@ -182,7 +190,10 @@ const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEven
 
 const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
     const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
-    const position = clampLayoutPosition(event.target.position(), elementFrame(elementId));
+    const position = clampLayoutPosition(
+        snapLayoutPoint(event.target.position(), props.snapEnabled),
+        elementFrame(elementId),
+    );
     event.target.position(position);
     layoutOffsets.value[props.templateId][elementId] = {
         x: position.x - baseFrame.x,
@@ -196,14 +207,21 @@ const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject
     const node = event.target;
     const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
     const currentFrame = elementFrame(elementId);
+    const snappedPosition = snapLayoutPoint({ x: node.x(), y: node.y() }, props.snapEnabled);
     const resizedFrame = resizeLayoutFrame(
-        { ...currentFrame, x: node.x(), y: node.y() },
-        {
-            width: currentFrame.width * Math.abs(node.scaleX()),
-            height: currentFrame.height * Math.abs(node.scaleY()),
-        },
+        { ...currentFrame, ...snappedPosition },
+        snapLayoutSize(
+            {
+                width: currentFrame.width * Math.abs(node.scaleX()),
+                height: currentFrame.height * Math.abs(node.scaleY()),
+            },
+            props.snapEnabled,
+        ),
     );
-    const rotatedLayout = keepRotatedFrameInDocument(resizedFrame, node.rotation());
+    const rotatedLayout = keepRotatedFrameInDocument(
+        resizedFrame,
+        snapRotation(node.rotation(), props.snapEnabled),
+    );
 
     if (!rotatedLayout) {
         node.scale({ x: 1, y: 1 });

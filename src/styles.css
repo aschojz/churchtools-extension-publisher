@@ -178,6 +178,22 @@ textarea {
     font-weight: 700;
 }
 
+.layout-controls__snap {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 10px;
+    color: #31465a;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.layout-controls__snap input {
+    width: 17px;
+    height: 17px;
+    accent-color: #2768ad;
+}
+
 .layout-controls__elements,
 .layout-controls__directions,
 .layout-controls__sizes,
