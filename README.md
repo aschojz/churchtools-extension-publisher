@@ -122,7 +122,9 @@ Titel, Datum, Uhrzeit und Ort können vor dem Export einzeln überschrieben werd
 gemappte EventTemplateProps + EventTemplateOverrides → gerenderte EventTemplateProps
 ```
 
-Ein leerer Wert ist eine gültige Überschreibung und blendet beispielsweise Uhrzeit oder Ort aus. Jeder Wert kann einzeln auf das gemappte Original zurückgesetzt werden; zusätzlich steht ein gemeinsamer Reset bereit. Beim Wechsel des Termins werden alle Überschreibungen verworfen. Bildersetzung bleibt bewusst außerhalb dieses Schritts.
+Ein leerer Wert ist eine gültige Überschreibung und blendet beispielsweise Uhrzeit oder Ort aus. Jeder Wert kann einzeln auf das gemappte Original zurückgesetzt werden; zusätzlich steht ein gemeinsamer Reset bereit. Beim Wechsel des Termins werden alle Überschreibungen verworfen.
+
+Das Veranstaltungsbild kann für Vorschau und Export lokal durch eine JPEG-, PNG- oder WebP-Datei bis 20 MB ersetzt werden. Dafür wird ausschließlich eine temporäre Blob-URL im Browser erzeugt; es gibt keinen Upload und keine Änderung am ChurchTools-Termin. Beim Zurücksetzen, Terminwechsel oder Verlassen der Seite wird die URL wieder freigegeben.
 
 ### Template-Auswahl
 

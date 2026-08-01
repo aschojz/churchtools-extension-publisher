@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import type { AppointmentCalculatedWithIncludes } from '@churchtools/api-types';
 import { useAppointmentQuery, useCalendarsQuery } from '@churchtools/vue-query';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 import EventTemplate from './components/EventTemplate.vue';
 import { useAppointmentsQuery } from './composables/useAppointmentsQuery';
 import { mapAppointmentToTemplateProps } from './domain/mapAppointmentToTemplateProps';
 import type { LayoutElementId } from './domain/layoutEditing';
+import { validateLocalImage } from './domain/localImageOverride';
 import {
     applyTemplateOverrides,
     type EditableTemplateField,
@@ -23,6 +24,9 @@ const imageStatus = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle');
 const exportError = ref('');
 const exportSuccess = ref('');
 const templateOverrides = ref<EventTemplateOverrides>({});
+const replacementImageUrl = ref<string | null>(null);
+const replacementImageName = ref('');
+const replacementImageError = ref('');
 const selectedTemplateId = ref<TemplateId>('split');
 const layoutChanged = ref(false);
 const selectedLayoutElement = ref<LayoutElementId | null>(null);
@@ -79,27 +83,77 @@ const mappedTemplateProps = computed(() => {
     });
 });
 
-const templateProps = computed(() =>
-    mappedTemplateProps.value
-        ? applyTemplateOverrides(mappedTemplateProps.value, templateOverrides.value)
-        : null,
+const templateProps = computed(() => {
+    if (!mappedTemplateProps.value) {
+        return null;
+    }
+
+    const propsWithOverrides = applyTemplateOverrides(mappedTemplateProps.value, templateOverrides.value);
+    return replacementImageUrl.value
+        ? { ...propsWithOverrides, imageUrl: replacementImageUrl.value }
+        : propsWithOverrides;
+});
+const hasTemplateOverrides = computed(
+    () => Object.keys(templateOverrides.value).length > 0 || Boolean(replacementImageUrl.value),
 );
-const hasTemplateOverrides = computed(() => Object.keys(templateOverrides.value).length > 0);
 
 const isLoading = computed(() => calendarsPending.value || appointmentsPending.value);
 const loadingError = computed(() => calendarsError.value ?? appointmentsError.value);
+
+const revokeReplacementImage = (defer = true) => {
+    const previousUrl = replacementImageUrl.value;
+    replacementImageUrl.value = null;
+    replacementImageName.value = '';
+    replacementImageError.value = '';
+
+    if (previousUrl) {
+        if (defer) {
+            void nextTick(() => URL.revokeObjectURL(previousUrl));
+        } else {
+            URL.revokeObjectURL(previousUrl);
+        }
+    }
+};
+
+const updateReplacementImage = (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) {
+        return;
+    }
+
+    const validationError = validateLocalImage(file);
+    if (validationError) {
+        replacementImageError.value = validationError;
+        return;
+    }
+
+    const previousUrl = replacementImageUrl.value;
+    replacementImageUrl.value = URL.createObjectURL(file);
+    replacementImageName.value = file.name;
+    replacementImageError.value = '';
+    exportError.value = '';
+    exportSuccess.value = '';
+    if (previousUrl) {
+        void nextTick(() => URL.revokeObjectURL(previousUrl));
+    }
+};
 
 watch(selectedAppointmentKey, () => {
     exportError.value = '';
     exportSuccess.value = '';
     imageStatus.value = 'idle';
     templateOverrides.value = {};
+    revokeReplacementImage();
 });
 
 watch(selectedTemplateId, () => {
     exportError.value = '';
     exportSuccess.value = '';
 });
+
+onBeforeUnmount(() => revokeReplacementImage(false));
 
 const templateFieldValue = (field: EditableTemplateField) =>
     templateOverrides.value[field] ?? mappedTemplateProps.value?.[field] ?? '';
@@ -128,6 +182,7 @@ const resetTemplateOverride = (field: EditableTemplateField) => {
 
 const resetTemplateOverrides = () => {
     templateOverrides.value = {};
+    revokeReplacementImage();
 };
 
 const resetLayout = () => {
@@ -356,6 +411,33 @@ const exportPng = async () => {
                                 @click="resetTemplateOverride('location')"
                             >
                                 Original wiederherstellen
+                            </button>
+                        </div>
+
+                        <div class="template-field template-field--wide local-image-override">
+                            <label for="override-image">Veranstaltungsbild</label>
+                            <input
+                                id="override-image"
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                @change="updateReplacementImage"
+                            />
+                            <p class="template-field__help">
+                                JPEG, PNG oder WebP bis 20 MB. Das Bild bleibt lokal und wird nicht zu ChurchTools hochgeladen.
+                            </p>
+                            <p v-if="replacementImageName" class="local-image-override__selection" role="status">
+                                Lokales Bild: {{ replacementImageName }}
+                            </p>
+                            <p v-if="replacementImageError" class="local-image-override__error" role="alert">
+                                {{ replacementImageError }}
+                            </p>
+                            <button
+                                v-if="replacementImageUrl"
+                                type="button"
+                                class="template-field__reset"
+                                @click="revokeReplacementImage()"
+                            >
+                                Originalbild wiederherstellen
                             </button>
                         </div>
                     </div>

@@ -151,6 +151,27 @@ textarea {
     background: #f7f9fb;
 }
 
+.template-field__help,
+.local-image-override__selection,
+.local-image-override__error {
+    margin-top: 6px;
+    font-size: 13px;
+}
+
+.template-field__help {
+    color: #667788;
+}
+
+.local-image-override__selection {
+    color: #2768ad;
+    font-weight: 700;
+}
+
+.local-image-override__error {
+    color: #9f2d25;
+    font-weight: 700;
+}
+
 .layout-controls {
     display: flex;
     gap: 20px;
