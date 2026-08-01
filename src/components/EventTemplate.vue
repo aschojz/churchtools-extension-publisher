@@ -9,7 +9,9 @@ import type { EventTemplateProps } from '../domain/EventTemplateProps';
 import {
     clampLayoutPosition,
     createLayoutOffsets,
+    createLayoutRotations,
     createLayoutSizes,
+    keepRotatedFrameInDocument,
     type LayoutElementId,
     type LayoutFrame,
     resizeLayoutFrame,
@@ -51,6 +53,10 @@ const layoutSizes = ref<Record<TemplateId, ReturnType<typeof createLayoutSizes>>
     split: createLayoutSizes('split'),
     poster: createLayoutSizes('poster'),
 });
+const layoutRotations = ref<Record<TemplateId, ReturnType<typeof createLayoutRotations>>>({
+    split: createLayoutRotations(),
+    poster: createLayoutRotations(),
+});
 let resizeObserver: ResizeObserver | undefined;
 
 const previewScale = computed(() => calculatePreviewScale(containerWidth.value));
@@ -61,7 +67,7 @@ const stageConfig = computed(() => ({
     scaleY: previewScale.value,
 }));
 const transformerConfig = {
-    rotateEnabled: false,
+    rotateEnabled: true,
     flipEnabled: false,
     keepRatio: false,
     enabledAnchors: ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'],
@@ -70,6 +76,7 @@ const transformerConfig = {
     anchorSize: 18,
     borderStroke: '#2479c5',
     borderStrokeWidth: 4,
+    rotateAnchorOffset: 45,
     boundBoxFunc: (oldBox: Box, newBox: Box) => {
         const insideDocument =
             newBox.x >= 0 &&
@@ -124,7 +131,8 @@ const currentLayoutChanged = computed(() =>
         ([elementId, { x, y }]) => {
             const size = layoutSizes.value[props.templateId][elementId];
             const base = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
-            return x !== 0 || y !== 0 || size.width !== base.width || size.height !== base.height;
+            const rotation = layoutRotations.value[props.templateId][elementId];
+            return x !== 0 || y !== 0 || size.width !== base.width || size.height !== base.height || rotation !== 0;
         },
     ),
 );
@@ -195,17 +203,28 @@ const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject
             height: currentFrame.height * Math.abs(node.scaleY()),
         },
     );
+    const rotatedLayout = keepRotatedFrameInDocument(resizedFrame, node.rotation());
+
+    if (!rotatedLayout) {
+        node.scale({ x: 1, y: 1 });
+        node.position({ x: currentFrame.x, y: currentFrame.y });
+        node.rotation(layoutRotations.value[props.templateId][elementId]);
+        void syncTransformer();
+        return;
+    }
 
     node.scale({ x: 1, y: 1 });
-    node.position({ x: resizedFrame.x, y: resizedFrame.y });
+    node.position({ x: rotatedLayout.frame.x, y: rotatedLayout.frame.y });
+    node.rotation(rotatedLayout.rotation);
     layoutOffsets.value[props.templateId][elementId] = {
-        x: resizedFrame.x - baseFrame.x,
-        y: resizedFrame.y - baseFrame.y,
+        x: rotatedLayout.frame.x - baseFrame.x,
+        y: rotatedLayout.frame.y - baseFrame.y,
     };
     layoutSizes.value[props.templateId][elementId] = {
-        width: resizedFrame.width,
-        height: resizedFrame.height,
+        width: rotatedLayout.frame.width,
+        height: rotatedLayout.frame.height,
     };
+    layoutRotations.value[props.templateId][elementId] = rotatedLayout.rotation;
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
 };
@@ -248,9 +267,34 @@ const resizeSelectedElement = (deltaWidth: number, deltaHeight: number) => {
     void syncTransformer();
 };
 
+const rotateSelectedElement = (deltaRotation: number) => {
+    if (!selectedElement.value) {
+        return;
+    }
+
+    const elementId = selectedElement.value;
+    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+    const rotatedLayout = keepRotatedFrameInDocument(
+        elementFrame(elementId),
+        layoutRotations.value[props.templateId][elementId] + deltaRotation,
+    );
+    if (!rotatedLayout) {
+        return;
+    }
+
+    layoutOffsets.value[props.templateId][elementId] = {
+        x: rotatedLayout.frame.x - baseFrame.x,
+        y: rotatedLayout.frame.y - baseFrame.y,
+    };
+    layoutRotations.value[props.templateId][elementId] = rotatedLayout.rotation;
+    emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
+};
+
 const resetLayout = () => {
     layoutOffsets.value[props.templateId] = createLayoutOffsets();
     layoutSizes.value[props.templateId] = createLayoutSizes(props.templateId);
+    layoutRotations.value[props.templateId] = createLayoutRotations();
     selectedElement.value = null;
     emit('selectionChange', null);
     emit('layoutChange', false);
@@ -348,7 +392,14 @@ const exportPng = async () => {
     }
 };
 
-defineExpose({ exportPng, nudgeSelectedElement, resetLayout, resizeSelectedElement, selectElement });
+defineExpose({
+    exportPng,
+    nudgeSelectedElement,
+    resetLayout,
+    resizeSelectedElement,
+    rotateSelectedElement,
+    selectElement,
+});
 </script>
 
 <template>
@@ -376,6 +427,7 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, resizeSelectedEleme
                 <EditableTextElement
                     element-id="title"
                     :frame="elementFrame('title')"
+                    :rotation="layoutRotations[templateId].title"
                     :selected="selectedElement === 'title' && !isExporting"
                     :text-config="{
                         text: template.title,
@@ -394,6 +446,7 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, resizeSelectedEleme
                 <EditableTextElement
                     element-id="dateTime"
                     :frame="elementFrame('dateTime')"
+                    :rotation="layoutRotations[templateId].dateTime"
                     :selected="selectedElement === 'dateTime' && !isExporting"
                     :text-config="{
                         text: dateAndTime,
@@ -410,6 +463,7 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, resizeSelectedEleme
                     v-if="template.location"
                     element-id="location"
                     :frame="elementFrame('location')"
+                    :rotation="layoutRotations[templateId].location"
                     :selected="selectedElement === 'location' && !isExporting"
                     :text-config="{
                         text: template.location,
@@ -458,6 +512,7 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, resizeSelectedEleme
                 <EditableTextElement
                     element-id="title"
                     :frame="elementFrame('title')"
+                    :rotation="layoutRotations[templateId].title"
                     :selected="selectedElement === 'title' && !isExporting"
                     :text-config="{
                         text: template.title,
@@ -477,6 +532,7 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, resizeSelectedEleme
                 <EditableTextElement
                     element-id="dateTime"
                     :frame="elementFrame('dateTime')"
+                    :rotation="layoutRotations[templateId].dateTime"
                     :selected="selectedElement === 'dateTime' && !isExporting"
                     :text-config="{
                         text: dateAndTime,
@@ -493,6 +549,7 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, resizeSelectedEleme
                     v-if="template.location"
                     element-id="location"
                     :frame="elementFrame('location')"
+                    :rotation="layoutRotations[templateId].location"
                     :selected="selectedElement === 'location' && !isExporting"
                     :text-config="{
                         text: template.location,

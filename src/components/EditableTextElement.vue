@@ -6,6 +6,7 @@ import type { LayoutElementId, LayoutFrame } from '../domain/layoutEditing';
 const props = defineProps<{
     elementId: LayoutElementId;
     frame: LayoutFrame;
+    rotation: number;
     selected: boolean;
     textConfig: Konva.TextConfig;
 }>();
@@ -33,6 +34,7 @@ const finishTransform = (event: Konva.KonvaEventObject<Event>) => {
             id: `editable-${elementId}`,
             name: 'editable-element',
             layoutElementId: elementId,
+            rotation,
         }"
         @dragend="finishDrag"
         @transformend="finishTransform"

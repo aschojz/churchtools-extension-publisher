@@ -130,7 +130,7 @@ Die Oberfläche bietet zwei fest codierte 1920-×-1080-Templates: eine geteilte 
 
 ### Erste Layoutbearbeitung
 
-Titel, kombinierte Datums-/Uhrzeile und Ort können auf der Konva-Arbeitsfläche ausgewählt, verschoben und in Breite sowie Höhe verändert werden. Der Konva-Transformer stellt dafür Griffe ohne Rotationsfunktion bereit. Zusätzlich erlaubt eine tastaturfähige Elementleiste die eindeutige Auswahl sowie Bewegung und Größenänderung in 20-Pixel-Schritten. Auswahlrahmen und Transformer werden vor dem Export ausgeblendet. Positionen und Größen liegen als serialisierbare Werte im Vue-Zustand und nicht ausschließlich in den Konva-Nodes. Sie werden pro Template getrennt gehalten, bleiben innerhalb der Dokumentgrenzen und können auf die Ausgangswerte zurückgesetzt werden. Rotation und Snapping sind noch nicht enthalten.
+Titel, kombinierte Datums-/Uhrzeile und Ort können auf der Konva-Arbeitsfläche ausgewählt, verschoben, in Breite und Höhe verändert sowie frei gedreht werden. Der Konva-Transformer stellt dafür Größen- und Rotationsgriffe bereit. Zusätzlich erlaubt eine tastaturfähige Elementleiste die eindeutige Auswahl, Bewegung und Größenänderung in 20-Pixel-Schritten sowie Rotation in 5-Grad-Schritten. Auswahlrahmen und Transformer werden vor dem Export ausgeblendet. Positionen, Größen und normalisierte Winkel liegen als serialisierbare Werte im Vue-Zustand und nicht ausschließlich in den Konva-Nodes. Sie werden pro Template getrennt gehalten, bleiben innerhalb der Dokumentgrenzen und können auf die Ausgangswerte zurückgesetzt werden. Snapping ist noch nicht enthalten.
 
 ## Vorschau und Export
 

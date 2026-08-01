@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { clampLayoutPosition, createLayoutOffsets, resizeLayoutFrame } from './layoutEditing';
+import {
+    clampLayoutPosition,
+    createLayoutOffsets,
+    keepRotatedFrameInDocument,
+    normalizeRotation,
+    resizeLayoutFrame,
+} from './layoutEditing';
 
 describe('layout editing', () => {
     it('creates independent zero offsets for all editable elements', () => {
@@ -34,5 +40,27 @@ describe('layout editing', () => {
             width: 420,
             height: 180,
         });
+    });
+
+    it('normalizes rotation and shifts rotated bounds back into the document', () => {
+        expect(normalizeRotation(190)).toBe(-170);
+        expect(normalizeRotation(-190)).toBe(170);
+
+        const result = keepRotatedFrameInDocument(
+            { x: 1800, y: 100, width: 200, height: 100 },
+            45,
+        );
+
+        expect(result?.rotation).toBe(45);
+        expect(result?.frame.x).toBeLessThan(1800);
+    });
+
+    it('rejects a rotation whose bounding box cannot fit into the document', () => {
+        expect(
+            keepRotatedFrameInDocument(
+                { x: 0, y: 0, width: 1600, height: 410 },
+                90,
+            ),
+        ).toBeNull();
     });
 });

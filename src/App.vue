@@ -141,6 +141,10 @@ const resizeLayoutElement = (deltaWidth: number, deltaHeight: number) => {
     templateRef.value?.resizeSelectedElement(deltaWidth, deltaHeight);
 };
 
+const rotateLayoutElement = (deltaRotation: number) => {
+    templateRef.value?.rotateSelectedElement(deltaRotation);
+};
+
 const formatAppointmentDate = ({ appointment }: AppointmentCalculatedWithIncludes) => {
     const { base, calculated } = appointment;
     const options: Intl.DateTimeFormatOptions = base.allDay
@@ -346,7 +350,7 @@ const exportPng = async () => {
                 <div class="layout-controls">
                     <div>
                         <h2>Layout anpassen</h2>
-                        <p>Wähle Titel, Datum/Uhrzeit oder Ort aus. Anschließend kannst du den Bereich verschieben oder seine Größe verändern.</p>
+                        <p>Wähle Titel, Datum/Uhrzeit oder Ort aus. Anschließend kannst du den Bereich verschieben, skalieren oder drehen.</p>
                         <p v-if="selectedLayoutElement" class="layout-controls__selection" role="status">
                             Ausgewählt: {{ layoutElementLabels[selectedLayoutElement] }}
                         </p>
@@ -372,6 +376,10 @@ const exportPng = async () => {
                             <button type="button" @click="resizeLayoutElement(20, 0)">Breiter</button>
                             <button type="button" @click="resizeLayoutElement(0, -20)">Flacher</button>
                             <button type="button" @click="resizeLayoutElement(0, 20)">Höher</button>
+                        </div>
+                        <div v-if="selectedLayoutElement" class="layout-controls__rotations" aria-label="Element drehen">
+                            <button type="button" @click="rotateLayoutElement(-5)">−5° drehen</button>
+                            <button type="button" @click="rotateLayoutElement(5)">+5° drehen</button>
                         </div>
                     </div>
                     <button
