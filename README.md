@@ -2,7 +2,7 @@
 
 Technischer Durchstich für einen späteren grafischen Publisher innerhalb einer ChurchTools-Extension.
 
-Der aktuelle Stand umfasst den vollständigen ersten technischen Durchstich: Terminauswahl, Detailabruf, isoliertes Prop-Mapping, manuelle Inhaltsüberschreibungen, ein festes Konva-Testlayout, responsive Vorschau und PNG-Export in 1920 × 1080 Pixeln.
+Der aktuelle Stand umfasst Terminauswahl, Detailabruf, isoliertes Prop-Mapping, manuelle Inhaltsüberschreibungen, zwei auswählbare Konva-Templates, erste Auswahl- und Verschiebefunktionen, responsive Vorschau und PNG-Export in 1920 × 1080 Pixeln.
 
 ## Lokale Entwicklung
 
@@ -127,6 +127,10 @@ Ein leerer Wert ist eine gültige Überschreibung und blendet beispielsweise Uhr
 ### Template-Auswahl
 
 Die Oberfläche bietet zwei fest codierte 1920-×-1080-Templates: eine geteilte Fläche und ein vollflächiges Bildposter. Beide erhalten dasselbe `EventTemplateProps`-Objekt und verwenden dieselbe Exportlogik. Ein Template-Wechsel beeinflusst deshalb weder die geladenen Termindaten noch manuelle Inhaltsüberschreibungen.
+
+### Erste Layoutbearbeitung
+
+Titel, kombinierte Datums-/Uhrzeile und Ort können auf der Konva-Arbeitsfläche ausgewählt und verschoben werden. Zusätzlich erlaubt eine tastaturfähige Elementleiste die eindeutige Auswahl und Bewegung in 20-Pixel-Schritten. Ein ausgewähltes Element erhält nur in der Vorschau einen gestrichelten Rahmen; Auswahlmarkierungen werden vor dem Export ausgeblendet. Die Positionen liegen als serialisierbare Offsets im Vue-Zustand und nicht ausschließlich in den Konva-Nodes. Sie werden pro Template getrennt gehalten, bleiben innerhalb der Dokumentgrenzen und können auf die Ausgangspositionen zurückgesetzt werden. Größenänderung, Rotation und Snapping sind noch nicht enthalten.
 
 ## Vorschau und Export
 

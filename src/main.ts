@@ -6,6 +6,7 @@ import VueKonva from 'vue-konva/core';
 import 'konva/lib/shapes/Image';
 import 'konva/lib/shapes/Rect';
 import 'konva/lib/shapes/Text';
+import 'konva/lib/Group';
 
 import App from './App.vue';
 import './styles.css';

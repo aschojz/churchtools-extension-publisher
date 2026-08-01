@@ -1,9 +1,17 @@
 <script setup lang="ts">
 import type Konva from 'konva';
 import type { VueKonvaRef } from 'vue-konva';
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 
+import EditableTextElement from './EditableTextElement.vue';
 import type { EventTemplateProps } from '../domain/EventTemplateProps';
+import {
+    clampLayoutPosition,
+    createLayoutOffsets,
+    type LayoutElementId,
+    type LayoutFrame,
+    TEMPLATE_ELEMENT_FRAMES,
+} from '../domain/layoutEditing';
 import type { TemplateId } from '../domain/templates';
 import {
     calculatePreviewScale,
@@ -20,6 +28,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     imageStatus: [status: ImageStatus];
+    layoutChange: [changed: boolean];
+    selectionChange: [elementId: LayoutElementId | null];
 }>();
 
 const containerRef = ref<HTMLDivElement | null>(null);
@@ -27,6 +37,12 @@ const stageRef = ref<VueKonvaRef<Konva.Stage> | null>(null);
 const containerWidth = ref(DOCUMENT_WIDTH);
 const image = shallowRef<HTMLImageElement | null>(null);
 const imageStatus = ref<ImageStatus>('idle');
+const selectedElement = ref<LayoutElementId | null>(null);
+const isExporting = ref(false);
+const layoutOffsets = ref<Record<TemplateId, ReturnType<typeof createLayoutOffsets>>>({
+    split: createLayoutOffsets(),
+    poster: createLayoutOffsets(),
+});
 let resizeObserver: ResizeObserver | undefined;
 
 const previewScale = computed(() => calculatePreviewScale(containerWidth.value));
@@ -76,6 +92,70 @@ const imageConfig = computed(() => ({
 }));
 
 const dateAndTime = computed(() => [props.template.date, props.template.time].filter(Boolean).join(' · '));
+const currentLayoutChanged = computed(() =>
+    Object.values(layoutOffsets.value[props.templateId]).some(({ x, y }) => x !== 0 || y !== 0),
+);
+
+const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
+    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+    const offset = layoutOffsets.value[props.templateId][elementId];
+    return {
+        ...baseFrame,
+        x: baseFrame.x + offset.x,
+        y: baseFrame.y + offset.y,
+    };
+};
+
+const selectElement = (elementId: LayoutElementId) => {
+    selectedElement.value = elementId;
+    emit('selectionChange', elementId);
+};
+
+const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    const editableGroup = event.target.findAncestor('.editable-element', true);
+    const elementId = editableGroup?.getAttr('layoutElementId') as LayoutElementId | undefined;
+
+    if (elementId) {
+        selectElement(elementId);
+    }
+};
+
+const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
+    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+    const position = clampLayoutPosition(event.target.position(), baseFrame);
+    event.target.position(position);
+    layoutOffsets.value[props.templateId][elementId] = {
+        x: position.x - baseFrame.x,
+        y: position.y - baseFrame.y,
+    };
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
+const nudgeSelectedElement = (deltaX: number, deltaY: number) => {
+    if (!selectedElement.value) {
+        return;
+    }
+
+    const elementId = selectedElement.value;
+    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+    const currentFrame = elementFrame(elementId);
+    const position = clampLayoutPosition(
+        { x: currentFrame.x + deltaX, y: currentFrame.y + deltaY },
+        baseFrame,
+    );
+    layoutOffsets.value[props.templateId][elementId] = {
+        x: position.x - baseFrame.x,
+        y: position.y - baseFrame.y,
+    };
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
+const resetLayout = () => {
+    layoutOffsets.value[props.templateId] = createLayoutOffsets();
+    selectedElement.value = null;
+    emit('selectionChange', null);
+    emit('layoutChange', false);
+};
 
 watch(
     () => props.template.imageUrl,
@@ -109,6 +189,14 @@ watch(
 );
 
 watch(imageStatus, (status) => emit('imageStatus', status), { immediate: true });
+watch(
+    () => props.templateId,
+    () => {
+        selectedElement.value = null;
+        emit('selectionChange', null);
+        emit('layoutChange', currentLayoutChanged.value);
+    },
+);
 
 onMounted(() => {
     if (!containerRef.value) {
@@ -145,23 +233,26 @@ const exportPng = async () => {
     };
 
     try {
+        isExporting.value = true;
+        await nextTick();
         stage.size({ width: DOCUMENT_WIDTH, height: DOCUMENT_HEIGHT });
         stage.scale({ x: 1, y: 1 });
         stage.draw();
         return stage.toDataURL({ pixelRatio: 1, mimeType: 'image/png' });
     } finally {
+        isExporting.value = false;
         stage.size({ width: previewState.width, height: previewState.height });
         stage.scale({ x: previewState.scaleX, y: previewState.scaleY });
         stage.draw();
     }
 };
 
-defineExpose({ exportPng });
+defineExpose({ exportPng, nudgeSelectedElement, resetLayout, selectElement });
 </script>
 
 <template>
     <div ref="containerRef" class="template-preview">
-        <v-stage ref="stageRef" :config="stageConfig">
+        <v-stage ref="stageRef" :config="stageConfig" @mousedown="handleStagePointer" @touchstart="handleStagePointer">
             <v-layer v-if="templateId === 'split'">
                 <v-rect :config="{ x: 0, y: 0, width: DOCUMENT_WIDTH, height: DOCUMENT_HEIGHT, fill: '#172235' }" />
                 <v-rect :config="{ x: 0, y: 0, width: 920, height: DOCUMENT_HEIGHT, fill: '#d8c8ae' }" />
@@ -181,12 +272,11 @@ defineExpose({ exportPng });
                         letterSpacing: 8,
                     }"
                 />
-                <v-text
-                    :config="{
-                        x: 1030,
-                        y: 130,
-                        width: 760,
-                        height: 310,
+                <EditableTextElement
+                    element-id="title"
+                    :frame="elementFrame('title')"
+                    :selected="selectedElement === 'title' && !isExporting"
+                    :text-config="{
                         text: template.title,
                         fill: '#ffffff',
                         fontFamily: 'Lato, Arial, sans-serif',
@@ -196,13 +286,14 @@ defineExpose({ exportPng });
                         wrap: 'word',
                         ellipsis: true,
                     }"
+                    @move="moveElement"
                 />
                 <v-rect :config="{ x: 1030, y: 485, width: 120, height: 8, fill: '#f3b562' }" />
-                <v-text
-                    :config="{
-                        x: 1030,
-                        y: 555,
-                        width: 760,
+                <EditableTextElement
+                    element-id="dateTime"
+                    :frame="elementFrame('dateTime')"
+                    :selected="selectedElement === 'dateTime' && !isExporting"
+                    :text-config="{
                         text: dateAndTime,
                         fill: '#f3b562',
                         fontFamily: 'Lato, Arial, sans-serif',
@@ -210,14 +301,14 @@ defineExpose({ exportPng });
                         fontStyle: 'bold',
                         lineHeight: 1.25,
                     }"
+                    @move="moveElement"
                 />
-                <v-text
+                <EditableTextElement
                     v-if="template.location"
-                    :config="{
-                        x: 1030,
-                        y: 700,
-                        width: 760,
-                        height: 170,
+                    element-id="location"
+                    :frame="elementFrame('location')"
+                    :selected="selectedElement === 'location' && !isExporting"
+                    :text-config="{
                         text: template.location,
                         fill: '#d8dee8',
                         fontFamily: 'Lato, Arial, sans-serif',
@@ -226,6 +317,7 @@ defineExpose({ exportPng });
                         wrap: 'word',
                         ellipsis: true,
                     }"
+                    @move="moveElement"
                 />
                 <v-text
                     :config="{
@@ -259,12 +351,11 @@ defineExpose({ exportPng });
                         opacity: imageStatus === 'loaded' ? 0.68 : 0.35,
                     }"
                 />
-                <v-text
-                    :config="{
-                        x: 160,
-                        y: 150,
-                        width: 1600,
-                        height: 410,
+                <EditableTextElement
+                    element-id="title"
+                    :frame="elementFrame('title')"
+                    :selected="selectedElement === 'title' && !isExporting"
+                    :text-config="{
                         text: template.title,
                         align: 'center',
                         fill: '#ffffff',
@@ -275,13 +366,14 @@ defineExpose({ exportPng });
                         wrap: 'word',
                         ellipsis: true,
                     }"
+                    @move="moveElement"
                 />
                 <v-rect :config="{ x: 820, y: 610, width: 280, height: 8, fill: '#f3b562' }" />
-                <v-text
-                    :config="{
-                        x: 160,
-                        y: 675,
-                        width: 1600,
+                <EditableTextElement
+                    element-id="dateTime"
+                    :frame="elementFrame('dateTime')"
+                    :selected="selectedElement === 'dateTime' && !isExporting"
+                    :text-config="{
                         text: dateAndTime,
                         align: 'center',
                         fill: '#f7c77f',
@@ -289,14 +381,14 @@ defineExpose({ exportPng });
                         fontSize: 50,
                         fontStyle: 'bold',
                     }"
+                    @move="moveElement"
                 />
-                <v-text
+                <EditableTextElement
                     v-if="template.location"
-                    :config="{
-                        x: 260,
-                        y: 770,
-                        width: 1400,
-                        height: 120,
+                    element-id="location"
+                    :frame="elementFrame('location')"
+                    :selected="selectedElement === 'location' && !isExporting"
+                    :text-config="{
                         text: template.location,
                         align: 'center',
                         fill: '#ffffff',
@@ -306,6 +398,7 @@ defineExpose({ exportPng });
                         wrap: 'word',
                         ellipsis: true,
                     }"
+                    @move="moveElement"
                 />
                 <v-text
                     :config="{

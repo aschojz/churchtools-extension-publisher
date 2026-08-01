@@ -6,6 +6,7 @@ import { computed, ref, watch } from 'vue';
 import EventTemplate from './components/EventTemplate.vue';
 import { useAppointmentsQuery } from './composables/useAppointmentsQuery';
 import { mapAppointmentToTemplateProps } from './domain/mapAppointmentToTemplateProps';
+import type { LayoutElementId } from './domain/layoutEditing';
 import {
     applyTemplateOverrides,
     type EditableTemplateField,
@@ -23,6 +24,13 @@ const exportError = ref('');
 const exportSuccess = ref('');
 const templateOverrides = ref<EventTemplateOverrides>({});
 const selectedTemplateId = ref<TemplateId>('split');
+const layoutChanged = ref(false);
+const selectedLayoutElement = ref<LayoutElementId | null>(null);
+const layoutElementLabels: Record<LayoutElementId, string> = {
+    title: 'Titel',
+    dateTime: 'Datum/Uhrzeit',
+    location: 'Ort',
+};
 
 const { data: calendars, error: calendarsError, isPending: calendarsPending } = useCalendarsQuery();
 const calendarIds = computed(() => calendars.value?.map(({ id }) => id) ?? []);
@@ -115,6 +123,18 @@ const resetTemplateOverride = (field: EditableTemplateField) => {
 
 const resetTemplateOverrides = () => {
     templateOverrides.value = {};
+};
+
+const resetLayout = () => {
+    templateRef.value?.resetLayout();
+};
+
+const selectLayoutElement = (elementId: LayoutElementId) => {
+    templateRef.value?.selectElement(elementId);
+};
+
+const nudgeLayoutElement = (deltaX: number, deltaY: number) => {
+    templateRef.value?.nudgeSelectedElement(deltaX, deltaY);
 };
 
 const formatAppointmentDate = ({ appointment }: AppointmentCalculatedWithIncludes) => {
@@ -319,6 +339,41 @@ const exportPng = async () => {
                     </div>
                 </form>
 
+                <div class="layout-controls">
+                    <div>
+                        <h2>Layout anpassen</h2>
+                        <p>Wähle Titel, Datum/Uhrzeit oder Ort direkt in der Vorschau aus und ziehe das Element an eine neue Position.</p>
+                        <p v-if="selectedLayoutElement" class="layout-controls__selection" role="status">
+                            Ausgewählt: {{ layoutElementLabels[selectedLayoutElement] }}
+                        </p>
+                        <div class="layout-controls__elements" aria-label="Layoutelement auswählen">
+                            <button
+                                v-for="(label, elementId) in layoutElementLabels"
+                                :key="elementId"
+                                type="button"
+                                :class="{ 'is-selected': selectedLayoutElement === elementId }"
+                                @click="selectLayoutElement(elementId)"
+                            >
+                                {{ label }}
+                            </button>
+                        </div>
+                        <div v-if="selectedLayoutElement" class="layout-controls__directions" aria-label="Element verschieben">
+                            <button type="button" aria-label="Nach links verschieben" @click="nudgeLayoutElement(-20, 0)">←</button>
+                            <button type="button" aria-label="Nach oben verschieben" @click="nudgeLayoutElement(0, -20)">↑</button>
+                            <button type="button" aria-label="Nach unten verschieben" @click="nudgeLayoutElement(0, 20)">↓</button>
+                            <button type="button" aria-label="Nach rechts verschieben" @click="nudgeLayoutElement(20, 0)">→</button>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        class="button button--secondary"
+                        :disabled="!layoutChanged"
+                        @click="resetLayout"
+                    >
+                        Layout zurücksetzen
+                    </button>
+                </div>
+
                 <div class="template-section__header">
                     <div>
                         <p class="appointment-summary__label">Vorschau · 1920 × 1080 px</p>
@@ -342,6 +397,8 @@ const exportPng = async () => {
                     :template="templateProps"
                     :template-id="selectedTemplateId"
                     @image-status="imageStatus = $event"
+                    @layout-change="layoutChanged = $event"
+                    @selection-change="selectedLayoutElement = $event"
                 />
             </section>
 
