@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
     calculateAlignmentSnap,
     clampLayoutPosition,
+    constrainLayoutGeometry,
     createLayoutOrder,
     createLayoutOffsets,
     keepRotatedFrameInDocument,
@@ -46,6 +47,24 @@ describe('layout editing', () => {
             width: 420,
             height: 180,
         });
+    });
+
+    it('constrains exact geometry values to a valid document frame', () => {
+        expect(
+            constrainLayoutGeometry({ x: 1100, y: 130, width: 760, height: 310, rotation: 0 }),
+        ).toEqual({ x: 1100, y: 130, width: 760, height: 310, rotation: 0 });
+        expect(
+            constrainLayoutGeometry({ x: -20, y: 1040, width: 2500, height: 10, rotation: 360 }),
+        ).toEqual({ x: 0, y: 1030, width: 1920, height: 50, rotation: 0 });
+    });
+
+    it('rejects non-finite or impossible rotated geometry', () => {
+        expect(
+            constrainLayoutGeometry({ x: 0, y: 0, width: Number.NaN, height: 100, rotation: 0 }),
+        ).toBeNull();
+        expect(
+            constrainLayoutGeometry({ x: 0, y: 0, width: 1600, height: 410, rotation: 90 }),
+        ).toBeNull();
     });
 
     it('normalizes rotation and shifts rotated bounds back into the document', () => {

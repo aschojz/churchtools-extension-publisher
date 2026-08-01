@@ -259,11 +259,51 @@ textarea {
 .layout-controls__directions,
 .layout-controls__sizes,
 .layout-controls__rotations,
+.layout-controls__geometry,
 .layout-controls__layers {
     display: flex;
     flex-wrap: wrap;
     gap: 7px;
     margin-top: 10px;
+}
+
+.layout-controls__geometry {
+    max-width: 610px;
+    padding: 10px 12px 12px;
+    border: 1px solid #c5d3df;
+    border-radius: 8px;
+}
+
+.layout-controls__geometry legend {
+    padding: 0 4px;
+    color: #31465a;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.layout-controls__geometry label {
+    display: grid;
+    min-width: 92px;
+    gap: 4px;
+    color: #526678;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.layout-controls__geometry input {
+    width: 100%;
+    min-height: 34px;
+    box-sizing: border-box;
+    padding: 0 8px;
+    border: 1px solid #aebdca;
+    border-radius: 7px;
+    background: #fff;
+    color: #273747;
+}
+
+.layout-controls__geometry input:focus {
+    border-color: #3478c7;
+    outline: 3px solid rgb(52 120 199 / 18%);
 }
 
 .layout-controls__elements button,

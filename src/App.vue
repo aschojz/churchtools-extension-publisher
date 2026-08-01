@@ -7,7 +7,7 @@ import EventTemplate from './components/EventTemplate.vue';
 import { useAppointmentsQuery } from './composables/useAppointmentsQuery';
 import { resolveEditorShortcut } from './domain/editorShortcuts';
 import { mapAppointmentToTemplateProps } from './domain/mapAppointmentToTemplateProps';
-import type { LayoutElementId } from './domain/layoutEditing';
+import type { LayoutElementId, LayoutGeometry } from './domain/layoutEditing';
 import { cloneLayoutState, type SerializableLayoutState } from './domain/layoutHistory';
 import { validateLocalImage } from './domain/localImageOverride';
 import {
@@ -40,6 +40,7 @@ const layoutChanged = ref(false);
 const canUndoLayout = ref(false);
 const canRedoLayout = ref(false);
 const selectedLayoutElement = ref<LayoutElementId | null>(null);
+const selectedLayoutGeometry = ref<(LayoutGeometry & { elementId: LayoutElementId }) | null>(null);
 const selectedLayerPosition = ref(0);
 const selectedLayerTotal = ref(0);
 const snapEnabled = ref(true);
@@ -58,6 +59,13 @@ const layoutElementLabels: Record<LayoutElementId, string> = {
     dateTime: 'Datum/Uhrzeit',
     location: 'Ort',
 };
+const layoutGeometryFields: { id: keyof LayoutGeometry; label: string }[] = [
+    { id: 'x', label: 'X' },
+    { id: 'y', label: 'Y' },
+    { id: 'width', label: 'Breite' },
+    { id: 'height', label: 'Höhe' },
+    { id: 'rotation', label: 'Drehung' },
+];
 
 const { data: calendars, error: calendarsError, isPending: calendarsPending } = useCalendarsQuery();
 const calendarIds = computed(() => calendars.value?.map(({ id }) => id) ?? []);
@@ -371,6 +379,21 @@ const rotateLayoutElement = (deltaRotation: number) => {
     templateRef.value?.rotateSelectedElement(deltaRotation);
 };
 
+const updateSelectedLayoutGeometry = (field: keyof LayoutGeometry, event: Event) => {
+    const input = event.target as HTMLInputElement;
+    if (!Number.isFinite(input.valueAsNumber)) {
+        return;
+    }
+
+    templateRef.value?.setSelectedElementGeometry(field, input.valueAsNumber);
+};
+
+const restoreSelectedLayoutGeometryInput = (field: keyof LayoutGeometry, event: FocusEvent) => {
+    const input = event.target as HTMLInputElement;
+    const currentValue = selectedLayoutGeometry.value?.[field];
+    input.value = currentValue === undefined ? '' : String(Math.round(currentValue));
+};
+
 const changeSelectedLayer = (direction: -1 | 1) => {
     templateRef.value?.changeSelectedLayer(direction);
 };
@@ -667,6 +690,20 @@ const exportPng = async () => {
                             <button type="button" @click="rotateLayoutElement(-rotationStep)">−{{ rotationStep }}° drehen</button>
                             <button type="button" @click="rotateLayoutElement(rotationStep)">+{{ rotationStep }}° drehen</button>
                         </div>
+                        <fieldset v-if="selectedLayoutGeometry" class="layout-controls__geometry">
+                            <legend>Exakte Werte</legend>
+                            <label v-for="field in layoutGeometryFields" :key="field.id">
+                                {{ field.label }}
+                                <input
+                                    type="number"
+                                    step="1"
+                                    :aria-label="`Exakter Wert: ${field.label}`"
+                                    :value="Math.round(selectedLayoutGeometry[field.id])"
+                                    @blur="restoreSelectedLayoutGeometryInput(field.id, $event)"
+                                    @input="updateSelectedLayoutGeometry(field.id, $event)"
+                                />
+                            </label>
+                        </fieldset>
                         <div v-if="selectedLayoutElement" class="layout-controls__layers" aria-label="Ebenenreihenfolge ändern">
                             <span>Ebene {{ selectedLayerPosition }} von {{ selectedLayerTotal }}</span>
                             <button
@@ -755,6 +792,7 @@ const exportPng = async () => {
                     @layout-change="layoutChanged = $event"
                     @layout-state-change="updateDraftLayout"
                     @selection-change="selectedLayoutElement = $event"
+                    @selection-geometry-change="selectedLayoutGeometry = $event"
                 />
             </section>
 

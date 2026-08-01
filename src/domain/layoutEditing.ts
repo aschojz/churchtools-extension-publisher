@@ -10,6 +10,10 @@ export interface LayoutFrame {
     height: number;
 }
 
+export interface LayoutGeometry extends LayoutFrame {
+    rotation: number;
+}
+
 export interface LayoutPoint {
     x: number;
     y: number;
@@ -158,6 +162,36 @@ export const resizeLayoutFrame = (frame: LayoutFrame, size: LayoutSize): LayoutF
     width: Math.min(Math.max(size.width, MIN_ELEMENT_WIDTH), DOCUMENT_WIDTH - frame.x),
     height: Math.min(Math.max(size.height, MIN_ELEMENT_HEIGHT), DOCUMENT_HEIGHT - frame.y),
 });
+
+export const constrainLayoutGeometry = ({
+    x,
+    y,
+    width,
+    height,
+    rotation,
+}: LayoutGeometry): LayoutGeometry | null => {
+    if (![x, y, width, height, rotation].every(Number.isFinite)) {
+        return null;
+    }
+
+    const position = {
+        x: Math.min(Math.max(x, 0), DOCUMENT_WIDTH - MIN_ELEMENT_WIDTH),
+        y: Math.min(Math.max(y, 0), DOCUMENT_HEIGHT - MIN_ELEMENT_HEIGHT),
+    };
+    const resizedFrame = resizeLayoutFrame(
+        { ...position, width, height },
+        { width, height },
+    );
+    const clampedPosition = clampLayoutPosition(position, resizedFrame);
+    const rotatedLayout = keepRotatedFrameInDocument(
+        { ...resizedFrame, ...clampedPosition },
+        rotation,
+    );
+
+    return rotatedLayout
+        ? { ...rotatedLayout.frame, rotation: rotatedLayout.rotation }
+        : null;
+};
 
 export const normalizeRotation = (rotation: number) => ((rotation % 360) + 540) % 360 - 180;
 

@@ -9,6 +9,7 @@ import type { EventTemplateProps } from '../domain/EventTemplateProps';
 import {
     calculateAlignmentSnap,
     clampLayoutPosition,
+    constrainLayoutGeometry,
     createLayoutOrder,
     createLayoutOffsets,
     createLayoutRotations,
@@ -17,6 +18,7 @@ import {
     type AlignmentGuide,
     type LayoutElementId,
     type LayoutFrame,
+    type LayoutGeometry,
     moveLayoutElementInOrder,
     resizeLayoutFrame,
     snapLayoutPoint,
@@ -57,6 +59,7 @@ const emit = defineEmits<{
     layoutStateChange: [templateId: TemplateId, state: SerializableLayoutState];
     layerPositionChange: [position: number, total: number];
     selectionChange: [elementId: LayoutElementId | null];
+    selectionGeometryChange: [geometry: (LayoutGeometry & { elementId: LayoutElementId }) | null];
 }>();
 
 const containerRef = ref<HTMLDivElement | null>(null);
@@ -192,6 +195,19 @@ const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
     };
 };
 
+const emitSelectionGeometry = () => {
+    if (!selectedElement.value) {
+        emit('selectionGeometryChange', null);
+        return;
+    }
+
+    emit('selectionGeometryChange', {
+        elementId: selectedElement.value,
+        ...elementFrame(selectedElement.value),
+        rotation: layoutRotations.value[props.templateId][selectedElement.value],
+    });
+};
+
 const captureLayoutState = (): SerializableLayoutState =>
     cloneLayoutState({
         offsets: layoutOffsets.value[props.templateId],
@@ -212,6 +228,7 @@ const commitCurrentLayout = (previousState: SerializableLayoutState) => {
         captureLayoutState(),
     );
     emit('layoutStateChange', props.templateId, captureLayoutState());
+    emitSelectionGeometry();
     emitHistoryState();
 };
 
@@ -224,6 +241,7 @@ const restoreLayoutState = (state: SerializableLayoutState) => {
     emit('layoutStateChange', props.templateId, captureLayoutState());
     emit('layoutChange', currentLayoutChanged.value);
     emitLayerPosition();
+    emitSelectionGeometry();
     void syncTransformer();
 };
 
@@ -256,6 +274,7 @@ const selectElement = (elementId: LayoutElementId) => {
     selectedElement.value = elementId;
     emit('selectionChange', elementId);
     emitLayerPosition();
+    emitSelectionGeometry();
     void syncTransformer();
 };
 
@@ -263,6 +282,7 @@ const clearSelection = () => {
     selectedElement.value = null;
     emit('selectionChange', null);
     emitLayerPosition();
+    emitSelectionGeometry();
     void syncTransformer();
 };
 
@@ -430,6 +450,42 @@ const rotateSelectedElement = (deltaRotation: number) => {
     void syncTransformer();
 };
 
+const setSelectedElementGeometry = (
+    field: keyof LayoutGeometry,
+    value: number,
+) => {
+    if (!selectedElement.value || !Number.isFinite(value)) {
+        return;
+    }
+
+    const elementId = selectedElement.value;
+    const currentFrame = elementFrame(elementId);
+    const geometry = constrainLayoutGeometry({
+        ...currentFrame,
+        rotation: layoutRotations.value[props.templateId][elementId],
+        [field]: value,
+    });
+    if (!geometry) {
+        emitSelectionGeometry();
+        return;
+    }
+
+    const previousState = captureLayoutState();
+    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+    layoutOffsets.value[props.templateId][elementId] = {
+        x: geometry.x - baseFrame.x,
+        y: geometry.y - baseFrame.y,
+    };
+    layoutSizes.value[props.templateId][elementId] = {
+        width: geometry.width,
+        height: geometry.height,
+    };
+    layoutRotations.value[props.templateId][elementId] = geometry.rotation;
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
+};
+
 const changeSelectedLayer = (direction: -1 | 1) => {
     if (!selectedElement.value) {
         return;
@@ -460,6 +516,7 @@ const resetLayout = () => {
     activeAlignmentGuides.value = [];
     emit('selectionChange', null);
     emitLayerPosition();
+    emitSelectionGeometry();
     emit('layoutChange', false);
 };
 
@@ -506,6 +563,7 @@ const restoreDraftLayouts = () => {
     activeAlignmentGuides.value = [];
     emit('selectionChange', null);
     emitLayerPosition();
+    emitSelectionGeometry();
     emitHistoryState();
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
@@ -551,6 +609,7 @@ watch(
         activeAlignmentGuides.value = [];
         emit('selectionChange', null);
         emitLayerPosition();
+        emitSelectionGeometry();
         emitHistoryState();
         emit('layoutChange', currentLayoutChanged.value);
         void syncTransformer();
@@ -617,6 +676,7 @@ defineExpose({
     resetLayout,
     resizeSelectedElement,
     rotateSelectedElement,
+    setSelectedElementGeometry,
     selectElement,
     undoLayout,
 });
