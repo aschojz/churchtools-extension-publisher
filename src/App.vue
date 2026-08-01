@@ -29,6 +29,8 @@ const replacementImageName = ref('');
 const replacementImageError = ref('');
 const selectedTemplateId = ref<TemplateId>('split');
 const layoutChanged = ref(false);
+const canUndoLayout = ref(false);
+const canRedoLayout = ref(false);
 const selectedLayoutElement = ref<LayoutElementId | null>(null);
 const selectedLayerPosition = ref(0);
 const selectedLayerTotal = ref(0);
@@ -187,6 +189,19 @@ const resetTemplateOverrides = () => {
 
 const resetLayout = () => {
     templateRef.value?.resetLayout();
+};
+
+const undoLayout = () => {
+    templateRef.value?.undoLayout();
+};
+
+const redoLayout = () => {
+    templateRef.value?.redoLayout();
+};
+
+const updateLayoutHistory = (canUndo: boolean, canRedo: boolean) => {
+    canUndoLayout.value = canUndo;
+    canRedoLayout.value = canRedo;
 };
 
 const selectLayoutElement = (elementId: LayoutElementId) => {
@@ -499,14 +514,32 @@ const exportPng = async () => {
                             </button>
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        class="button button--secondary"
-                        :disabled="!layoutChanged"
-                        @click="resetLayout"
-                    >
-                        Layout zurücksetzen
-                    </button>
+                    <div class="layout-controls__actions">
+                        <button
+                            type="button"
+                            class="button button--secondary"
+                            :disabled="!canUndoLayout"
+                            @click="undoLayout"
+                        >
+                            Rückgängig
+                        </button>
+                        <button
+                            type="button"
+                            class="button button--secondary"
+                            :disabled="!canRedoLayout"
+                            @click="redoLayout"
+                        >
+                            Wiederholen
+                        </button>
+                        <button
+                            type="button"
+                            class="button button--secondary"
+                            :disabled="!layoutChanged"
+                            @click="resetLayout"
+                        >
+                            Layout zurücksetzen
+                        </button>
+                    </div>
                 </div>
 
                 <div class="template-section__header">
@@ -533,6 +566,7 @@ const exportPng = async () => {
                     :template-id="selectedTemplateId"
                     :snap-enabled="snapEnabled"
                     @image-status="imageStatus = $event"
+                    @history-change="updateLayoutHistory"
                     @layer-position-change="updateLayerPosition"
                     @layout-change="layoutChanged = $event"
                     @selection-change="selectedLayoutElement = $event"

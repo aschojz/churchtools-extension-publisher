@@ -134,6 +134,8 @@ Die Oberfläche bietet zwei fest codierte 1920-×-1080-Templates: eine geteilte 
 
 Titel, kombinierte Datums-/Uhrzeile und Ort können auf der Konva-Arbeitsfläche ausgewählt, verschoben, in Breite und Höhe verändert sowie frei gedreht werden. Der Konva-Transformer stellt dafür Größen- und Rotationsgriffe bereit. Zusätzlich erlaubt eine tastaturfähige Elementleiste dieselben Änderungen in festen Schritten und kann die drei Texte schrittweise nach vorne oder hinten anordnen. Auswahlrahmen und Transformer werden vor dem Export ausgeblendet. Positionen, Größen, normalisierte Winkel und Ebenenreihenfolge liegen als serialisierbare Werte im Vue-Zustand und nicht ausschließlich in den Konva-Nodes. Sie werden pro Template getrennt gehalten, bleiben innerhalb der Dokumentgrenzen und können auf die Ausgangswerte zurückgesetzt werden.
 
+Bis zu 50 Layoutänderungen können pro Template rückgängig gemacht und wiederholt werden. Die Historie umfasst direkte Canvas-Interaktionen, die zugänglichen Steuerelemente, Ebenenänderungen und den vollständigen Layout-Reset; eine neue Änderung nach einem Rückgängig-Schritt verwirft den bisherigen Wiederholen-Zweig.
+
 Raster-Snapping kann im Editor ein- und ausgeschaltet werden. Aktiv rasten Positionen und Größen nach einer direkten Konva-Interaktion auf 20 Pixel und Drehungen auf 15° ein; die zugänglichen Steuerelemente verwenden dieselben Schritte. Bei deaktiviertem Raster arbeiten die Steuerelemente mit 5 Pixeln beziehungsweise 5°. Beim direkten Verschieben rasten Kanten und Mittellinien zusätzlich an den übrigen Textelementen sowie den Dokumentkanten und der Dokumentmitte ein. Pinke Hilfslinien zeigen die aktive Ausrichtung und verschwinden vor dem Export.
 
 ## Vorschau und Export

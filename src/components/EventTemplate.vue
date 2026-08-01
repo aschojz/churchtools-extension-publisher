@@ -24,6 +24,14 @@ import {
     snapRotation,
     TEMPLATE_ELEMENT_FRAMES,
 } from '../domain/layoutEditing';
+import {
+    cloneLayoutState,
+    commitLayoutHistory,
+    createLayoutHistory,
+    redoLayoutHistory,
+    type SerializableLayoutState,
+    undoLayoutHistory,
+} from '../domain/layoutHistory';
 import type { TemplateId } from '../domain/templates';
 import {
     calculatePreviewScale,
@@ -41,6 +49,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     imageStatus: [status: ImageStatus];
+    historyChange: [canUndo: boolean, canRedo: boolean];
     layoutChange: [changed: boolean];
     layerPositionChange: [position: number, total: number];
     selectionChange: [elementId: LayoutElementId | null];
@@ -70,6 +79,10 @@ const layoutRotations = ref<Record<TemplateId, ReturnType<typeof createLayoutRot
 const layoutOrder = ref<Record<TemplateId, ReturnType<typeof createLayoutOrder>>>({
     split: createLayoutOrder(),
     poster: createLayoutOrder(),
+});
+const layoutHistories = ref<Record<TemplateId, ReturnType<typeof createLayoutHistory>>>({
+    split: createLayoutHistory(),
+    poster: createLayoutHistory(),
 });
 let resizeObserver: ResizeObserver | undefined;
 
@@ -175,6 +188,39 @@ const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
     };
 };
 
+const captureLayoutState = (): SerializableLayoutState =>
+    cloneLayoutState({
+        offsets: layoutOffsets.value[props.templateId],
+        sizes: layoutSizes.value[props.templateId],
+        rotations: layoutRotations.value[props.templateId],
+        order: layoutOrder.value[props.templateId],
+    });
+
+const emitHistoryState = () => {
+    const history = layoutHistories.value[props.templateId];
+    emit('historyChange', history.past.length > 0, history.future.length > 0);
+};
+
+const commitCurrentLayout = (previousState: SerializableLayoutState) => {
+    layoutHistories.value[props.templateId] = commitLayoutHistory(
+        layoutHistories.value[props.templateId],
+        previousState,
+        captureLayoutState(),
+    );
+    emitHistoryState();
+};
+
+const restoreLayoutState = (state: SerializableLayoutState) => {
+    const restored = cloneLayoutState(state);
+    layoutOffsets.value[props.templateId] = restored.offsets;
+    layoutSizes.value[props.templateId] = restored.sizes;
+    layoutRotations.value[props.templateId] = restored.rotations;
+    layoutOrder.value[props.templateId] = restored.order;
+    emit('layoutChange', currentLayoutChanged.value);
+    emitLayerPosition();
+    void syncTransformer();
+};
+
 const syncTransformer = async () => {
     await nextTick();
     const transformer = transformerRef.value?.getNode();
@@ -241,6 +287,7 @@ const alignElementWhileDragging = (elementId: LayoutElementId, event: Konva.Konv
 
 const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
     activeAlignmentGuides.value = [];
+    const previousState = captureLayoutState();
     const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
     const position = clampLayoutPosition(
         snapLayoutPoint(event.target.position(), props.snapEnabled),
@@ -251,6 +298,7 @@ const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<D
         x: position.x - baseFrame.x,
         y: position.y - baseFrame.y,
     };
+    commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
 };
@@ -283,6 +331,7 @@ const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject
         return;
     }
 
+    const previousState = captureLayoutState();
     node.scale({ x: 1, y: 1 });
     node.position({ x: rotatedLayout.frame.x, y: rotatedLayout.frame.y });
     node.rotation(rotatedLayout.rotation);
@@ -295,6 +344,7 @@ const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject
         height: rotatedLayout.frame.height,
     };
     layoutRotations.value[props.templateId][elementId] = rotatedLayout.rotation;
+    commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
 };
@@ -305,6 +355,7 @@ const nudgeSelectedElement = (deltaX: number, deltaY: number) => {
     }
 
     const elementId = selectedElement.value;
+    const previousState = captureLayoutState();
     const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
     const currentFrame = elementFrame(elementId);
     const position = clampLayoutPosition(
@@ -315,6 +366,7 @@ const nudgeSelectedElement = (deltaX: number, deltaY: number) => {
         x: position.x - baseFrame.x,
         y: position.y - baseFrame.y,
     };
+    commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
 };
@@ -325,6 +377,7 @@ const resizeSelectedElement = (deltaWidth: number, deltaHeight: number) => {
     }
 
     const elementId = selectedElement.value;
+    const previousState = captureLayoutState();
     const resizedFrame = resizeLayoutFrame(elementFrame(elementId), {
         width: elementFrame(elementId).width + deltaWidth,
         height: elementFrame(elementId).height + deltaHeight,
@@ -333,6 +386,7 @@ const resizeSelectedElement = (deltaWidth: number, deltaHeight: number) => {
         width: resizedFrame.width,
         height: resizedFrame.height,
     };
+    commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
 };
@@ -352,11 +406,13 @@ const rotateSelectedElement = (deltaRotation: number) => {
         return;
     }
 
+    const previousState = captureLayoutState();
     layoutOffsets.value[props.templateId][elementId] = {
         x: rotatedLayout.frame.x - baseFrame.x,
         y: rotatedLayout.frame.y - baseFrame.y,
     };
     layoutRotations.value[props.templateId][elementId] = rotatedLayout.rotation;
+    commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
 };
@@ -372,22 +428,48 @@ const changeSelectedLayer = (direction: -1 | 1) => {
         return;
     }
 
+    const previousState = captureLayoutState();
     layoutOrder.value[props.templateId] = nextOrder;
+    commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     emitLayerPosition();
     void syncTransformer();
 };
 
 const resetLayout = () => {
+    const previousState = captureLayoutState();
     layoutOffsets.value[props.templateId] = createLayoutOffsets();
     layoutSizes.value[props.templateId] = createLayoutSizes(props.templateId);
     layoutRotations.value[props.templateId] = createLayoutRotations();
     layoutOrder.value[props.templateId] = createLayoutOrder();
+    commitCurrentLayout(previousState);
     selectedElement.value = null;
     activeAlignmentGuides.value = [];
     emit('selectionChange', null);
     emitLayerPosition();
     emit('layoutChange', false);
+};
+
+const undoLayout = () => {
+    const result = undoLayoutHistory(layoutHistories.value[props.templateId], captureLayoutState());
+    if (!result) {
+        return;
+    }
+
+    layoutHistories.value[props.templateId] = result.history;
+    restoreLayoutState(result.state);
+    emitHistoryState();
+};
+
+const redoLayout = () => {
+    const result = redoLayoutHistory(layoutHistories.value[props.templateId], captureLayoutState());
+    if (!result) {
+        return;
+    }
+
+    layoutHistories.value[props.templateId] = result.history;
+    restoreLayoutState(result.state);
+    emitHistoryState();
 };
 
 watch(
@@ -429,12 +511,14 @@ watch(
         activeAlignmentGuides.value = [];
         emit('selectionChange', null);
         emitLayerPosition();
+        emitHistoryState();
         emit('layoutChange', currentLayoutChanged.value);
         void syncTransformer();
     },
 );
 
 onMounted(() => {
+    emitHistoryState();
     if (!containerRef.value) {
         return;
     }
@@ -488,10 +572,12 @@ defineExpose({
     changeSelectedLayer,
     exportPng,
     nudgeSelectedElement,
+    redoLayout,
     resetLayout,
     resizeSelectedElement,
     rotateSelectedElement,
     selectElement,
+    undoLayout,
 });
 </script>
 
