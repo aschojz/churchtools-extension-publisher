@@ -253,6 +253,13 @@ const selectElement = (elementId: LayoutElementId) => {
     void syncTransformer();
 };
 
+const clearSelection = () => {
+    selectedElement.value = null;
+    emit('selectionChange', null);
+    emitLayerPosition();
+    void syncTransformer();
+};
+
 const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     const editableGroup = event.target.findAncestor('.editable-element', true);
     const elementId = editableGroup?.getAttr('layoutElementId') as LayoutElementId | undefined;
@@ -570,6 +577,7 @@ const exportPng = async () => {
 
 defineExpose({
     changeSelectedLayer,
+    clearSelection,
     exportPng,
     nudgeSelectedElement,
     redoLayout,

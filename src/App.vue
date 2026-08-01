@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { AppointmentCalculatedWithIncludes } from '@churchtools/api-types';
 import { useAppointmentQuery, useCalendarsQuery } from '@churchtools/vue-query';
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import EventTemplate from './components/EventTemplate.vue';
 import { useAppointmentsQuery } from './composables/useAppointmentsQuery';
+import { resolveEditorShortcut } from './domain/editorShortcuts';
 import { mapAppointmentToTemplateProps } from './domain/mapAppointmentToTemplateProps';
 import type { LayoutElementId } from './domain/layoutEditing';
 import { validateLocalImage } from './domain/localImageOverride';
@@ -155,8 +156,6 @@ watch(selectedTemplateId, () => {
     exportSuccess.value = '';
 });
 
-onBeforeUnmount(() => revokeReplacementImage(false));
-
 const templateFieldValue = (field: EditableTemplateField) =>
     templateOverrides.value[field] ?? mappedTemplateProps.value?.[field] ?? '';
 
@@ -204,6 +203,50 @@ const updateLayoutHistory = (canUndo: boolean, canRedo: boolean) => {
     canRedoLayout.value = canRedo;
 };
 
+const clearLayoutSelection = () => {
+    templateRef.value?.clearSelection();
+};
+
+const isTextEntryTarget = (target: EventTarget | null) =>
+    target instanceof HTMLElement &&
+    (target.isContentEditable || target.matches('input, textarea, select'));
+
+const handleEditorShortcut = (event: KeyboardEvent) => {
+    if (isTextEntryTarget(event.target)) {
+        return;
+    }
+
+    const shortcut = resolveEditorShortcut(event, Boolean(selectedLayoutElement.value));
+    if (!shortcut) {
+        return;
+    }
+    if (shortcut.type === 'undo' && !canUndoLayout.value) {
+        return;
+    }
+    if (shortcut.type === 'redo' && !canRedoLayout.value) {
+        return;
+    }
+
+    event.preventDefault();
+    switch (shortcut.type) {
+        case 'move':
+            nudgeLayoutElement(
+                shortcut.deltaXFactor * layoutStep.value,
+                shortcut.deltaYFactor * layoutStep.value,
+            );
+            break;
+        case 'undo':
+            undoLayout();
+            break;
+        case 'redo':
+            redoLayout();
+            break;
+        case 'clearSelection':
+            clearLayoutSelection();
+            break;
+    }
+};
+
 const selectLayoutElement = (elementId: LayoutElementId) => {
     templateRef.value?.selectElement(elementId);
 };
@@ -211,6 +254,12 @@ const selectLayoutElement = (elementId: LayoutElementId) => {
 const nudgeLayoutElement = (deltaX: number, deltaY: number) => {
     templateRef.value?.nudgeSelectedElement(deltaX, deltaY);
 };
+
+onMounted(() => window.addEventListener('keydown', handleEditorShortcut));
+onBeforeUnmount(() => {
+    window.removeEventListener('keydown', handleEditorShortcut);
+    revokeReplacementImage(false);
+});
 
 const resizeLayoutElement = (deltaWidth: number, deltaHeight: number) => {
     templateRef.value?.resizeSelectedElement(deltaWidth, deltaHeight);
@@ -462,6 +511,9 @@ const exportPng = async () => {
                     <div>
                         <h2>Layout anpassen</h2>
                         <p>Wähle Titel, Datum/Uhrzeit oder Ort aus. Anschließend kannst du den Bereich verschieben, skalieren, drehen oder in der Ebenenreihenfolge ändern.</p>
+                        <p class="layout-controls__shortcuts">
+                            Tastatur: Pfeiltasten verschieben, Umschalt vergrößert den Schritt, Escape hebt die Auswahl auf, Strg/Cmd+Z macht Änderungen rückgängig.
+                        </p>
                         <label class="layout-controls__snap">
                             <input v-model="snapEnabled" type="checkbox" />
                             Am 20-Pixel-Raster und an 15°-Winkeln ausrichten

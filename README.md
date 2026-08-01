@@ -136,6 +136,8 @@ Titel, kombinierte Datums-/Uhrzeile und Ort können auf der Konva-Arbeitsfläche
 
 Bis zu 50 Layoutänderungen können pro Template rückgängig gemacht und wiederholt werden. Die Historie umfasst direkte Canvas-Interaktionen, die zugänglichen Steuerelemente, Ebenenänderungen und den vollständigen Layout-Reset; eine neue Änderung nach einem Rückgängig-Schritt verwirft den bisherigen Wiederholen-Zweig.
 
+Ausgewählte Elemente lassen sich zusätzlich mit den Pfeiltasten verschieben; Umschalt erhöht den jeweiligen Schritt um den Faktor fünf. Escape hebt die Auswahl auf. Strg/Cmd+Z sowie Strg+Y beziehungsweise Strg/Cmd+Umschalt+Z bedienen die Layout-Historie. Während der Fokus in einem Eingabefeld, einer Textarea oder einer Auswahl liegt, greift der Editor nicht in die normalen Tastaturfunktionen ein.
+
 Raster-Snapping kann im Editor ein- und ausgeschaltet werden. Aktiv rasten Positionen und Größen nach einer direkten Konva-Interaktion auf 20 Pixel und Drehungen auf 15° ein; die zugänglichen Steuerelemente verwenden dieselben Schritte. Bei deaktiviertem Raster arbeiten die Steuerelemente mit 5 Pixeln beziehungsweise 5°. Beim direkten Verschieben rasten Kanten und Mittellinien zusätzlich an den übrigen Textelementen sowie den Dokumentkanten und der Dokumentmitte ein. Pinke Hilfslinien zeigen die aktive Ausrichtung und verschwinden vor dem Export.
 
 ## Vorschau und Export

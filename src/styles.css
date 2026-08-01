@@ -206,6 +206,12 @@ textarea {
     font-weight: 700;
 }
 
+.layout-controls__shortcuts {
+    margin-top: 6px !important;
+    color: #667788 !important;
+    font-size: 12px !important;
+}
+
 .layout-controls__snap {
     display: flex;
     gap: 8px;
