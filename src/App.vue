@@ -8,7 +8,14 @@ import { useAppointmentsQuery } from './composables/useAppointmentsQuery';
 import { resolveEditorShortcut } from './domain/editorShortcuts';
 import { mapAppointmentToTemplateProps } from './domain/mapAppointmentToTemplateProps';
 import type { LayoutElementId } from './domain/layoutEditing';
+import { cloneLayoutState, type SerializableLayoutState } from './domain/layoutHistory';
 import { validateLocalImage } from './domain/localImageOverride';
+import {
+    deletePublisherDraft,
+    loadPublisherDraft,
+    PUBLISHER_DRAFT_VERSION,
+    savePublisherDraft,
+} from './domain/publisherDraft';
 import {
     applyTemplateOverrides,
     type EditableTemplateField,
@@ -38,6 +45,12 @@ const selectedLayerTotal = ref(0);
 const snapEnabled = ref(true);
 const previewZoomPercent = ref(100);
 const previewZoomOptions = [50, 75, 100, 125, 150, 200] as const;
+const draftLayouts = ref<Partial<Record<TemplateId, SerializableLayoutState>>>({});
+const draftRevision = ref(0);
+const draftStatus = ref('');
+const draftError = ref('');
+const hasLocalDraft = ref(false);
+const restoringDraft = ref(false);
 const layoutStep = computed(() => (snapEnabled.value ? 20 : 5));
 const rotationStep = computed(() => (snapEnabled.value ? 15 : 5));
 const layoutElementLabels: Record<LayoutElementId, string> = {
@@ -105,6 +118,34 @@ const hasTemplateOverrides = computed(
 const isLoading = computed(() => calendarsPending.value || appointmentsPending.value);
 const loadingError = computed(() => calendarsError.value ?? appointmentsError.value);
 
+const saveCurrentDraft = () => {
+    if (!selectedAppointmentKey.value || restoringDraft.value) {
+        return;
+    }
+
+    try {
+        savePublisherDraft(window.localStorage, selectedAppointmentKey.value, {
+            version: PUBLISHER_DRAFT_VERSION,
+            selectedTemplateId: selectedTemplateId.value,
+            templateOverrides: { ...templateOverrides.value },
+            layouts: Object.fromEntries(
+                Object.entries(draftLayouts.value).map(([templateId, state]) => [
+                    templateId,
+                    state ? cloneLayoutState(state) : state,
+                ]),
+            ),
+            snapEnabled: snapEnabled.value,
+            previewZoomPercent: previewZoomPercent.value,
+            updatedAt: new Date().toISOString(),
+        });
+        hasLocalDraft.value = true;
+        draftStatus.value = 'Lokaler Entwurf gespeichert.';
+        draftError.value = '';
+    } catch {
+        draftError.value = 'Der lokale Entwurf konnte nicht gespeichert werden.';
+    }
+};
+
 const revokeReplacementImage = (defer = true) => {
     const previousUrl = replacementImageUrl.value;
     replacementImageUrl.value = null;
@@ -146,17 +187,42 @@ const updateReplacementImage = (event: Event) => {
 };
 
 watch(selectedAppointmentKey, () => {
+    restoringDraft.value = true;
     exportError.value = '';
     exportSuccess.value = '';
     imageStatus.value = 'idle';
-    templateOverrides.value = {};
     revokeReplacementImage();
+    try {
+        const draft = selectedAppointmentKey.value
+            ? loadPublisherDraft(window.localStorage, selectedAppointmentKey.value)
+            : null;
+        templateOverrides.value = draft?.templateOverrides ?? {};
+        selectedTemplateId.value = draft?.selectedTemplateId ?? 'split';
+        draftLayouts.value = draft?.layouts ?? {};
+        snapEnabled.value = draft?.snapEnabled ?? true;
+        previewZoomPercent.value = draft?.previewZoomPercent ?? 100;
+        hasLocalDraft.value = Boolean(draft);
+        draftStatus.value = draft ? 'Lokaler Entwurf geladen.' : '';
+        draftError.value = '';
+    } catch {
+        templateOverrides.value = {};
+        draftLayouts.value = {};
+        hasLocalDraft.value = false;
+        draftError.value = 'Der lokale Entwurf konnte nicht geladen werden.';
+    }
+    draftRevision.value += 1;
+    void nextTick(() => {
+        restoringDraft.value = false;
+    });
 });
 
 watch(selectedTemplateId, () => {
     exportError.value = '';
     exportSuccess.value = '';
+    saveCurrentDraft();
 });
+
+watch([snapEnabled, previewZoomPercent], saveCurrentDraft);
 
 const templateFieldValue = (field: EditableTemplateField) =>
     templateOverrides.value[field] ?? mappedTemplateProps.value?.[field] ?? '';
@@ -175,17 +241,20 @@ const updateTemplateOverride = (field: EditableTemplateField, event: Event) => {
     );
     exportError.value = '';
     exportSuccess.value = '';
+    saveCurrentDraft();
 };
 
 const resetTemplateOverride = (field: EditableTemplateField) => {
     const nextOverrides = { ...templateOverrides.value };
     delete nextOverrides[field];
     templateOverrides.value = nextOverrides;
+    saveCurrentDraft();
 };
 
 const resetTemplateOverrides = () => {
     templateOverrides.value = {};
     revokeReplacementImage();
+    saveCurrentDraft();
 };
 
 const resetLayout = () => {
@@ -203,6 +272,37 @@ const redoLayout = () => {
 const updateLayoutHistory = (canUndo: boolean, canRedo: boolean) => {
     canUndoLayout.value = canUndo;
     canRedoLayout.value = canRedo;
+};
+
+const updateDraftLayout = (templateId: TemplateId, state: SerializableLayoutState) => {
+    draftLayouts.value = { ...draftLayouts.value, [templateId]: cloneLayoutState(state) };
+    saveCurrentDraft();
+};
+
+const deleteLocalDraft = () => {
+    if (!selectedAppointmentKey.value) {
+        return;
+    }
+
+    restoringDraft.value = true;
+    try {
+        deletePublisherDraft(window.localStorage, selectedAppointmentKey.value);
+        templateOverrides.value = {};
+        selectedTemplateId.value = 'split';
+        draftLayouts.value = {};
+        snapEnabled.value = true;
+        previewZoomPercent.value = 100;
+        hasLocalDraft.value = false;
+        draftStatus.value = 'Lokaler Entwurf gelöscht.';
+        draftError.value = '';
+        revokeReplacementImage();
+        draftRevision.value += 1;
+    } catch {
+        draftError.value = 'Der lokale Entwurf konnte nicht gelöscht werden.';
+    }
+    void nextTick(() => {
+        restoringDraft.value = false;
+    });
 };
 
 const clearLayoutSelection = () => {
@@ -392,6 +492,23 @@ const exportPng = async () => {
                             {{ option.label }}
                         </option>
                     </select>
+                </div>
+
+                <div class="local-draft">
+                    <div>
+                        <strong>Lokaler Entwurf</strong>
+                        <p>Text, Layout und Editoreinstellungen werden automatisch nur in diesem Browser gespeichert.</p>
+                        <p v-if="draftStatus" class="local-draft__status" role="status">{{ draftStatus }}</p>
+                        <p v-if="draftError" class="local-draft__error" role="alert">{{ draftError }}</p>
+                    </div>
+                    <button
+                        type="button"
+                        class="button button--secondary"
+                        :disabled="!hasLocalDraft"
+                        @click="deleteLocalDraft"
+                    >
+                        Lokalen Entwurf löschen
+                    </button>
                 </div>
 
                 <form class="template-overrides" @submit.prevent>
@@ -626,6 +743,8 @@ const exportPng = async () => {
 
                 <EventTemplate
                     ref="templateRef"
+                    :draft-id="`${selectedAppointmentKey}:${draftRevision}`"
+                    :initial-layouts="draftLayouts"
                     :preview-zoom="previewZoomPercent / 100"
                     :template="templateProps"
                     :template-id="selectedTemplateId"
@@ -634,6 +753,7 @@ const exportPng = async () => {
                     @history-change="updateLayoutHistory"
                     @layer-position-change="updateLayerPosition"
                     @layout-change="layoutChanged = $event"
+                    @layout-state-change="updateDraftLayout"
                     @selection-change="selectedLayoutElement = $event"
                 />
             </section>

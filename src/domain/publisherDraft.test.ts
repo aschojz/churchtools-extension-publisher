@@ -1,0 +1,50 @@
+import { describe, expect, it } from 'vitest';
+
+import { createLayoutOffsets, createLayoutOrder, createLayoutRotations, createLayoutSizes } from './layoutEditing';
+import { deletePublisherDraft, loadPublisherDraft, type PublisherDraft, savePublisherDraft } from './publisherDraft';
+
+const createStorage = () => {
+    const values = new Map<string, string>();
+    return {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+    };
+};
+
+const createDraft = (): PublisherDraft => ({
+    version: 1,
+    selectedTemplateId: 'poster',
+    templateOverrides: { title: 'Lokaler Titel' },
+    layouts: {
+        split: {
+            offsets: createLayoutOffsets(),
+            sizes: createLayoutSizes('split'),
+            rotations: createLayoutRotations(),
+            order: createLayoutOrder(),
+        },
+    },
+    snapEnabled: false,
+    previewZoomPercent: 150,
+    updatedAt: '2026-08-02T12:00:00.000Z',
+});
+
+describe('publisher draft', () => {
+    it('round-trips and deletes a versioned appointment draft', () => {
+        const storage = createStorage();
+        savePublisherDraft(storage, '42:date', createDraft());
+        expect(loadPublisherDraft(storage, '42:date')).toEqual(createDraft());
+        deletePublisherDraft(storage, '42:date');
+        expect(loadPublisherDraft(storage, '42:date')).toBeNull();
+    });
+
+    it('rejects malformed and unsupported drafts', () => {
+        const storage = createStorage();
+        storage.setItem('churchtools-publisher:draft:broken', '{invalid');
+        expect(loadPublisherDraft(storage, 'broken')).toBeNull();
+        storage.setItem('churchtools-publisher:draft:old', JSON.stringify({ ...createDraft(), version: 2 }));
+        expect(loadPublisherDraft(storage, 'old')).toBeNull();
+        storage.setItem('churchtools-publisher:draft:zoom', JSON.stringify({ ...createDraft(), previewZoomPercent: 999 }));
+        expect(loadPublisherDraft(storage, 'zoom')).toBeNull();
+    });
+});

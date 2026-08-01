@@ -42,6 +42,8 @@ import {
 type ImageStatus = 'idle' | 'loading' | 'loaded' | 'error';
 
 const props = defineProps<{
+    draftId: string;
+    initialLayouts: Partial<Record<TemplateId, SerializableLayoutState>>;
     previewZoom: number;
     template: EventTemplateProps;
     templateId: TemplateId;
@@ -52,6 +54,7 @@ const emit = defineEmits<{
     imageStatus: [status: ImageStatus];
     historyChange: [canUndo: boolean, canRedo: boolean];
     layoutChange: [changed: boolean];
+    layoutStateChange: [templateId: TemplateId, state: SerializableLayoutState];
     layerPositionChange: [position: number, total: number];
     selectionChange: [elementId: LayoutElementId | null];
 }>();
@@ -208,6 +211,7 @@ const commitCurrentLayout = (previousState: SerializableLayoutState) => {
         previousState,
         captureLayoutState(),
     );
+    emit('layoutStateChange', props.templateId, captureLayoutState());
     emitHistoryState();
 };
 
@@ -217,6 +221,7 @@ const restoreLayoutState = (state: SerializableLayoutState) => {
     layoutSizes.value[props.templateId] = restored.sizes;
     layoutRotations.value[props.templateId] = restored.rotations;
     layoutOrder.value[props.templateId] = restored.order;
+    emit('layoutStateChange', props.templateId, captureLayoutState());
     emit('layoutChange', currentLayoutChanged.value);
     emitLayerPosition();
     void syncTransformer();
@@ -480,6 +485,32 @@ const redoLayout = () => {
     emitHistoryState();
 };
 
+const restoreDraftLayouts = () => {
+    for (const templateId of ['split', 'poster'] as const) {
+        const savedState = props.initialLayouts[templateId];
+        const restored = savedState
+            ? cloneLayoutState(savedState)
+            : {
+                  offsets: createLayoutOffsets(),
+                  sizes: createLayoutSizes(templateId),
+                  rotations: createLayoutRotations(),
+                  order: createLayoutOrder(),
+              };
+        layoutOffsets.value[templateId] = restored.offsets;
+        layoutSizes.value[templateId] = restored.sizes;
+        layoutRotations.value[templateId] = restored.rotations;
+        layoutOrder.value[templateId] = restored.order;
+        layoutHistories.value[templateId] = createLayoutHistory();
+    }
+    selectedElement.value = null;
+    activeAlignmentGuides.value = [];
+    emit('selectionChange', null);
+    emitLayerPosition();
+    emitHistoryState();
+    emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
+};
+
 watch(
     () => props.template.imageUrl,
     (imageUrl, _, onCleanup) => {
@@ -512,6 +543,7 @@ watch(
 );
 
 watch(imageStatus, (status) => emit('imageStatus', status), { immediate: true });
+watch(() => props.draftId, restoreDraftLayouts, { immediate: true });
 watch(
     () => props.templateId,
     () => {

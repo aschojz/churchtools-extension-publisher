@@ -143,6 +143,33 @@ textarea {
     background: #fff;
 }
 
+.local-draft {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+    padding: 14px 18px;
+    border: 1px solid #d8e1e8;
+    border-radius: 10px;
+    background: #fbfcfd;
+}
+
+.local-draft p {
+    margin-top: 3px;
+    font-size: 13px;
+}
+
+.local-draft__status {
+    color: #236a39 !important;
+    font-weight: 700;
+}
+
+.local-draft__error {
+    color: #9f2d25 !important;
+    font-weight: 700;
+}
+
 .template-overrides {
     margin-bottom: 30px;
     padding: 22px;
@@ -446,6 +473,7 @@ textarea {
 
 @media (max-width: 680px) {
     .layout-controls,
+    .local-draft,
     .template-overrides__header,
     .template-section__header,
     .template-section__actions {
