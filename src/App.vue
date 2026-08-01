@@ -12,6 +12,7 @@ import {
     type EventTemplateOverrides,
     withTemplateOverride,
 } from './domain/templateOverrides';
+import { TEMPLATE_OPTIONS, type TemplateId } from './domain/templates';
 
 const userLanguage = window.settings?.language ?? navigator.language;
 const userTimeZone = window.settings?.timezone;
@@ -21,6 +22,7 @@ const imageStatus = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle');
 const exportError = ref('');
 const exportSuccess = ref('');
 const templateOverrides = ref<EventTemplateOverrides>({});
+const selectedTemplateId = ref<TemplateId>('split');
 
 const { data: calendars, error: calendarsError, isPending: calendarsPending } = useCalendarsQuery();
 const calendarIds = computed(() => calendars.value?.map(({ id }) => id) ?? []);
@@ -79,6 +81,11 @@ watch(selectedAppointmentKey, () => {
     exportSuccess.value = '';
     imageStatus.value = 'idle';
     templateOverrides.value = {};
+});
+
+watch(selectedTemplateId, () => {
+    exportError.value = '';
+    exportSuccess.value = '';
 });
 
 const templateFieldValue = (field: EditableTemplateField) =>
@@ -212,6 +219,18 @@ const exportPng = async () => {
             </p>
 
             <section v-else-if="templateProps" class="template-section" aria-live="polite">
+                <div class="template-picker">
+                    <div>
+                        <label for="template">Template</label>
+                        <p>Das Template ändert nur die Gestaltung; Termin und Inhaltsanpassungen bleiben erhalten.</p>
+                    </div>
+                    <select id="template" v-model="selectedTemplateId">
+                        <option v-for="option in TEMPLATE_OPTIONS" :key="option.id" :value="option.id">
+                            {{ option.label }}
+                        </option>
+                    </select>
+                </div>
+
                 <form class="template-overrides" @submit.prevent>
                     <div class="template-overrides__header">
                         <div>
@@ -318,7 +337,12 @@ const exportPng = async () => {
                     {{ exportSuccess }}
                 </p>
 
-                <EventTemplate ref="templateRef" :template="templateProps" @image-status="imageStatus = $event" />
+                <EventTemplate
+                    ref="templateRef"
+                    :template="templateProps"
+                    :template-id="selectedTemplateId"
+                    @image-status="imageStatus = $event"
+                />
             </section>
 
             <p class="publisher-card__meta">Aktive Sprache: {{ userLanguage }}</p>

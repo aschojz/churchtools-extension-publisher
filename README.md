@@ -124,6 +124,10 @@ gemappte EventTemplateProps + EventTemplateOverrides → gerenderte EventTemplat
 
 Ein leerer Wert ist eine gültige Überschreibung und blendet beispielsweise Uhrzeit oder Ort aus. Jeder Wert kann einzeln auf das gemappte Original zurückgesetzt werden; zusätzlich steht ein gemeinsamer Reset bereit. Beim Wechsel des Termins werden alle Überschreibungen verworfen. Bildersetzung bleibt bewusst außerhalb dieses Schritts.
 
+### Template-Auswahl
+
+Die Oberfläche bietet zwei fest codierte 1920-×-1080-Templates: eine geteilte Fläche und ein vollflächiges Bildposter. Beide erhalten dasselbe `EventTemplateProps`-Objekt und verwenden dieselbe Exportlogik. Ein Template-Wechsel beeinflusst deshalb weder die geladenen Termindaten noch manuelle Inhaltsüberschreibungen.
+
 ## Vorschau und Export
 
 Die Dokumentgröße bleibt immer 1920 × 1080 Pixel. Ein `ResizeObserver` ermittelt ausschließlich die Vorschau-Skalierung. Für den Export wird die Stage kurz auf die unveränderte Dokumentgröße mit Skalierung 1 gesetzt und anschließend auf den Vorschauzustand zurückgestellt. Dadurch entstehen keine Rundungsfehler durch gebrochene Vorschaugrößen.

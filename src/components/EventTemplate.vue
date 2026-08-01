@@ -4,6 +4,7 @@ import type { VueKonvaRef } from 'vue-konva';
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 
 import type { EventTemplateProps } from '../domain/EventTemplateProps';
+import type { TemplateId } from '../domain/templates';
 import {
     calculatePreviewScale,
     DOCUMENT_HEIGHT,
@@ -14,6 +15,7 @@ type ImageStatus = 'idle' | 'loading' | 'loaded' | 'error';
 
 const props = defineProps<{
     template: EventTemplateProps;
+    templateId: TemplateId;
 }>();
 
 const emit = defineEmits<{
@@ -40,7 +42,7 @@ const imageCrop = computed(() => {
         return undefined;
     }
 
-    const frameWidth = 920;
+    const frameWidth = props.templateId === 'split' ? 920 : DOCUMENT_WIDTH;
     const frameHeight = DOCUMENT_HEIGHT;
     const imageRatio = image.value.naturalWidth / image.value.naturalHeight;
     const frameRatio = frameWidth / frameHeight;
@@ -68,7 +70,7 @@ const imageConfig = computed(() => ({
     image: image.value ?? undefined,
     x: 0,
     y: 0,
-    width: 920,
+    width: props.templateId === 'split' ? 920 : DOCUMENT_WIDTH,
     height: DOCUMENT_HEIGHT,
     crop: imageCrop.value,
 }));
@@ -160,7 +162,7 @@ defineExpose({ exportPng });
 <template>
     <div ref="containerRef" class="template-preview">
         <v-stage ref="stageRef" :config="stageConfig">
-            <v-layer>
+            <v-layer v-if="templateId === 'split'">
                 <v-rect :config="{ x: 0, y: 0, width: DOCUMENT_WIDTH, height: DOCUMENT_HEIGHT, fill: '#172235' }" />
                 <v-rect :config="{ x: 0, y: 0, width: 920, height: DOCUMENT_HEIGHT, fill: '#d8c8ae' }" />
                 <v-image v-if="imageStatus === 'loaded'" :config="imageConfig" />
@@ -236,6 +238,87 @@ defineExpose({ exportPng });
                         fontSize: 22,
                         fontStyle: 'bold',
                         letterSpacing: 4,
+                    }"
+                />
+            </v-layer>
+            <v-layer v-else>
+                <v-rect :config="{ x: 0, y: 0, width: DOCUMENT_WIDTH, height: DOCUMENT_HEIGHT, fill: '#24364b' }" />
+                <v-image v-if="imageStatus === 'loaded'" :config="imageConfig" />
+                <template v-else>
+                    <v-rect :config="{ x: 0, y: 0, width: DOCUMENT_WIDTH, height: DOCUMENT_HEIGHT, fill: '#c99d5b' }" />
+                    <v-rect :config="{ x: 0, y: 0, width: 720, height: DOCUMENT_HEIGHT, fill: '#18324b', opacity: 0.9 }" />
+                    <v-rect :config="{ x: 1420, y: 0, width: 500, height: DOCUMENT_HEIGHT, fill: '#e9c98f', opacity: 0.7 }" />
+                </template>
+                <v-rect
+                    :config="{
+                        x: 0,
+                        y: 0,
+                        width: DOCUMENT_WIDTH,
+                        height: DOCUMENT_HEIGHT,
+                        fill: '#0e1928',
+                        opacity: imageStatus === 'loaded' ? 0.68 : 0.35,
+                    }"
+                />
+                <v-text
+                    :config="{
+                        x: 160,
+                        y: 150,
+                        width: 1600,
+                        height: 410,
+                        text: template.title,
+                        align: 'center',
+                        fill: '#ffffff',
+                        fontFamily: 'Lato, Arial, sans-serif',
+                        fontSize: 112,
+                        fontStyle: 'bold',
+                        lineHeight: 1.05,
+                        wrap: 'word',
+                        ellipsis: true,
+                    }"
+                />
+                <v-rect :config="{ x: 820, y: 610, width: 280, height: 8, fill: '#f3b562' }" />
+                <v-text
+                    :config="{
+                        x: 160,
+                        y: 675,
+                        width: 1600,
+                        text: dateAndTime,
+                        align: 'center',
+                        fill: '#f7c77f',
+                        fontFamily: 'Lato, Arial, sans-serif',
+                        fontSize: 50,
+                        fontStyle: 'bold',
+                    }"
+                />
+                <v-text
+                    v-if="template.location"
+                    :config="{
+                        x: 260,
+                        y: 770,
+                        width: 1400,
+                        height: 120,
+                        text: template.location,
+                        align: 'center',
+                        fill: '#ffffff',
+                        fontFamily: 'Lato, Arial, sans-serif',
+                        fontSize: 38,
+                        lineHeight: 1.3,
+                        wrap: 'word',
+                        ellipsis: true,
+                    }"
+                />
+                <v-text
+                    :config="{
+                        x: 160,
+                        y: 960,
+                        width: 1600,
+                        text: 'CHURCHTOOLS PUBLISHER',
+                        align: 'center',
+                        fill: '#dce3ed',
+                        fontFamily: 'Lato, Arial, sans-serif',
+                        fontSize: 22,
+                        fontStyle: 'bold',
+                        letterSpacing: 5,
                     }"
                 />
             </v-layer>
