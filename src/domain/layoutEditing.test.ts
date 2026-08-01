@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+    calculateAlignmentSnap,
     clampLayoutPosition,
     createLayoutOrder,
     createLayoutOffsets,
@@ -83,5 +84,27 @@ describe('layout editing', () => {
         expect(movedOrder).toEqual(['dateTime', 'title', 'location']);
         expect(initialOrder).toEqual(['title', 'dateTime', 'location']);
         expect(moveLayoutElementInOrder(initialOrder, 'title', -1)).toBe(initialOrder);
+    });
+
+    it('snaps matching element edges and reports visual alignment guides', () => {
+        expect(
+            calculateAlignmentSnap(
+                { x: 98, y: 207, width: 100, height: 60 },
+                [{ x: 200, y: 300, width: 200, height: 100 }],
+            ),
+        ).toEqual({
+            offset: { x: 2, y: 0 },
+            guides: [{ orientation: 'vertical', position: 200 }],
+        });
+    });
+
+    it('snaps element centers to the document center', () => {
+        expect(calculateAlignmentSnap({ x: 906, y: 506, width: 100, height: 60 }, [])).toEqual({
+            offset: { x: 4, y: 4 },
+            guides: [
+                { orientation: 'vertical', position: 960 },
+                { orientation: 'horizontal', position: 540 },
+            ],
+        });
     });
 });

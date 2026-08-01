@@ -20,6 +20,16 @@ export interface LayoutSize {
     height: number;
 }
 
+export interface AlignmentGuide {
+    orientation: 'horizontal' | 'vertical';
+    position: number;
+}
+
+export interface AlignmentSnap {
+    offset: LayoutPoint;
+    guides: AlignmentGuide[];
+}
+
 export type LayoutOffsets = Record<LayoutElementId, LayoutPoint>;
 export type LayoutSizes = Record<LayoutElementId, LayoutSize>;
 export type LayoutRotations = Record<LayoutElementId, number>;
@@ -29,6 +39,7 @@ export const MIN_ELEMENT_WIDTH = 120;
 export const MIN_ELEMENT_HEIGHT = 50;
 export const SNAP_GRID_SIZE = 20;
 export const SNAP_ROTATION_STEP = 15;
+export const ALIGNMENT_SNAP_THRESHOLD = 10;
 
 export const TEMPLATE_ELEMENT_FRAMES: Record<TemplateId, Record<LayoutElementId, LayoutFrame>> = {
     split: {
@@ -86,6 +97,55 @@ export const moveLayoutElementInOrder = (
     const nextOrder = [...order];
     [nextOrder[currentIndex], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[currentIndex]];
     return nextOrder;
+};
+
+const frameAnchors = (frame: LayoutFrame, axis: 'x' | 'y') => {
+    const start = frame[axis];
+    const size = axis === 'x' ? frame.width : frame.height;
+    return [start, start + size / 2, start + size];
+};
+
+const closestAlignment = (anchors: number[], targets: number[], threshold: number) => {
+    let closest: { offset: number; position: number } | undefined;
+
+    for (const anchor of anchors) {
+        for (const target of targets) {
+            const offset = target - anchor;
+            if (Math.abs(offset) <= threshold && (!closest || Math.abs(offset) < Math.abs(closest.offset))) {
+                closest = { offset, position: target };
+            }
+        }
+    }
+
+    return closest;
+};
+
+export const calculateAlignmentSnap = (
+    frame: LayoutFrame,
+    targetFrames: LayoutFrame[],
+    threshold = ALIGNMENT_SNAP_THRESHOLD,
+): AlignmentSnap => {
+    const verticalTargets = [0, DOCUMENT_WIDTH / 2, DOCUMENT_WIDTH];
+    const horizontalTargets = [0, DOCUMENT_HEIGHT / 2, DOCUMENT_HEIGHT];
+    for (const targetFrame of targetFrames) {
+        verticalTargets.push(...frameAnchors(targetFrame, 'x'));
+        horizontalTargets.push(...frameAnchors(targetFrame, 'y'));
+    }
+
+    const vertical = closestAlignment(frameAnchors(frame, 'x'), verticalTargets, threshold);
+    const horizontal = closestAlignment(frameAnchors(frame, 'y'), horizontalTargets, threshold);
+    const guides: AlignmentGuide[] = [];
+    if (vertical) {
+        guides.push({ orientation: 'vertical', position: vertical.position });
+    }
+    if (horizontal) {
+        guides.push({ orientation: 'horizontal', position: horizontal.position });
+    }
+
+    return {
+        offset: { x: vertical?.offset ?? 0, y: horizontal?.offset ?? 0 },
+        guides,
+    };
 };
 
 export const clampLayoutPosition = (position: LayoutPoint, frame: LayoutFrame): LayoutPoint => ({

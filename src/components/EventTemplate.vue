@@ -7,12 +7,14 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import EditableTextElement from './EditableTextElement.vue';
 import type { EventTemplateProps } from '../domain/EventTemplateProps';
 import {
+    calculateAlignmentSnap,
     clampLayoutPosition,
     createLayoutOrder,
     createLayoutOffsets,
     createLayoutRotations,
     createLayoutSizes,
     keepRotatedFrameInDocument,
+    type AlignmentGuide,
     type LayoutElementId,
     type LayoutFrame,
     moveLayoutElementInOrder,
@@ -52,6 +54,7 @@ const image = shallowRef<HTMLImageElement | null>(null);
 const imageStatus = ref<ImageStatus>('idle');
 const selectedElement = ref<LayoutElementId | null>(null);
 const isExporting = ref(false);
+const activeAlignmentGuides = ref<AlignmentGuide[]>([]);
 const layoutOffsets = ref<Record<TemplateId, ReturnType<typeof createLayoutOffsets>>>({
     split: createLayoutOffsets(),
     poster: createLayoutOffsets(),
@@ -213,7 +216,31 @@ const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEven
     }
 };
 
+const alignElementWhileDragging = (elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
+    const node = event.target;
+    const parent = node.getParent();
+    const stage = stageRef.value?.getNode();
+    if (!parent || !stage) {
+        return;
+    }
+
+    const targetFrames = createLayoutOrder()
+        .filter((candidateId) => candidateId !== elementId)
+        .map((candidateId) => stage.findOne(`#editable-${candidateId}`))
+        .filter((candidate): candidate is Konva.Node => Boolean(candidate))
+        .map((candidate) => candidate.getClientRect({ relativeTo: parent, skipStroke: true }));
+    const frame = node.getClientRect({ relativeTo: parent, skipStroke: true });
+    const alignment = calculateAlignmentSnap(frame, targetFrames);
+
+    node.position({
+        x: node.x() + alignment.offset.x,
+        y: node.y() + alignment.offset.y,
+    });
+    activeAlignmentGuides.value = alignment.guides;
+};
+
 const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
+    activeAlignmentGuides.value = [];
     const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
     const position = clampLayoutPosition(
         snapLayoutPoint(event.target.position(), props.snapEnabled),
@@ -357,6 +384,7 @@ const resetLayout = () => {
     layoutRotations.value[props.templateId] = createLayoutRotations();
     layoutOrder.value[props.templateId] = createLayoutOrder();
     selectedElement.value = null;
+    activeAlignmentGuides.value = [];
     emit('selectionChange', null);
     emitLayerPosition();
     emit('layoutChange', false);
@@ -398,6 +426,7 @@ watch(
     () => props.templateId,
     () => {
         selectedElement.value = null;
+        activeAlignmentGuides.value = [];
         emit('selectionChange', null);
         emitLayerPosition();
         emit('layoutChange', currentLayoutChanged.value);
@@ -506,6 +535,7 @@ defineExpose({
                         wrap: 'word',
                         ellipsis: true,
                     }"
+                    @dragging="alignElementWhileDragging"
                     @move="moveElement"
                     @resize="resizeElement"
                 />
@@ -523,6 +553,7 @@ defineExpose({
                         fontStyle: 'bold',
                         lineHeight: 1.25,
                     }"
+                    @dragging="alignElementWhileDragging"
                     @move="moveElement"
                     @resize="resizeElement"
                 />
@@ -542,6 +573,7 @@ defineExpose({
                         wrap: 'word',
                         ellipsis: true,
                     }"
+                    @dragging="alignElementWhileDragging"
                     @move="moveElement"
                     @resize="resizeElement"
                 />
@@ -597,6 +629,7 @@ defineExpose({
                         wrap: 'word',
                         ellipsis: true,
                     }"
+                    @dragging="alignElementWhileDragging"
                     @move="moveElement"
                     @resize="resizeElement"
                 />
@@ -614,6 +647,7 @@ defineExpose({
                         fontSize: 50,
                         fontStyle: 'bold',
                     }"
+                    @dragging="alignElementWhileDragging"
                     @move="moveElement"
                     @resize="resizeElement"
                 />
@@ -634,6 +668,7 @@ defineExpose({
                         wrap: 'word',
                         ellipsis: true,
                     }"
+                    @dragging="alignElementWhileDragging"
                     @move="moveElement"
                     @resize="resizeElement"
                 />
@@ -650,6 +685,20 @@ defineExpose({
                         fontSize: 22,
                         fontStyle: 'bold',
                         letterSpacing: 5,
+                    }"
+                />
+            </v-layer>
+            <v-layer v-if="!isExporting" :config="{ listening: false }">
+                <v-line
+                    v-for="guide in activeAlignmentGuides"
+                    :key="`${guide.orientation}-${guide.position}`"
+                    :config="{
+                        points: guide.orientation === 'vertical'
+                            ? [guide.position, 0, guide.position, DOCUMENT_HEIGHT]
+                            : [0, guide.position, DOCUMENT_WIDTH, guide.position],
+                        stroke: '#ee3d8f',
+                        strokeWidth: 4,
+                        dash: [18, 12],
                     }"
                 />
             </v-layer>
