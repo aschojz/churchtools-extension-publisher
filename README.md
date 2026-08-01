@@ -144,6 +144,8 @@ Raster-Snapping kann im Editor ein- und ausgeschaltet werden. Aktiv rasten Posit
 
 Die Dokumentgröße bleibt immer 1920 × 1080 Pixel. Ein `ResizeObserver` ermittelt ausschließlich die Vorschau-Skalierung. Für den Export wird die Stage kurz auf die unveränderte Dokumentgröße mit Skalierung 1 gesetzt und anschließend auf den Vorschauzustand zurückgestellt. Dadurch entstehen keine Rundungsfehler durch gebrochene Vorschaugrößen.
 
+Der Vorschauzoom kann zwischen 50 und 200 Prozent der automatisch eingepassten Größe gewählt werden. Größere Stufen machen die Arbeitsfläche innerhalb ihres Containers scrollbar; Dokumentkoordinaten, Layoutzustand und Exportauflösung bleiben davon unabhängig.
+
 Vor dem Download werden Schriftarten und ein vorhandenes Bild abgewartet. Das erzeugte PNG wird anschließend mit `createImageBitmap()` geprüft; nur ein tatsächliches Bild mit exakt 1920 × 1080 Pixeln wird heruntergeladen. Der Browser-Test gegen die konfigurierte Instanz bestätigt Auswahl, Detailabruf, Fallback-Rendering und die exakte Exportgröße.
 
 ## Konva-Bewertung

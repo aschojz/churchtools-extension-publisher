@@ -353,6 +353,27 @@ textarea {
     font-size: 24px;
 }
 
+.template-section__actions,
+.preview-zoom {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.preview-zoom {
+    color: #526678;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.preview-zoom select {
+    min-height: 44px;
+    padding: 0 32px 0 10px;
+    border: 1px solid #aeb8c2;
+    border-radius: 8px;
+    background: #fff;
+}
+
 .button {
     flex: none;
     min-height: 44px;
@@ -403,10 +424,14 @@ textarea {
 
 .template-preview {
     width: 100%;
-    overflow: hidden;
+    overflow: auto;
     border-radius: 10px;
     background: #172235;
     box-shadow: 0 12px 30px rgb(23 32 42 / 16%);
+}
+
+.template-preview .konvajs-content {
+    margin-inline: auto;
 }
 
 .template-preview canvas {
@@ -422,7 +447,8 @@ textarea {
 @media (max-width: 680px) {
     .layout-controls,
     .template-overrides__header,
-    .template-section__header {
+    .template-section__header,
+    .template-section__actions {
         align-items: stretch;
         flex-direction: column;
     }

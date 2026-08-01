@@ -42,6 +42,7 @@ import {
 type ImageStatus = 'idle' | 'loading' | 'loaded' | 'error';
 
 const props = defineProps<{
+    previewZoom: number;
     template: EventTemplateProps;
     templateId: TemplateId;
     snapEnabled: boolean;
@@ -86,7 +87,7 @@ const layoutHistories = ref<Record<TemplateId, ReturnType<typeof createLayoutHis
 });
 let resizeObserver: ResizeObserver | undefined;
 
-const previewScale = computed(() => calculatePreviewScale(containerWidth.value));
+const previewScale = computed(() => calculatePreviewScale(containerWidth.value, props.previewZoom));
 const stageConfig = computed(() => ({
     width: DOCUMENT_WIDTH * previewScale.value,
     height: DOCUMENT_HEIGHT * previewScale.value,

@@ -19,6 +19,11 @@ describe('stage dimensions', () => {
         expect(calculatePreviewScale(2560)).toBe(1);
     });
 
+    it('applies editor zoom only after calculating the fitted preview size', () => {
+        expect(calculatePreviewScale(960, 1.5)).toBe(0.75);
+        expect(DOCUMENT_WIDTH * calculatePreviewScale(960, 1.5)).toBe(1440);
+    });
+
     it('keeps fixed document dimensions independent from the preview', () => {
         expect(DOCUMENT_WIDTH).toBe(1920);
         expect(DOCUMENT_HEIGHT).toBe(1080);

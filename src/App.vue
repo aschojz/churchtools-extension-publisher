@@ -36,6 +36,8 @@ const selectedLayoutElement = ref<LayoutElementId | null>(null);
 const selectedLayerPosition = ref(0);
 const selectedLayerTotal = ref(0);
 const snapEnabled = ref(true);
+const previewZoomPercent = ref(100);
+const previewZoomOptions = [50, 75, 100, 125, 150, 200] as const;
 const layoutStep = computed(() => (snapEnabled.value ? 20 : 5));
 const rotationStep = computed(() => (snapEnabled.value ? 15 : 5));
 const layoutElementLabels: Record<LayoutElementId, string> = {
@@ -599,9 +601,19 @@ const exportPng = async () => {
                         <p class="appointment-summary__label">Vorschau · 1920 × 1080 px</p>
                         <h2>{{ templateProps.title }}</h2>
                     </div>
-                    <button class="button" type="button" :disabled="imageStatus === 'loading'" @click="exportPng">
-                        {{ imageStatus === 'loading' ? 'Bild wird geladen …' : 'PNG exportieren' }}
-                    </button>
+                    <div class="template-section__actions">
+                        <label class="preview-zoom" for="preview-zoom">
+                            Vorschauzoom
+                            <select id="preview-zoom" v-model.number="previewZoomPercent">
+                                <option v-for="zoom in previewZoomOptions" :key="zoom" :value="zoom">
+                                    {{ zoom }} %
+                                </option>
+                            </select>
+                        </label>
+                        <button class="button" type="button" :disabled="imageStatus === 'loading'" @click="exportPng">
+                            {{ imageStatus === 'loading' ? 'Bild wird geladen …' : 'PNG exportieren' }}
+                        </button>
+                    </div>
                 </div>
 
                 <p v-if="imageStatus === 'error'" class="status-message status-message--warning" role="status">
@@ -614,6 +626,7 @@ const exportPng = async () => {
 
                 <EventTemplate
                     ref="templateRef"
+                    :preview-zoom="previewZoomPercent / 100"
                     :template="templateProps"
                     :template-id="selectedTemplateId"
                     :snap-enabled="snapEnabled"
