@@ -413,7 +413,7 @@ const updateImageFocus = (field: keyof ImageFocus, event: Event) => {
 const resetImageFocus = () => {
     imageFocusByTemplate.value = {
         ...imageFocusByTemplate.value,
-        [selectedTemplateId.value]: { x: 50, y: 50 },
+        [selectedTemplateId.value]: { x: 50, y: 50, zoom: 100 },
     };
     exportError.value = '';
     exportSuccess.value = '';
@@ -699,10 +699,10 @@ const exportPng = async () => {
                         <button
                             type="button"
                             class="button button--secondary"
-                            :disabled="imageFocusByTemplate[selectedTemplateId].x === 50 && imageFocusByTemplate[selectedTemplateId].y === 50"
+                            :disabled="imageFocusByTemplate[selectedTemplateId].x === 50 && imageFocusByTemplate[selectedTemplateId].y === 50 && imageFocusByTemplate[selectedTemplateId].zoom === 100"
                             @click="resetImageFocus"
                         >
-                            Zentrieren
+                            Bildausschnitt zurücksetzen
                         </button>
                     </div>
                     <div class="image-focus-controls__sliders">
@@ -729,6 +729,19 @@ const exportPng = async () => {
                                 @input="updateImageFocus('y', $event)"
                             />
                             <output>{{ imageFocusByTemplate[selectedTemplateId].y }} %</output>
+                        </label>
+                        <label>
+                            Zoom
+                            <input
+                                type="range"
+                                min="100"
+                                max="300"
+                                step="5"
+                                :value="imageFocusByTemplate[selectedTemplateId].zoom"
+                                aria-label="Bildzoom"
+                                @input="updateImageFocus('zoom', $event)"
+                            />
+                            <output>{{ imageFocusByTemplate[selectedTemplateId].zoom }} %</output>
                         </label>
                     </div>
                 </div>

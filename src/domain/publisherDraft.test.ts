@@ -25,7 +25,7 @@ const createDraft = (): PublisherDraft => ({
             order: createLayoutOrder(),
         },
     },
-    imageFocus: { ...createImageFocusByTemplate(), split: { x: 20, y: 80 } },
+    imageFocus: { ...createImageFocusByTemplate(), split: { x: 20, y: 80, zoom: 175 } },
     snapEnabled: false,
     previewZoomPercent: 150,
     updatedAt: '2026-08-02T12:00:00.000Z',
@@ -50,7 +50,7 @@ describe('publisher draft', () => {
         expect(loadPublisherDraft(storage, 'zoom')).toBeNull();
         storage.setItem('churchtools-publisher:draft:focus', JSON.stringify({
             ...createDraft(),
-            imageFocus: { ...createImageFocusByTemplate(), split: { x: 101, y: 50 } },
+            imageFocus: { ...createImageFocusByTemplate(), split: { x: 101, y: 50, zoom: 100 } },
         }));
         expect(loadPublisherDraft(storage, 'focus')).toBeNull();
     });
@@ -62,5 +62,22 @@ describe('publisher draft', () => {
         storage.setItem('churchtools-publisher:draft:legacy', JSON.stringify(legacyDraft));
 
         expect(loadPublisherDraft(storage, 'legacy')?.imageFocus).toEqual(createImageFocusByTemplate());
+    });
+
+    it('loads previous focus values without zoom at 100 percent', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        storage.setItem('churchtools-publisher:draft:focus-legacy', JSON.stringify({
+            ...draft,
+            imageFocus: {
+                split: { x: 20, y: 80 },
+                poster: { x: 50, y: 50 },
+            },
+        }));
+
+        expect(loadPublisherDraft(storage, 'focus-legacy')?.imageFocus).toEqual({
+            split: { x: 20, y: 80, zoom: 100 },
+            poster: { x: 50, y: 50, zoom: 100 },
+        });
     });
 });

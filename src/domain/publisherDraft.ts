@@ -75,12 +75,16 @@ const parseImageFocus = (value: unknown): ImageFocusByTemplate | null => {
     const focus = createImageFocusByTemplate();
     for (const templateId of ['split', 'poster'] as const) {
         const templateFocus = value[templateId];
+        const zoom = isRecord(templateFocus) && templateFocus.zoom === undefined
+            ? 100
+            : isRecord(templateFocus) ? templateFocus.zoom : undefined;
         if (!isRecord(templateFocus) || !isFiniteNumber(templateFocus.x) ||
             !isFiniteNumber(templateFocus.y) || templateFocus.x < 0 || templateFocus.x > 100 ||
-            templateFocus.y < 0 || templateFocus.y > 100) {
+            templateFocus.y < 0 || templateFocus.y > 100 || !isFiniteNumber(zoom) ||
+            zoom < 100 || zoom > 300) {
             return null;
         }
-        focus[templateId] = { x: templateFocus.x, y: templateFocus.y };
+        focus[templateId] = { x: templateFocus.x, y: templateFocus.y, zoom };
     }
     return focus;
 };
