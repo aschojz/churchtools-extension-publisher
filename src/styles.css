@@ -11,7 +11,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
     font: inherit;
 }
 
@@ -111,6 +112,82 @@ select {
     margin-top: 28px;
 }
 
+.template-overrides {
+    margin-bottom: 30px;
+    padding: 22px;
+    border: 1px solid #dfe5ea;
+    border-radius: 12px;
+    background: #f7f9fb;
+}
+
+.template-overrides__header {
+    display: flex;
+    gap: 20px;
+    align-items: start;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.template-overrides__header h2 {
+    margin: 0 0 4px;
+    font-size: 20px;
+}
+
+.template-overrides__header p {
+    font-size: 14px;
+}
+
+.template-overrides__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.template-field {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.template-field--wide {
+    grid-column: 1 / -1;
+}
+
+.template-field > label {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.template-field input,
+.template-field textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px solid #aeb8c2;
+    border-radius: 8px;
+    background: #fff;
+    color: #17202a;
+    resize: vertical;
+}
+
+.template-field input:focus,
+.template-field textarea:focus {
+    border-color: #3478c7;
+    outline: 3px solid rgb(52 120 199 / 18%);
+}
+
+.template-field__reset {
+    align-self: start;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #2768ad;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+}
+
 .template-section__header {
     display: flex;
     gap: 24px;
@@ -124,7 +201,7 @@ select {
     font-size: 24px;
 }
 
-.template-section__header button {
+.button {
     flex: none;
     min-height: 44px;
     padding: 0 18px;
@@ -136,18 +213,28 @@ select {
     font-weight: 700;
 }
 
-.template-section__header button:hover:not(:disabled) {
+.button:hover:not(:disabled) {
     background: #1f568f;
 }
 
-.template-section__header button:focus-visible {
+.button:focus-visible {
     outline: 3px solid rgb(52 120 199 / 28%);
     outline-offset: 2px;
 }
 
-.template-section__header button:disabled {
-    cursor: wait;
+.button:disabled {
+    cursor: not-allowed;
     opacity: 0.6;
+}
+
+.button--secondary {
+    border: 1px solid #aeb8c2;
+    background: #fff;
+    color: #273747;
+}
+
+.button--secondary:hover:not(:disabled) {
+    background: #eaf0f5;
 }
 
 .status-message--warning {
@@ -181,8 +268,17 @@ select {
 }
 
 @media (max-width: 680px) {
+    .template-overrides__header,
     .template-section__header {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .template-overrides__grid {
+        grid-template-columns: 1fr;
+    }
+
+    .template-field--wide {
+        grid-column: auto;
     }
 }

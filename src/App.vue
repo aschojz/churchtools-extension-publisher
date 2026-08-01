@@ -6,6 +6,12 @@ import { computed, ref, watch } from 'vue';
 import EventTemplate from './components/EventTemplate.vue';
 import { useAppointmentsQuery } from './composables/useAppointmentsQuery';
 import { mapAppointmentToTemplateProps } from './domain/mapAppointmentToTemplateProps';
+import {
+    applyTemplateOverrides,
+    type EditableTemplateField,
+    type EventTemplateOverrides,
+    withTemplateOverride,
+} from './domain/templateOverrides';
 
 const userLanguage = window.settings?.language ?? navigator.language;
 const userTimeZone = window.settings?.timezone;
@@ -14,6 +20,7 @@ const templateRef = ref<InstanceType<typeof EventTemplate> | null>(null);
 const imageStatus = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle');
 const exportError = ref('');
 const exportSuccess = ref('');
+const templateOverrides = ref<EventTemplateOverrides>({});
 
 const { data: calendars, error: calendarsError, isPending: calendarsPending } = useCalendarsQuery();
 const calendarIds = computed(() => calendars.value?.map(({ id }) => id) ?? []);
@@ -46,7 +53,7 @@ const {
     () => selectedStartDate.value,
 );
 
-const templateProps = computed(() => {
+const mappedTemplateProps = computed(() => {
     if (!appointmentDetails.value) {
         return null;
     }
@@ -57,6 +64,13 @@ const templateProps = computed(() => {
     });
 });
 
+const templateProps = computed(() =>
+    mappedTemplateProps.value
+        ? applyTemplateOverrides(mappedTemplateProps.value, templateOverrides.value)
+        : null,
+);
+const hasTemplateOverrides = computed(() => Object.keys(templateOverrides.value).length > 0);
+
 const isLoading = computed(() => calendarsPending.value || appointmentsPending.value);
 const loadingError = computed(() => calendarsError.value ?? appointmentsError.value);
 
@@ -64,7 +78,37 @@ watch(selectedAppointmentKey, () => {
     exportError.value = '';
     exportSuccess.value = '';
     imageStatus.value = 'idle';
+    templateOverrides.value = {};
 });
+
+const templateFieldValue = (field: EditableTemplateField) =>
+    templateOverrides.value[field] ?? mappedTemplateProps.value?.[field] ?? '';
+
+const updateTemplateOverride = (field: EditableTemplateField, event: Event) => {
+    if (!mappedTemplateProps.value) {
+        return;
+    }
+
+    const value = (event.target as HTMLInputElement | HTMLTextAreaElement).value;
+    templateOverrides.value = withTemplateOverride(
+        mappedTemplateProps.value,
+        templateOverrides.value,
+        field,
+        value,
+    );
+    exportError.value = '';
+    exportSuccess.value = '';
+};
+
+const resetTemplateOverride = (field: EditableTemplateField) => {
+    const nextOverrides = { ...templateOverrides.value };
+    delete nextOverrides[field];
+    templateOverrides.value = nextOverrides;
+};
+
+const resetTemplateOverrides = () => {
+    templateOverrides.value = {};
+};
 
 const formatAppointmentDate = ({ appointment }: AppointmentCalculatedWithIncludes) => {
     const { base, calculated } = appointment;
@@ -168,12 +212,100 @@ const exportPng = async () => {
             </p>
 
             <section v-else-if="templateProps" class="template-section" aria-live="polite">
+                <form class="template-overrides" @submit.prevent>
+                    <div class="template-overrides__header">
+                        <div>
+                            <h2>Inhalte anpassen</h2>
+                            <p>Änderungen gelten nur für diesen Export und verändern den ChurchTools-Termin nicht.</p>
+                        </div>
+                        <button
+                            type="button"
+                            class="button button--secondary"
+                            :disabled="!hasTemplateOverrides"
+                            @click="resetTemplateOverrides"
+                        >
+                            Alle zurücksetzen
+                        </button>
+                    </div>
+
+                    <div class="template-overrides__grid">
+                        <div class="template-field template-field--wide">
+                            <label for="override-title">Titel</label>
+                            <textarea
+                                id="override-title"
+                                rows="2"
+                                :value="templateFieldValue('title')"
+                                @input="updateTemplateOverride('title', $event)"
+                            />
+                            <button
+                                v-if="templateOverrides.title !== undefined"
+                                type="button"
+                                class="template-field__reset"
+                                @click="resetTemplateOverride('title')"
+                            >
+                                Original wiederherstellen
+                            </button>
+                        </div>
+
+                        <div class="template-field">
+                            <label for="override-date">Datum</label>
+                            <input
+                                id="override-date"
+                                :value="templateFieldValue('date')"
+                                @input="updateTemplateOverride('date', $event)"
+                            />
+                            <button
+                                v-if="templateOverrides.date !== undefined"
+                                type="button"
+                                class="template-field__reset"
+                                @click="resetTemplateOverride('date')"
+                            >
+                                Original wiederherstellen
+                            </button>
+                        </div>
+
+                        <div class="template-field">
+                            <label for="override-time">Uhrzeit</label>
+                            <input
+                                id="override-time"
+                                :value="templateFieldValue('time')"
+                                @input="updateTemplateOverride('time', $event)"
+                            />
+                            <button
+                                v-if="templateOverrides.time !== undefined"
+                                type="button"
+                                class="template-field__reset"
+                                @click="resetTemplateOverride('time')"
+                            >
+                                Original wiederherstellen
+                            </button>
+                        </div>
+
+                        <div class="template-field template-field--wide">
+                            <label for="override-location">Ort</label>
+                            <input
+                                id="override-location"
+                                :value="templateFieldValue('location')"
+                                @input="updateTemplateOverride('location', $event)"
+                            />
+                            <button
+                                v-if="templateOverrides.location !== undefined"
+                                type="button"
+                                class="template-field__reset"
+                                @click="resetTemplateOverride('location')"
+                            >
+                                Original wiederherstellen
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
                 <div class="template-section__header">
                     <div>
                         <p class="appointment-summary__label">Vorschau · 1920 × 1080 px</p>
                         <h2>{{ templateProps.title }}</h2>
                     </div>
-                    <button type="button" :disabled="imageStatus === 'loading'" @click="exportPng">
+                    <button class="button" type="button" :disabled="imageStatus === 'loading'" @click="exportPng">
                         {{ imageStatus === 'loading' ? 'Bild wird geladen …' : 'PNG exportieren' }}
                     </button>
                 </div>

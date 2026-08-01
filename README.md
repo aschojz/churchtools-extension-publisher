@@ -2,7 +2,7 @@
 
 Technischer Durchstich für einen späteren grafischen Publisher innerhalb einer ChurchTools-Extension.
 
-Der aktuelle Stand umfasst den vollständigen ersten technischen Durchstich: Terminauswahl, Detailabruf, isoliertes Prop-Mapping, ein festes Konva-Testlayout, responsive Vorschau und PNG-Export in 1920 × 1080 Pixeln.
+Der aktuelle Stand umfasst den vollständigen ersten technischen Durchstich: Terminauswahl, Detailabruf, isoliertes Prop-Mapping, manuelle Inhaltsüberschreibungen, ein festes Konva-Testlayout, responsive Vorschau und PNG-Export in 1920 × 1080 Pixeln.
 
 ## Lokale Entwicklung
 
@@ -113,6 +113,16 @@ interface EventTemplateProps {
 ```
 
 Das Konva-Template kennt weder Query-Zustand noch Appointment-ID oder ChurchTools-Response. Es rendert ausschließlich diese Props. Fehlende Uhrzeit und fehlender Ort erzeugen keine Leerzeilen; ohne Bild erscheint eine definierte Fallback-Fläche. Der Titel ist auf einen festen Bereich mit maximal drei sichtbaren Zeilen und Ellipsis begrenzt.
+
+### Manuelle Überschreibungen
+
+Titel, Datum, Uhrzeit und Ort können vor dem Export einzeln überschrieben werden. Die Änderungen liegen als separates `EventTemplateOverrides`-Objekt zwischen Mapper und Template und verändern weder den geladenen API-Response noch den ChurchTools-Termin:
+
+```text
+gemappte EventTemplateProps + EventTemplateOverrides → gerenderte EventTemplateProps
+```
+
+Ein leerer Wert ist eine gültige Überschreibung und blendet beispielsweise Uhrzeit oder Ort aus. Jeder Wert kann einzeln auf das gemappte Original zurückgesetzt werden; zusätzlich steht ein gemeinsamer Reset bereit. Beim Wechsel des Termins werden alle Überschreibungen verworfen. Bildersetzung bleibt bewusst außerhalb dieses Schritts.
 
 ## Vorschau und Export
 
