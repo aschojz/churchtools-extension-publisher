@@ -138,6 +138,8 @@ Titel, kombinierte Datums-/Uhrzeile und Ort können auf der Konva-Arbeitsfläche
 
 Für das ausgewählte Element stehen zusätzlich exakte Zahlenfelder für X, Y, Breite, Höhe und Drehung bereit. Eingaben werden auf gültige Dokumentgrenzen und Mindestgrößen begrenzt; auch diese Änderungen sind rückgängig machbar und Bestandteil des lokalen Entwurfs.
 
+Sechs Ausrichtungsaktionen setzen die sichtbaren Begrenzungen eines ausgewählten Elements an die linke, horizontale mittlere oder rechte beziehungsweise obere, vertikale mittlere oder untere Dokumentkante. Das funktioniert auch für gedrehte Elemente.
+
 Bis zu 50 Layoutänderungen können pro Template rückgängig gemacht und wiederholt werden. Die Historie umfasst direkte Canvas-Interaktionen, die zugänglichen Steuerelemente, Ebenenänderungen und den vollständigen Layout-Reset; eine neue Änderung nach einem Rückgängig-Schritt verwirft den bisherigen Wiederholen-Zweig.
 
 Ausgewählte Elemente lassen sich zusätzlich mit den Pfeiltasten verschieben; Umschalt erhöht den jeweiligen Schritt um den Faktor fünf. Escape hebt die Auswahl auf. Strg/Cmd+Z sowie Strg+Y beziehungsweise Strg/Cmd+Umschalt+Z bedienen die Layout-Historie. Während der Fokus in einem Eingabefeld, einer Textarea oder einer Auswahl liegt, greift der Editor nicht in die normalen Tastaturfunktionen ein.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+    alignLayoutGeometry,
     calculateAlignmentSnap,
     clampLayoutPosition,
     constrainLayoutGeometry,
@@ -125,5 +126,26 @@ describe('layout editing', () => {
                 { orientation: 'horizontal', position: 540 },
             ],
         });
+    });
+
+    it('aligns unrotated geometry to document edges and centers', () => {
+        const geometry = { x: 300, y: 200, width: 600, height: 300, rotation: 0 };
+
+        expect(alignLayoutGeometry(geometry, 'left')?.x).toBe(0);
+        expect(alignLayoutGeometry(geometry, 'horizontalCenter')?.x).toBe(660);
+        expect(alignLayoutGeometry(geometry, 'right')?.x).toBe(1320);
+        expect(alignLayoutGeometry(geometry, 'top')?.y).toBe(0);
+        expect(alignLayoutGeometry(geometry, 'verticalCenter')?.y).toBe(390);
+        expect(alignLayoutGeometry(geometry, 'bottom')?.y).toBe(780);
+    });
+
+    it('aligns the visible bounds of rotated geometry', () => {
+        const aligned = alignLayoutGeometry(
+            { x: 500, y: 300, width: 400, height: 200, rotation: 45 },
+            'left',
+        );
+
+        expect(aligned).not.toBeNull();
+        expect(aligned?.x).toBeCloseTo(200 * Math.sin(Math.PI / 4));
     });
 });

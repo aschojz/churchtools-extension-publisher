@@ -7,7 +7,7 @@ import EventTemplate from './components/EventTemplate.vue';
 import { useAppointmentsQuery } from './composables/useAppointmentsQuery';
 import { resolveEditorShortcut } from './domain/editorShortcuts';
 import { mapAppointmentToTemplateProps } from './domain/mapAppointmentToTemplateProps';
-import type { LayoutElementId, LayoutGeometry } from './domain/layoutEditing';
+import type { LayoutAlignment, LayoutElementId, LayoutGeometry } from './domain/layoutEditing';
 import { cloneLayoutState, type SerializableLayoutState } from './domain/layoutHistory';
 import { validateLocalImage } from './domain/localImageOverride';
 import {
@@ -379,6 +379,10 @@ const rotateLayoutElement = (deltaRotation: number) => {
     templateRef.value?.rotateSelectedElement(deltaRotation);
 };
 
+const alignLayoutElement = (alignment: LayoutAlignment) => {
+    templateRef.value?.alignSelectedElement(alignment);
+};
+
 const updateSelectedLayoutGeometry = (field: keyof LayoutGeometry, event: Event) => {
     const input = event.target as HTMLInputElement;
     if (!Number.isFinite(input.valueAsNumber)) {
@@ -704,6 +708,15 @@ const exportPng = async () => {
                                 />
                             </label>
                         </fieldset>
+                        <div v-if="selectedLayoutElement" class="layout-controls__alignment" aria-label="Element ausrichten">
+                            <span>Ausrichten:</span>
+                            <button type="button" aria-label="Links ausrichten" @click="alignLayoutElement('left')">Links</button>
+                            <button type="button" aria-label="Horizontal zentrieren" @click="alignLayoutElement('horizontalCenter')">Mitte X</button>
+                            <button type="button" aria-label="Rechts ausrichten" @click="alignLayoutElement('right')">Rechts</button>
+                            <button type="button" aria-label="Oben ausrichten" @click="alignLayoutElement('top')">Oben</button>
+                            <button type="button" aria-label="Vertikal zentrieren" @click="alignLayoutElement('verticalCenter')">Mitte Y</button>
+                            <button type="button" aria-label="Unten ausrichten" @click="alignLayoutElement('bottom')">Unten</button>
+                        </div>
                         <div v-if="selectedLayoutElement" class="layout-controls__layers" aria-label="Ebenenreihenfolge ändern">
                             <span>Ebene {{ selectedLayerPosition }} von {{ selectedLayerTotal }}</span>
                             <button

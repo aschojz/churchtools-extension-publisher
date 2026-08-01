@@ -7,6 +7,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import EditableTextElement from './EditableTextElement.vue';
 import type { EventTemplateProps } from '../domain/EventTemplateProps';
 import {
+    alignLayoutGeometry,
     calculateAlignmentSnap,
     clampLayoutPosition,
     constrainLayoutGeometry,
@@ -19,6 +20,7 @@ import {
     type LayoutElementId,
     type LayoutFrame,
     type LayoutGeometry,
+    type LayoutAlignment,
     moveLayoutElementInOrder,
     resizeLayoutFrame,
     snapLayoutPoint,
@@ -450,26 +452,11 @@ const rotateSelectedElement = (deltaRotation: number) => {
     void syncTransformer();
 };
 
-const setSelectedElementGeometry = (
-    field: keyof LayoutGeometry,
-    value: number,
-) => {
-    if (!selectedElement.value || !Number.isFinite(value)) {
+const commitSelectedGeometry = (geometry: LayoutGeometry) => {
+    if (!selectedElement.value) {
         return;
     }
-
     const elementId = selectedElement.value;
-    const currentFrame = elementFrame(elementId);
-    const geometry = constrainLayoutGeometry({
-        ...currentFrame,
-        rotation: layoutRotations.value[props.templateId][elementId],
-        [field]: value,
-    });
-    if (!geometry) {
-        emitSelectionGeometry();
-        return;
-    }
-
     const previousState = captureLayoutState();
     const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
     layoutOffsets.value[props.templateId][elementId] = {
@@ -484,6 +471,46 @@ const setSelectedElementGeometry = (
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
+};
+
+const setSelectedElementGeometry = (
+    field: keyof LayoutGeometry,
+    value: number,
+) => {
+    if (!selectedElement.value || !Number.isFinite(value)) {
+        return;
+    }
+
+    const elementId = selectedElement.value;
+    const geometry = constrainLayoutGeometry({
+        ...elementFrame(elementId),
+        rotation: layoutRotations.value[props.templateId][elementId],
+        [field]: value,
+    });
+    if (!geometry) {
+        emitSelectionGeometry();
+        return;
+    }
+
+    commitSelectedGeometry(geometry);
+};
+
+const alignSelectedElement = (alignment: LayoutAlignment) => {
+    if (!selectedElement.value) {
+        return;
+    }
+
+    const elementId = selectedElement.value;
+    const geometry = alignLayoutGeometry(
+        {
+            ...elementFrame(elementId),
+            rotation: layoutRotations.value[props.templateId][elementId],
+        },
+        alignment,
+    );
+    if (geometry) {
+        commitSelectedGeometry(geometry);
+    }
 };
 
 const changeSelectedLayer = (direction: -1 | 1) => {
@@ -668,6 +695,7 @@ const exportPng = async () => {
 };
 
 defineExpose({
+    alignSelectedElement,
     changeSelectedLayer,
     clearSelection,
     exportPng,

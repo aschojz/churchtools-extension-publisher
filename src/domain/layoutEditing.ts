@@ -34,6 +34,14 @@ export interface AlignmentSnap {
     guides: AlignmentGuide[];
 }
 
+export type LayoutAlignment =
+    | 'left'
+    | 'horizontalCenter'
+    | 'right'
+    | 'top'
+    | 'verticalCenter'
+    | 'bottom';
+
 export type LayoutOffsets = Record<LayoutElementId, LayoutPoint>;
 export type LayoutSizes = Record<LayoutElementId, LayoutSize>;
 export type LayoutRotations = Record<LayoutElementId, number>;
@@ -249,4 +257,46 @@ export const keepRotatedFrameInDocument = (
         frame: { ...frame, x: frame.x + shiftX, y: frame.y + shiftY },
         rotation: normalizedRotation,
     };
+};
+
+export const alignLayoutGeometry = (
+    geometry: LayoutGeometry,
+    alignment: LayoutAlignment,
+): LayoutGeometry | null => {
+    const constrained = constrainLayoutGeometry(geometry);
+    if (!constrained) {
+        return null;
+    }
+
+    const radians = (constrained.rotation * Math.PI) / 180;
+    const cosine = Math.cos(radians);
+    const sine = Math.sin(radians);
+    const corners = [
+        { x: 0, y: 0 },
+        { x: constrained.width, y: 0 },
+        { x: 0, y: constrained.height },
+        { x: constrained.width, y: constrained.height },
+    ].map(({ x, y }) => ({
+        x: constrained.x + x * cosine - y * sine,
+        y: constrained.y + x * sine + y * cosine,
+    }));
+    const minX = Math.min(...corners.map(({ x }) => x));
+    const maxX = Math.max(...corners.map(({ x }) => x));
+    const minY = Math.min(...corners.map(({ y }) => y));
+    const maxY = Math.max(...corners.map(({ y }) => y));
+    const shifts: Record<LayoutAlignment, LayoutPoint> = {
+        left: { x: -minX, y: 0 },
+        horizontalCenter: { x: DOCUMENT_WIDTH / 2 - (minX + maxX) / 2, y: 0 },
+        right: { x: DOCUMENT_WIDTH - maxX, y: 0 },
+        top: { x: 0, y: -minY },
+        verticalCenter: { x: 0, y: DOCUMENT_HEIGHT / 2 - (minY + maxY) / 2 },
+        bottom: { x: 0, y: DOCUMENT_HEIGHT - maxY },
+    };
+    const shift = shifts[alignment];
+
+    return constrainLayoutGeometry({
+        ...constrained,
+        x: constrained.x + shift.x,
+        y: constrained.y + shift.y,
+    });
 };

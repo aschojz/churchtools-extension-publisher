@@ -260,6 +260,7 @@ textarea {
 .layout-controls__sizes,
 .layout-controls__rotations,
 .layout-controls__geometry,
+.layout-controls__alignment,
 .layout-controls__layers {
     display: flex;
     flex-wrap: wrap;
@@ -310,6 +311,7 @@ textarea {
 .layout-controls__directions button,
 .layout-controls__sizes button,
 .layout-controls__rotations button,
+.layout-controls__alignment button,
 .layout-controls__layers button {
     min-height: 34px;
     padding: 0 11px;
@@ -326,6 +328,7 @@ textarea {
 .layout-controls__directions button:hover,
 .layout-controls__sizes button:hover,
 .layout-controls__rotations button:hover,
+.layout-controls__alignment button:hover,
 .layout-controls__layers button:hover,
 .layout-controls__elements button.is-selected {
     border-color: #2768ad;
@@ -336,6 +339,13 @@ textarea {
 .layout-controls__layers span {
     align-self: center;
     font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.layout-controls__alignment span {
+    align-self: center;
+    color: #526678;
+    font-size: 0.8rem;
     font-weight: 700;
 }
 
