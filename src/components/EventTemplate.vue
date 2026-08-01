@@ -6,6 +6,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 
 import EditableTextElement from './EditableTextElement.vue';
 import type { EventTemplateProps } from '../domain/EventTemplateProps';
+import { calculateCoverCrop, type ImageFocus } from '../domain/imageFocus';
 import {
     alignLayoutGeometry,
     calculateAlignmentSnap,
@@ -48,6 +49,7 @@ type ImageStatus = 'idle' | 'loading' | 'loaded' | 'error';
 const props = defineProps<{
     draftId: string;
     initialLayouts: Partial<Record<TemplateId, SerializableLayoutState>>;
+    imageFocus: ImageFocus;
     previewZoom: number;
     template: EventTemplateProps;
     templateId: TemplateId;
@@ -134,26 +136,11 @@ const imageCrop = computed(() => {
 
     const frameWidth = props.templateId === 'split' ? 920 : DOCUMENT_WIDTH;
     const frameHeight = DOCUMENT_HEIGHT;
-    const imageRatio = image.value.naturalWidth / image.value.naturalHeight;
-    const frameRatio = frameWidth / frameHeight;
-
-    if (imageRatio > frameRatio) {
-        const cropWidth = image.value.naturalHeight * frameRatio;
-        return {
-            x: (image.value.naturalWidth - cropWidth) / 2,
-            y: 0,
-            width: cropWidth,
-            height: image.value.naturalHeight,
-        };
-    }
-
-    const cropHeight = image.value.naturalWidth / frameRatio;
-    return {
-        x: 0,
-        y: (image.value.naturalHeight - cropHeight) / 2,
-        width: image.value.naturalWidth,
-        height: cropHeight,
-    };
+    return calculateCoverCrop(
+        { width: image.value.naturalWidth, height: image.value.naturalHeight },
+        { width: frameWidth, height: frameHeight },
+        props.imageFocus,
+    ) ?? undefined;
 });
 
 const imageConfig = computed(() => ({

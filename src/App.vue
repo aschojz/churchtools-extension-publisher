@@ -6,6 +6,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import EventTemplate from './components/EventTemplate.vue';
 import { useAppointmentsQuery } from './composables/useAppointmentsQuery';
 import { resolveEditorShortcut } from './domain/editorShortcuts';
+import { createImageFocusByTemplate, type ImageFocus } from './domain/imageFocus';
 import { mapAppointmentToTemplateProps } from './domain/mapAppointmentToTemplateProps';
 import type { LayoutAlignment, LayoutElementId, LayoutGeometry } from './domain/layoutEditing';
 import { cloneLayoutState, type SerializableLayoutState } from './domain/layoutHistory';
@@ -52,6 +53,7 @@ const draftStatus = ref('');
 const draftError = ref('');
 const hasLocalDraft = ref(false);
 const restoringDraft = ref(false);
+const imageFocusByTemplate = ref(createImageFocusByTemplate());
 const layoutStep = computed(() => (snapEnabled.value ? 20 : 5));
 const rotationStep = computed(() => (snapEnabled.value ? 15 : 5));
 const layoutElementLabels: Record<LayoutElementId, string> = {
@@ -142,6 +144,10 @@ const saveCurrentDraft = () => {
                     state ? cloneLayoutState(state) : state,
                 ]),
             ),
+            imageFocus: {
+                split: { ...imageFocusByTemplate.value.split },
+                poster: { ...imageFocusByTemplate.value.poster },
+            },
             snapEnabled: snapEnabled.value,
             previewZoomPercent: previewZoomPercent.value,
             updatedAt: new Date().toISOString(),
@@ -207,6 +213,7 @@ watch(selectedAppointmentKey, () => {
         templateOverrides.value = draft?.templateOverrides ?? {};
         selectedTemplateId.value = draft?.selectedTemplateId ?? 'split';
         draftLayouts.value = draft?.layouts ?? {};
+        imageFocusByTemplate.value = draft?.imageFocus ?? createImageFocusByTemplate();
         snapEnabled.value = draft?.snapEnabled ?? true;
         previewZoomPercent.value = draft?.previewZoomPercent ?? 100;
         hasLocalDraft.value = Boolean(draft);
@@ -215,6 +222,7 @@ watch(selectedAppointmentKey, () => {
     } catch {
         templateOverrides.value = {};
         draftLayouts.value = {};
+        imageFocusByTemplate.value = createImageFocusByTemplate();
         hasLocalDraft.value = false;
         draftError.value = 'Der lokale Entwurf konnte nicht geladen werden.';
     }
@@ -298,6 +306,7 @@ const deleteLocalDraft = () => {
         templateOverrides.value = {};
         selectedTemplateId.value = 'split';
         draftLayouts.value = {};
+        imageFocusByTemplate.value = createImageFocusByTemplate();
         snapEnabled.value = true;
         previewZoomPercent.value = 100;
         hasLocalDraft.value = false;
@@ -381,6 +390,34 @@ const rotateLayoutElement = (deltaRotation: number) => {
 
 const alignLayoutElement = (alignment: LayoutAlignment) => {
     templateRef.value?.alignSelectedElement(alignment);
+};
+
+const updateImageFocus = (field: keyof ImageFocus, event: Event) => {
+    const value = (event.target as HTMLInputElement).valueAsNumber;
+    if (!Number.isFinite(value)) {
+        return;
+    }
+
+    imageFocusByTemplate.value = {
+        ...imageFocusByTemplate.value,
+        [selectedTemplateId.value]: {
+            ...imageFocusByTemplate.value[selectedTemplateId.value],
+            [field]: value,
+        },
+    };
+    exportError.value = '';
+    exportSuccess.value = '';
+    saveCurrentDraft();
+};
+
+const resetImageFocus = () => {
+    imageFocusByTemplate.value = {
+        ...imageFocusByTemplate.value,
+        [selectedTemplateId.value]: { x: 50, y: 50 },
+    };
+    exportError.value = '';
+    exportSuccess.value = '';
+    saveCurrentDraft();
 };
 
 const updateSelectedLayoutGeometry = (field: keyof LayoutGeometry, event: Event) => {
@@ -653,6 +690,49 @@ const exportPng = async () => {
                     </div>
                 </form>
 
+                <div v-if="templateProps.imageUrl" class="image-focus-controls">
+                    <div class="image-focus-controls__header">
+                        <div>
+                            <h2>Bildausschnitt</h2>
+                            <p>Verschiebe den Fokuspunkt des Cover-Zuschnitts für das aktuelle Template.</p>
+                        </div>
+                        <button
+                            type="button"
+                            class="button button--secondary"
+                            :disabled="imageFocusByTemplate[selectedTemplateId].x === 50 && imageFocusByTemplate[selectedTemplateId].y === 50"
+                            @click="resetImageFocus"
+                        >
+                            Zentrieren
+                        </button>
+                    </div>
+                    <div class="image-focus-controls__sliders">
+                        <label>
+                            Horizontal
+                            <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                :value="imageFocusByTemplate[selectedTemplateId].x"
+                                aria-label="Bildfokus horizontal"
+                                @input="updateImageFocus('x', $event)"
+                            />
+                            <output>{{ imageFocusByTemplate[selectedTemplateId].x }} %</output>
+                        </label>
+                        <label>
+                            Vertikal
+                            <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                :value="imageFocusByTemplate[selectedTemplateId].y"
+                                aria-label="Bildfokus vertikal"
+                                @input="updateImageFocus('y', $event)"
+                            />
+                            <output>{{ imageFocusByTemplate[selectedTemplateId].y }} %</output>
+                        </label>
+                    </div>
+                </div>
+
                 <div class="layout-controls">
                     <div>
                         <h2>Layout anpassen</h2>
@@ -794,6 +874,7 @@ const exportPng = async () => {
                 <EventTemplate
                     ref="templateRef"
                     :draft-id="`${selectedAppointmentKey}:${draftRevision}`"
+                    :image-focus="imageFocusByTemplate[selectedTemplateId]"
                     :initial-layouts="draftLayouts"
                     :preview-zoom="previewZoomPercent / 100"
                     :template="templateProps"

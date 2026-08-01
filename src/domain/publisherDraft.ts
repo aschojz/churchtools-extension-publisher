@@ -1,4 +1,5 @@
 import type { SerializableLayoutState } from './layoutHistory';
+import { createImageFocusByTemplate, type ImageFocusByTemplate } from './imageFocus';
 import type { EventTemplateOverrides } from './templateOverrides';
 import type { TemplateId } from './templates';
 
@@ -12,6 +13,7 @@ export interface PublisherDraft {
     selectedTemplateId: TemplateId;
     templateOverrides: EventTemplateOverrides;
     layouts: Partial<Record<TemplateId, SerializableLayoutState>>;
+    imageFocus: ImageFocusByTemplate;
     snapEnabled: boolean;
     previewZoomPercent: number;
     updatedAt: string;
@@ -62,6 +64,27 @@ const parseTemplateOverrides = (value: unknown): EventTemplateOverrides | null =
     return overrides;
 };
 
+const parseImageFocus = (value: unknown): ImageFocusByTemplate | null => {
+    if (value === undefined) {
+        return createImageFocusByTemplate();
+    }
+    if (!isRecord(value)) {
+        return null;
+    }
+
+    const focus = createImageFocusByTemplate();
+    for (const templateId of ['split', 'poster'] as const) {
+        const templateFocus = value[templateId];
+        if (!isRecord(templateFocus) || !isFiniteNumber(templateFocus.x) ||
+            !isFiniteNumber(templateFocus.y) || templateFocus.x < 0 || templateFocus.x > 100 ||
+            templateFocus.y < 0 || templateFocus.y > 100) {
+            return null;
+        }
+        focus[templateId] = { x: templateFocus.x, y: templateFocus.y };
+    }
+    return focus;
+};
+
 export const parsePublisherDraft = (value: string | null): PublisherDraft | null => {
     if (!value) {
         return null;
@@ -77,7 +100,8 @@ export const parsePublisherDraft = (value: string | null): PublisherDraft | null
             return null;
         }
         const templateOverrides = parseTemplateOverrides(parsed.templateOverrides);
-        if (!templateOverrides) {
+        const imageFocus = parseImageFocus(parsed.imageFocus);
+        if (!templateOverrides || !imageFocus) {
             return null;
         }
         const layouts: PublisherDraft['layouts'] = {};
@@ -96,6 +120,7 @@ export const parsePublisherDraft = (value: string | null): PublisherDraft | null
             selectedTemplateId: parsed.selectedTemplateId,
             templateOverrides,
             layouts,
+            imageFocus,
             snapEnabled: parsed.snapEnabled,
             previewZoomPercent: parsed.previewZoomPercent,
             updatedAt: parsed.updatedAt,

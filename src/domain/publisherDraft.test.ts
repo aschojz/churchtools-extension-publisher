@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createLayoutOffsets, createLayoutOrder, createLayoutRotations, createLayoutSizes } from './layoutEditing';
+import { createImageFocusByTemplate } from './imageFocus';
 import { deletePublisherDraft, loadPublisherDraft, type PublisherDraft, savePublisherDraft } from './publisherDraft';
 
 const createStorage = () => {
@@ -24,6 +25,7 @@ const createDraft = (): PublisherDraft => ({
             order: createLayoutOrder(),
         },
     },
+    imageFocus: { ...createImageFocusByTemplate(), split: { x: 20, y: 80 } },
     snapEnabled: false,
     previewZoomPercent: 150,
     updatedAt: '2026-08-02T12:00:00.000Z',
@@ -46,5 +48,19 @@ describe('publisher draft', () => {
         expect(loadPublisherDraft(storage, 'old')).toBeNull();
         storage.setItem('churchtools-publisher:draft:zoom', JSON.stringify({ ...createDraft(), previewZoomPercent: 999 }));
         expect(loadPublisherDraft(storage, 'zoom')).toBeNull();
+        storage.setItem('churchtools-publisher:draft:focus', JSON.stringify({
+            ...createDraft(),
+            imageFocus: { ...createImageFocusByTemplate(), split: { x: 101, y: 50 } },
+        }));
+        expect(loadPublisherDraft(storage, 'focus')).toBeNull();
+    });
+
+    it('loads older drafts without image focus using centered defaults', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        const { imageFocus: _, ...legacyDraft } = draft;
+        storage.setItem('churchtools-publisher:draft:legacy', JSON.stringify(legacyDraft));
+
+        expect(loadPublisherDraft(storage, 'legacy')?.imageFocus).toEqual(createImageFocusByTemplate());
     });
 });

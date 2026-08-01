@@ -126,7 +126,9 @@ Ein leerer Wert ist eine gültige Überschreibung und blendet beispielsweise Uhr
 
 Das Veranstaltungsbild kann für Vorschau und Export lokal durch eine JPEG-, PNG- oder WebP-Datei bis 20 MB ersetzt werden. Dafür wird ausschließlich eine temporäre Blob-URL im Browser erzeugt; es gibt keinen Upload und keine Änderung am ChurchTools-Termin. Beim Zurücksetzen, Terminwechsel oder Verlassen der Seite wird die URL wieder freigegeben.
 
-Textüberschreibungen, Template-Auswahl, Layoutzustände beider Templates, Rastereinstellung und Vorschauzoom werden pro Termin als versionierter Entwurf im `localStorage` des Browsers gespeichert und beim erneuten Öffnen wiederhergestellt. Fehlerhafte oder inkompatible Einträge werden ignoriert. Über die Oberfläche kann der aktuelle lokale Entwurf vollständig gelöscht werden. Ersatzbilder sind nicht Bestandteil des dauerhaften Entwurfs, weil ihre temporären Blob-URLs einen Seitenneustart nicht überleben.
+Der Fokuspunkt des Cover-Zuschnitts lässt sich horizontal und vertikal von 0 bis 100 Prozent verschieben. Beide Templates besitzen eigene Fokuswerte, weil ihre Bildflächen unterschiedliche Seitenverhältnisse verwenden. Die Einstellung wirkt auf Vorschau und Export.
+
+Textüberschreibungen, Template-Auswahl, Layoutzustände und Bildfokus beider Templates, Rastereinstellung und Vorschauzoom werden pro Termin als versionierter Entwurf im `localStorage` des Browsers gespeichert und beim erneuten Öffnen wiederhergestellt. Fehlerhafte oder inkompatible Einträge werden ignoriert. Über die Oberfläche kann der aktuelle lokale Entwurf vollständig gelöscht werden. Ersatzbilder sind nicht Bestandteil des dauerhaften Entwurfs, weil ihre temporären Blob-URLs einen Seitenneustart nicht überleben.
 
 ### Template-Auswahl
 

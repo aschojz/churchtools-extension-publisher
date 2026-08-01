@@ -178,6 +178,56 @@ textarea {
     background: #f7f9fb;
 }
 
+.image-focus-controls {
+    margin-bottom: 30px;
+    padding: 18px 22px;
+    border: 1px solid #ead8b9;
+    border-radius: 12px;
+    background: #fffaf1;
+}
+
+.image-focus-controls__header {
+    display: flex;
+    gap: 20px;
+    align-items: start;
+    justify-content: space-between;
+}
+
+.image-focus-controls h2 {
+    margin: 0 0 4px;
+    font-size: 20px;
+}
+
+.image-focus-controls p {
+    font-size: 14px;
+}
+
+.image-focus-controls__sliders {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+    margin-top: 18px;
+}
+
+.image-focus-controls__sliders label {
+    display: grid;
+    grid-template-columns: auto minmax(120px, 1fr) 48px;
+    gap: 10px;
+    align-items: center;
+    color: #4f4130;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.image-focus-controls__sliders input {
+    width: 100%;
+    accent-color: #a86e20;
+}
+
+.image-focus-controls__sliders output {
+    text-align: right;
+}
+
 .template-field__help,
 .local-image-override__selection,
 .local-image-override__error {
@@ -523,6 +573,7 @@ textarea {
 
 @media (max-width: 680px) {
     .layout-controls,
+    .image-focus-controls__header,
     .local-draft,
     .template-overrides__header,
     .template-section__header,
@@ -532,6 +583,10 @@ textarea {
     }
 
     .template-overrides__grid {
+        grid-template-columns: 1fr;
+    }
+
+    .image-focus-controls__sliders {
         grid-template-columns: 1fr;
     }
 
