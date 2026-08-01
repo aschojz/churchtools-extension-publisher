@@ -9,6 +9,7 @@ const props = defineProps<{
     rotation: number;
     selected: boolean;
     textConfig: Konva.TextConfig;
+    zIndex: number;
 }>();
 
 const emit = defineEmits<{
@@ -35,6 +36,7 @@ const finishTransform = (event: Konva.KonvaEventObject<Event>) => {
             name: 'editable-element',
             layoutElementId: elementId,
             rotation,
+            zIndex,
         }"
         @dragend="finishDrag"
         @transformend="finishTransform"

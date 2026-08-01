@@ -130,7 +130,7 @@ Die Oberfläche bietet zwei fest codierte 1920-×-1080-Templates: eine geteilte 
 
 ### Erste Layoutbearbeitung
 
-Titel, kombinierte Datums-/Uhrzeile und Ort können auf der Konva-Arbeitsfläche ausgewählt, verschoben, in Breite und Höhe verändert sowie frei gedreht werden. Der Konva-Transformer stellt dafür Größen- und Rotationsgriffe bereit. Zusätzlich erlaubt eine tastaturfähige Elementleiste dieselben Änderungen in festen Schritten. Auswahlrahmen und Transformer werden vor dem Export ausgeblendet. Positionen, Größen und normalisierte Winkel liegen als serialisierbare Werte im Vue-Zustand und nicht ausschließlich in den Konva-Nodes. Sie werden pro Template getrennt gehalten, bleiben innerhalb der Dokumentgrenzen und können auf die Ausgangswerte zurückgesetzt werden.
+Titel, kombinierte Datums-/Uhrzeile und Ort können auf der Konva-Arbeitsfläche ausgewählt, verschoben, in Breite und Höhe verändert sowie frei gedreht werden. Der Konva-Transformer stellt dafür Größen- und Rotationsgriffe bereit. Zusätzlich erlaubt eine tastaturfähige Elementleiste dieselben Änderungen in festen Schritten und kann die drei Texte schrittweise nach vorne oder hinten anordnen. Auswahlrahmen und Transformer werden vor dem Export ausgeblendet. Positionen, Größen, normalisierte Winkel und Ebenenreihenfolge liegen als serialisierbare Werte im Vue-Zustand und nicht ausschließlich in den Konva-Nodes. Sie werden pro Template getrennt gehalten, bleiben innerhalb der Dokumentgrenzen und können auf die Ausgangswerte zurückgesetzt werden.
 
 Raster-Snapping kann im Editor ein- und ausgeschaltet werden. Aktiv rasten Positionen und Größen nach einer direkten Konva-Interaktion auf 20 Pixel und Drehungen auf 15° ein; die zugänglichen Steuerelemente verwenden dieselben Schritte. Bei deaktiviertem Raster arbeiten die Steuerelemente mit 5 Pixeln beziehungsweise 5°. Automatische Hilfslinien zwischen Elementen sind noch nicht enthalten.
 
@@ -149,6 +149,6 @@ Empfehlung für den nächsten Ausbauschritt: **Konva weiterverwenden.**
 - Textumbruch, feste Textbereiche und Ellipsis reichen für den Durchstich aus.
 - Bild-Cropping im Cover-Stil ist mit dem nativen Crop-Rechteck direkt abbildbar.
 - Der PNG-Export ist deterministisch, sofern vorab auf Bilder und Fonts gewartet wird.
-- Auswahl, Transformer und Raster-Snapping funktionieren auf demselben Szenengraph; Ebenen und visuelle Hilfslinien können darauf aufbauen.
+- Auswahl, Transformer, Raster-Snapping und Ebenenreihenfolge funktionieren auf demselben Szenengraph; visuelle Hilfslinien können darauf aufbauen.
 
 Der End-to-End-Test gegen `joschatest.church.tools` wurde mit einem eigens angelegten Termin inklusive hochgeladenem Bild durchgeführt. Das ChurchTools-Bild ließ sich mit der realen CORS-Konfiguration laden, im Cover-Stil zuschneiden und als Bestandteil eines verifizierten PNGs mit exakt 1920 × 1080 Pixeln exportieren. Ein Bildfehler ist weiterhin sichtbar behandelt und fällt für Vorschau und Export auf die definierte Farbfläche zurück. Aktuell gibt es keinen konkreten Grund für einen Alternativ-Spike mit Fabric.js oder DOM/SVG.

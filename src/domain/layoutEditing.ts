@@ -23,6 +23,7 @@ export interface LayoutSize {
 export type LayoutOffsets = Record<LayoutElementId, LayoutPoint>;
 export type LayoutSizes = Record<LayoutElementId, LayoutSize>;
 export type LayoutRotations = Record<LayoutElementId, number>;
+export type LayoutOrder = LayoutElementId[];
 
 export const MIN_ELEMENT_WIDTH = 120;
 export const MIN_ELEMENT_HEIGHT = 50;
@@ -68,6 +69,24 @@ export const createLayoutRotations = (): LayoutRotations => ({
     dateTime: 0,
     location: 0,
 });
+
+export const createLayoutOrder = (): LayoutOrder => ['title', 'dateTime', 'location'];
+
+export const moveLayoutElementInOrder = (
+    order: LayoutOrder,
+    elementId: LayoutElementId,
+    direction: -1 | 1,
+): LayoutOrder => {
+    const currentIndex = order.indexOf(elementId);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= order.length) {
+        return order;
+    }
+
+    const nextOrder = [...order];
+    [nextOrder[currentIndex], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[currentIndex]];
+    return nextOrder;
+};
 
 export const clampLayoutPosition = (position: LayoutPoint, frame: LayoutFrame): LayoutPoint => ({
     x: Math.min(Math.max(position.x, 0), DOCUMENT_WIDTH - frame.width),

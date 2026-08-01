@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
     clampLayoutPosition,
+    createLayoutOrder,
     createLayoutOffsets,
     keepRotatedFrameInDocument,
     normalizeRotation,
+    moveLayoutElementInOrder,
     resizeLayoutFrame,
     snapLayoutPoint,
     snapLayoutSize,
@@ -72,5 +74,14 @@ describe('layout editing', () => {
         expect(snapLayoutSize({ width: 753, height: 307 }, true)).toEqual({ width: 760, height: 300 });
         expect(snapRotation(22, true)).toBe(15);
         expect(snapRotation(22, false)).toBe(22);
+    });
+
+    it('moves elements through a serializable layer order without crossing its bounds', () => {
+        const initialOrder = createLayoutOrder();
+        const movedOrder = moveLayoutElementInOrder(initialOrder, 'title', 1);
+
+        expect(movedOrder).toEqual(['dateTime', 'title', 'location']);
+        expect(initialOrder).toEqual(['title', 'dateTime', 'location']);
+        expect(moveLayoutElementInOrder(initialOrder, 'title', -1)).toBe(initialOrder);
     });
 });

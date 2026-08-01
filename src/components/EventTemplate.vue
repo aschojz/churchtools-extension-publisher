@@ -8,12 +8,14 @@ import EditableTextElement from './EditableTextElement.vue';
 import type { EventTemplateProps } from '../domain/EventTemplateProps';
 import {
     clampLayoutPosition,
+    createLayoutOrder,
     createLayoutOffsets,
     createLayoutRotations,
     createLayoutSizes,
     keepRotatedFrameInDocument,
     type LayoutElementId,
     type LayoutFrame,
+    moveLayoutElementInOrder,
     resizeLayoutFrame,
     snapLayoutPoint,
     snapLayoutSize,
@@ -38,6 +40,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     imageStatus: [status: ImageStatus];
     layoutChange: [changed: boolean];
+    layerPositionChange: [position: number, total: number];
     selectionChange: [elementId: LayoutElementId | null];
 }>();
 
@@ -60,6 +63,10 @@ const layoutSizes = ref<Record<TemplateId, ReturnType<typeof createLayoutSizes>>
 const layoutRotations = ref<Record<TemplateId, ReturnType<typeof createLayoutRotations>>>({
     split: createLayoutRotations(),
     poster: createLayoutRotations(),
+});
+const layoutOrder = ref<Record<TemplateId, ReturnType<typeof createLayoutOrder>>>({
+    split: createLayoutOrder(),
+    poster: createLayoutOrder(),
 });
 let resizeObserver: ResizeObserver | undefined;
 
@@ -134,16 +141,23 @@ const imageConfig = computed(() => ({
 }));
 
 const dateAndTime = computed(() => [props.template.date, props.template.time].filter(Boolean).join(' · '));
-const currentLayoutChanged = computed(() =>
-    (Object.entries(layoutOffsets.value[props.templateId]) as [LayoutElementId, { x: number; y: number }][]).some(
+const currentLayoutChanged = computed(() => {
+    const geometryChanged = (
+        Object.entries(layoutOffsets.value[props.templateId]) as [LayoutElementId, { x: number; y: number }][]
+    ).some(
         ([elementId, { x, y }]) => {
             const size = layoutSizes.value[props.templateId][elementId];
             const base = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
             const rotation = layoutRotations.value[props.templateId][elementId];
             return x !== 0 || y !== 0 || size.width !== base.width || size.height !== base.height || rotation !== 0;
         },
-    ),
-);
+    );
+    const defaultOrder = createLayoutOrder();
+    const orderChanged = layoutOrder.value[props.templateId].some(
+        (elementId, index) => elementId !== defaultOrder[index],
+    );
+    return geometryChanged || orderChanged;
+});
 
 const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
     const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
@@ -173,9 +187,20 @@ const syncTransformer = async () => {
     transformer.getLayer()?.batchDraw();
 };
 
+const emitLayerPosition = () => {
+    if (!selectedElement.value) {
+        emit('layerPositionChange', 0, 0);
+        return;
+    }
+
+    const order = layoutOrder.value[props.templateId];
+    emit('layerPositionChange', order.indexOf(selectedElement.value) + 1, order.length);
+};
+
 const selectElement = (elementId: LayoutElementId) => {
     selectedElement.value = elementId;
     emit('selectionChange', elementId);
+    emitLayerPosition();
     void syncTransformer();
 };
 
@@ -309,12 +334,31 @@ const rotateSelectedElement = (deltaRotation: number) => {
     void syncTransformer();
 };
 
+const changeSelectedLayer = (direction: -1 | 1) => {
+    if (!selectedElement.value) {
+        return;
+    }
+
+    const currentOrder = layoutOrder.value[props.templateId];
+    const nextOrder = moveLayoutElementInOrder(currentOrder, selectedElement.value, direction);
+    if (nextOrder === currentOrder) {
+        return;
+    }
+
+    layoutOrder.value[props.templateId] = nextOrder;
+    emit('layoutChange', currentLayoutChanged.value);
+    emitLayerPosition();
+    void syncTransformer();
+};
+
 const resetLayout = () => {
     layoutOffsets.value[props.templateId] = createLayoutOffsets();
     layoutSizes.value[props.templateId] = createLayoutSizes(props.templateId);
     layoutRotations.value[props.templateId] = createLayoutRotations();
+    layoutOrder.value[props.templateId] = createLayoutOrder();
     selectedElement.value = null;
     emit('selectionChange', null);
+    emitLayerPosition();
     emit('layoutChange', false);
 };
 
@@ -355,6 +399,7 @@ watch(
     () => {
         selectedElement.value = null;
         emit('selectionChange', null);
+        emitLayerPosition();
         emit('layoutChange', currentLayoutChanged.value);
         void syncTransformer();
     },
@@ -411,6 +456,7 @@ const exportPng = async () => {
 };
 
 defineExpose({
+    changeSelectedLayer,
     exportPng,
     nudgeSelectedElement,
     resetLayout,
@@ -442,11 +488,14 @@ defineExpose({
                         letterSpacing: 8,
                     }"
                 />
+                <v-rect :config="{ x: 1030, y: 485, width: 120, height: 8, fill: '#f3b562' }" />
+                <v-group>
                 <EditableTextElement
                     element-id="title"
                     :frame="elementFrame('title')"
                     :rotation="layoutRotations[templateId].title"
                     :selected="selectedElement === 'title' && !isExporting"
+                    :z-index="layoutOrder[templateId].indexOf('title')"
                     :text-config="{
                         text: template.title,
                         fill: '#ffffff',
@@ -460,12 +509,12 @@ defineExpose({
                     @move="moveElement"
                     @resize="resizeElement"
                 />
-                <v-rect :config="{ x: 1030, y: 485, width: 120, height: 8, fill: '#f3b562' }" />
                 <EditableTextElement
                     element-id="dateTime"
                     :frame="elementFrame('dateTime')"
                     :rotation="layoutRotations[templateId].dateTime"
                     :selected="selectedElement === 'dateTime' && !isExporting"
+                    :z-index="layoutOrder[templateId].indexOf('dateTime')"
                     :text-config="{
                         text: dateAndTime,
                         fill: '#f3b562',
@@ -483,6 +532,7 @@ defineExpose({
                     :frame="elementFrame('location')"
                     :rotation="layoutRotations[templateId].location"
                     :selected="selectedElement === 'location' && !isExporting"
+                    :z-index="layoutOrder[templateId].indexOf('location')"
                     :text-config="{
                         text: template.location,
                         fill: '#d8dee8',
@@ -495,6 +545,7 @@ defineExpose({
                     @move="moveElement"
                     @resize="resizeElement"
                 />
+                </v-group>
                 <v-text
                     :config="{
                         x: 1030,
@@ -527,11 +578,14 @@ defineExpose({
                         opacity: imageStatus === 'loaded' ? 0.68 : 0.35,
                     }"
                 />
+                <v-rect :config="{ x: 820, y: 610, width: 280, height: 8, fill: '#f3b562' }" />
+                <v-group>
                 <EditableTextElement
                     element-id="title"
                     :frame="elementFrame('title')"
                     :rotation="layoutRotations[templateId].title"
                     :selected="selectedElement === 'title' && !isExporting"
+                    :z-index="layoutOrder[templateId].indexOf('title')"
                     :text-config="{
                         text: template.title,
                         align: 'center',
@@ -546,12 +600,12 @@ defineExpose({
                     @move="moveElement"
                     @resize="resizeElement"
                 />
-                <v-rect :config="{ x: 820, y: 610, width: 280, height: 8, fill: '#f3b562' }" />
                 <EditableTextElement
                     element-id="dateTime"
                     :frame="elementFrame('dateTime')"
                     :rotation="layoutRotations[templateId].dateTime"
                     :selected="selectedElement === 'dateTime' && !isExporting"
+                    :z-index="layoutOrder[templateId].indexOf('dateTime')"
                     :text-config="{
                         text: dateAndTime,
                         align: 'center',
@@ -569,6 +623,7 @@ defineExpose({
                     :frame="elementFrame('location')"
                     :rotation="layoutRotations[templateId].location"
                     :selected="selectedElement === 'location' && !isExporting"
+                    :z-index="layoutOrder[templateId].indexOf('location')"
                     :text-config="{
                         text: template.location,
                         align: 'center',
@@ -582,6 +637,7 @@ defineExpose({
                     @move="moveElement"
                     @resize="resizeElement"
                 />
+                </v-group>
                 <v-text
                     :config="{
                         x: 160,

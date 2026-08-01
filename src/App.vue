@@ -26,6 +26,8 @@ const templateOverrides = ref<EventTemplateOverrides>({});
 const selectedTemplateId = ref<TemplateId>('split');
 const layoutChanged = ref(false);
 const selectedLayoutElement = ref<LayoutElementId | null>(null);
+const selectedLayerPosition = ref(0);
+const selectedLayerTotal = ref(0);
 const snapEnabled = ref(true);
 const layoutStep = computed(() => (snapEnabled.value ? 20 : 5));
 const rotationStep = computed(() => (snapEnabled.value ? 15 : 5));
@@ -146,6 +148,15 @@ const resizeLayoutElement = (deltaWidth: number, deltaHeight: number) => {
 
 const rotateLayoutElement = (deltaRotation: number) => {
     templateRef.value?.rotateSelectedElement(deltaRotation);
+};
+
+const changeSelectedLayer = (direction: -1 | 1) => {
+    templateRef.value?.changeSelectedLayer(direction);
+};
+
+const updateLayerPosition = (position: number, total: number) => {
+    selectedLayerPosition.value = position;
+    selectedLayerTotal.value = total;
 };
 
 const formatAppointmentDate = ({ appointment }: AppointmentCalculatedWithIncludes) => {
@@ -353,7 +364,7 @@ const exportPng = async () => {
                 <div class="layout-controls">
                     <div>
                         <h2>Layout anpassen</h2>
-                        <p>Wähle Titel, Datum/Uhrzeit oder Ort aus. Anschließend kannst du den Bereich verschieben, skalieren oder drehen.</p>
+                        <p>Wähle Titel, Datum/Uhrzeit oder Ort aus. Anschließend kannst du den Bereich verschieben, skalieren, drehen oder in der Ebenenreihenfolge ändern.</p>
                         <label class="layout-controls__snap">
                             <input v-model="snapEnabled" type="checkbox" />
                             Am 20-Pixel-Raster und an 15°-Winkeln ausrichten
@@ -387,6 +398,23 @@ const exportPng = async () => {
                         <div v-if="selectedLayoutElement" class="layout-controls__rotations" aria-label="Element drehen">
                             <button type="button" @click="rotateLayoutElement(-rotationStep)">−{{ rotationStep }}° drehen</button>
                             <button type="button" @click="rotateLayoutElement(rotationStep)">+{{ rotationStep }}° drehen</button>
+                        </div>
+                        <div v-if="selectedLayoutElement" class="layout-controls__layers" aria-label="Ebenenreihenfolge ändern">
+                            <span>Ebene {{ selectedLayerPosition }} von {{ selectedLayerTotal }}</span>
+                            <button
+                                type="button"
+                                :disabled="selectedLayerPosition <= 1"
+                                @click="changeSelectedLayer(-1)"
+                            >
+                                Nach hinten
+                            </button>
+                            <button
+                                type="button"
+                                :disabled="selectedLayerPosition >= selectedLayerTotal"
+                                @click="changeSelectedLayer(1)"
+                            >
+                                Nach vorne
+                            </button>
                         </div>
                     </div>
                     <button
@@ -423,6 +451,7 @@ const exportPng = async () => {
                     :template-id="selectedTemplateId"
                     :snap-enabled="snapEnabled"
                     @image-status="imageStatus = $event"
+                    @layer-position-change="updateLayerPosition"
                     @layout-change="layoutChanged = $event"
                     @selection-change="selectedLayoutElement = $event"
                 />
