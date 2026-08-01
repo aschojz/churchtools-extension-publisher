@@ -1,0 +1,188 @@
+:root {
+    color: #17202a;
+    background: #f4f6f8;
+    font-family: Lato, ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+    min-width: 320px;
+    min-height: 100vh;
+}
+
+button,
+input,
+select {
+    font: inherit;
+}
+
+.publisher-page {
+    display: grid;
+    min-height: 100vh;
+    padding: clamp(24px, 6vw, 80px);
+    place-items: center;
+}
+
+.publisher-card {
+    width: min(100%, 1320px);
+    padding: clamp(28px, 5vw, 56px);
+    border: 1px solid #dfe4e8;
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 18px 45px rgb(23 32 42 / 8%);
+}
+
+.publisher-card__header {
+    margin-bottom: 36px;
+}
+
+.publisher-card__eyebrow,
+.appointment-summary__label {
+    margin: 0 0 8px;
+    color: #5d6d7e;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.publisher-card h1 {
+    margin: 0 0 20px;
+    font-size: clamp(36px, 7vw, 64px);
+    line-height: 1;
+}
+
+.publisher-card p {
+    max-width: 58ch;
+    margin: 0;
+    color: #43515e;
+    line-height: 1.6;
+}
+
+.appointment-picker {
+    display: grid;
+    gap: 10px;
+}
+
+.appointment-picker label {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.appointment-picker select {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 42px 0 14px;
+    border: 1px solid #aeb8c2;
+    border-radius: 8px;
+    background: #fff;
+    color: #17202a;
+}
+
+.appointment-picker select:focus {
+    border-color: #3478c7;
+    outline: 3px solid rgb(52 120 199 / 18%);
+}
+
+.status-message {
+    padding: 14px 16px;
+    border-radius: 8px;
+    background: #edf3f8;
+}
+
+.status-message--error {
+    background: #fdeceb;
+    color: #9f2d25 !important;
+}
+
+.appointment-summary {
+    margin-top: 28px;
+    padding: 24px;
+    border-radius: 12px;
+    background: #f5f8fb;
+}
+
+.appointment-summary h2 {
+    margin: 0 0 10px;
+    font-size: 24px;
+}
+
+.template-status,
+.template-section {
+    margin-top: 28px;
+}
+
+.template-section__header {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+
+.template-section__header h2 {
+    margin: 0;
+    font-size: 24px;
+}
+
+.template-section__header button {
+    flex: none;
+    min-height: 44px;
+    padding: 0 18px;
+    border: 0;
+    border-radius: 8px;
+    background: #2768ad;
+    color: #fff;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.template-section__header button:hover:not(:disabled) {
+    background: #1f568f;
+}
+
+.template-section__header button:focus-visible {
+    outline: 3px solid rgb(52 120 199 / 28%);
+    outline-offset: 2px;
+}
+
+.template-section__header button:disabled {
+    cursor: wait;
+    opacity: 0.6;
+}
+
+.status-message--warning {
+    margin-bottom: 14px !important;
+    background: #fff4d8;
+    color: #76520d !important;
+}
+
+.status-message--success {
+    margin-bottom: 14px !important;
+    background: #e5f5ea;
+    color: #236a39 !important;
+}
+
+.template-preview {
+    width: 100%;
+    overflow: hidden;
+    border-radius: 10px;
+    background: #172235;
+    box-shadow: 0 12px 30px rgb(23 32 42 / 16%);
+}
+
+.template-preview canvas {
+    display: block;
+}
+
+.publisher-card__meta {
+    margin-top: 32px !important;
+    color: #71808e !important;
+    font-size: 13px;
+}
+
+@media (max-width: 680px) {
+    .template-section__header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}

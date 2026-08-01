@@ -1,114 +1,134 @@
-# ChurchTools Extension Boilerplate
+# ChurchTools Publisher
 
-This project provides a boilerplate for building your own extension for [ChurchTools](https://www.church.tools).
+Technischer Durchstich für einen späteren grafischen Publisher innerhalb einer ChurchTools-Extension.
 
-## Getting Started
+Der aktuelle Stand umfasst den vollständigen ersten technischen Durchstich: Terminauswahl, Detailabruf, isoliertes Prop-Mapping, ein festes Konva-Testlayout, responsive Vorschau und PNG-Export in 1920 × 1080 Pixeln.
 
-### Prerequisites
+## Lokale Entwicklung
 
--   Node.js (version compatible with the project)
--   npm or yarn
+Vorausgesetzt werden das ChurchTools-Monorepo und dieses Repository als Geschwisterverzeichnisse:
 
-### Installation
+```text
+git/
+├── churchtools/
+└── extension-publisher-gpt/
+```
 
-1. Clone the repository
-2. Install dependencies:
-    ```bash
-    npm install
-    ```
-
-### Optional: Using Dev Container
-
-This project includes a dev container configuration. If you use VS Code with the "Dev Containers" extension, you can:
-
-1. Clone the repository
-2. Open it in VS Code
-3. Click the Remote Indicator in the bottom-left corner of VS Code status bar
-4. Select "Reopen in Container"
-
-The container includes the tools mentioned in the prerequisites pre-installed and also runs `npm install` on startup.
-
-## Configuration
-
-Copy `.env-example` to `.env` and fill in your data.
-
-In the `.env` file, configure the necessary constants for your project. This file is included in `.gitignore` to prevent sensitive data from being committed to version control.
-
-## Development and Deployment
-
-### Development Server
-
-Start a development server with hot-reload:
+Die internen Pakete werden lokal aus `../churchtools/frontend-packages/` eingebunden. Sie sind nicht in der öffentlichen npm Registry verfügbar. Nach Änderungen an diesen Paketen muss gegebenenfalls erneut `npm install` ausgeführt werden.
 
 ```bash
+npm install
 npm run dev
 ```
 
-> **Note:** For local development, make sure to configure CORS in your ChurchTools
-> instance to allow requests from your local development server
-> (typically `http://localhost:5173`).
-> This can be done in the ChurchTools admin settings under:
-> "System Settings" > "Integrations" > "API" > "Cross-Origin Resource Sharing"
->
-> If login works in Chrome but not in Safari, the issue is usually that Safari has stricter cookie handling:
-> - Safari blocks `Secure; SameSite=None` cookies on `http://localhost` (Chrome allows them in dev).
-> - Safari also blocks cookies if the API is on another domain (third‑party cookies).
->
-> **Fix:**
-> 1. Use a Vite proxy so API calls go through your local server (`/api → https://xyz.church.tools`). This makes cookies look first‑party.
-> 2. Run your dev server with **HTTPS**. You can generate a local trusted certificate with [mkcert](https://github.com/FiloSottile/mkcert).
->
-> With proxy + HTTPS, Safari will accept and store cookies just like Chrome.
+Die lokale Konfiguration liegt in `.env` und wird nicht versioniert. Grundlage ist `.env-example`:
 
-### Building for Production
+```dotenv
+VITE_KEY=publisher
+VITE_BASE_URL=https://example.church.tools
+VITE_USERNAME=...
+VITE_PASSWORD=...
+```
 
-To create a production build:
+Der Vite-Basispfad ist `/ccm/<VITE_KEY>/`. Anmeldung, API-Basis-URL und Produktionseinbettung folgen dem offiziellen Boilerplate.
+
+## Verifikation
 
 ```bash
+npm run typecheck
+npm test
 npm run build
 ```
 
-### Preview Production Build
+Der Boilerplate enthält keinen Lint-Runner. Für Mapper und Stage-Abmessungen ist Vitest eingerichtet.
 
-To preview the production build locally:
+## Untersuchte ChurchTools-Infrastruktur
 
-```bash
-npm run preview
+Ausgangspunkt ist das offizielle Repository `churchtools/extension-boilerplate`, untersucht auf Stand `c723b0154f751412eced661e9c2384f4f5632775` vom 5. Dezember 2025.
+
+Die Extension verwendet lokal:
+
+- `@churchtools/churchtools-client` für Anmeldung und HTTP-Zugriff
+- `@churchtools/api-types` für generierte OpenAPI-Typen
+- `@churchtools/vue-query` für vorhandene TanStack-Query-Composables
+- `@churchtools/utils` als transitive Voraussetzung der Query-Abstraktion
+- `@tanstack/vue-query` und Vue 3 als Laufzeitbasis
+
+### Terminauswahl
+
+Die Seite lädt zunächst die sichtbaren Kalender mit `useCalendarsQuery()` aus `@churchtools/vue-query`. Anschließend ruft ein kleiner lokaler Query-Composable alle Termine dieser Kalender von heute bis zwölf Monate im Voraus ab:
+
+```text
+GET /calendars/appointments?calendar_ids[]=…&from=…&to=…
 ```
 
-### Deployment
+Die Antwort verwendet den generierten Typ `AppointmentCalculatedWithIncludes`. Die Optionen werden chronologisch sortiert und durch Termin-ID plus konkretem Startzeitpunkt eindeutig identifiziert. Datum und Uhrzeit im Select richten sich nach der Benutzersprache; Ganztagstermine zeigen keine Uhrzeit.
 
-To build and package your extension for deployment:
+Das Monorepo exportiert außerdem `useAppointmentQuery()` aus `@churchtools/vue-query`. Der Hook verwendet:
 
-```bash
-npm run deploy
+```text
+GET /calendars/appointments/{appointmentId}/{startDate}
 ```
 
-This command will:
+und liefert ebenfalls `AppointmentCalculatedWithIncludes`. Er benötigt zwingend sowohl die Termin-ID als auch das Datum eines konkreten Vorkommens. Genau diese beiden Werte stehen nach der Auswahl einer Listenoption zur Verfügung und werden für den gezielten Detailabruf verwendet.
 
-1. Build the project
-2. Package it using the `scripts/package.js` script
+Für eine Terminserie existiert außerdem:
 
-You can find the package in the `releases` directory.
+```text
+GET /calendars/{calendarId}/appointments/{appointmentId}
+```
 
-## API
+mit dem Antworttyp `AppointmentCalculated`. Dieser enthält `appointment: AppointmentBase` und die berechneten Vorkommen in `calculatedDates`, wird für die Listenauswahl aber nicht benötigt.
 
-Following endpoints are available. Permissions are possible per route. Types are documented in `ct-types.d.ts` (CustomModuleCreate, CustomModuleDataCategoryCreate, CustomModuleDataValueCreate)
+### Relevante Felder
 
-GET `/custommodules` get all extensions  
-GET `/custommodules/{extensionkey}` get an extensions by its key  
-GET `/custommodules/{moduleId}` get an extension by its ID
+`AppointmentBase` enthält die für das spätere Prop-Mapping benötigten Werte:
 
-GET `/custommodules/{moduleId}/customdatacategories`  
-POST `/custommodules/{moduleId}/customdatacategories`  
-PUT `/custommodules/{moduleId}/customdatacategories/{dataCategoryId}`  
-DELETE `/custommodules/{moduleId}/customdatacategories/{dataCategoryId}`
+- Titel: `title`
+- Zeitraum: berechnetes `startDate` und `endDate`
+- Ganztägig: `allDay`
+- Ort: `address`, insbesondere `meetingAt`, Straße, PLZ und Ort
+- Bild: `image?.imageUrl`
 
-GET `/custommodules/{moduleId}/customdatacategories/{dataCategoryId}/customdatavalues`  
-POST `/custommodules/{moduleId}/customdatacategories/{dataCategoryId}/customdatavalues`  
-PUT `/custommodules/{moduleId}/customdatacategories/{dataCategoryId}/customdatavalues/{valueId}`  
-DELETE `/custommodules/{moduleId}/customdatacategories/{dataCategoryId}/customdatavalues/{valueId}`
+Das Bildmodell `Image` stellt zusätzlich `fileUrl`, `relativeUrl`, Crop-/Focus-Optionen und Metadaten bereit. Für das Testtemplate ist zunächst `imageUrl` vorgesehen.
 
-## Support
+### Sprache und Zeitzone
 
-For questions about the ChurchTools API, visit the [Forum](https://forum.church.tools).
+Innerhalb von ChurchTools steht die Benutzersprache über `window.settings.language` bereit. Lokal wird auf `navigator.language` zurückgefallen. Für Datum und Uhrzeit soll `Intl.DateTimeFormat` mit dieser Sprache verwendet werden. Die Instanz-Zeitzone kann über `window.settings.timezone` berücksichtigt werden; bis diese verfügbar ist, greift die Browser-Zeitzone als Fallback.
+
+Die vorhandenen Formatierungshelfer aus `@churchtools/utils` hängen teilweise von globaler ChurchTools-Übersetzung und `date-fns`-Locale ab. Für das kleine darstellungsorientierte Prop-Modell wird deshalb die native `Intl`-API verwendet.
+
+## Mapping und Template
+
+`mapAppointmentToTemplateProps()` nimmt nur den benötigten Ausschnitt des generierten Appointment-Typs entgegen und erzeugt:
+
+```ts
+interface EventTemplateProps {
+    title: string;
+    date: string;
+    time: string;
+    location: string;
+    imageUrl: string | null;
+}
+```
+
+Das Konva-Template kennt weder Query-Zustand noch Appointment-ID oder ChurchTools-Response. Es rendert ausschließlich diese Props. Fehlende Uhrzeit und fehlender Ort erzeugen keine Leerzeilen; ohne Bild erscheint eine definierte Fallback-Fläche. Der Titel ist auf einen festen Bereich mit maximal drei sichtbaren Zeilen und Ellipsis begrenzt.
+
+## Vorschau und Export
+
+Die Dokumentgröße bleibt immer 1920 × 1080 Pixel. Ein `ResizeObserver` ermittelt ausschließlich die Vorschau-Skalierung. Für den Export wird die Stage kurz auf die unveränderte Dokumentgröße mit Skalierung 1 gesetzt und anschließend auf den Vorschauzustand zurückgestellt. Dadurch entstehen keine Rundungsfehler durch gebrochene Vorschaugrößen.
+
+Vor dem Download werden Schriftarten und ein vorhandenes Bild abgewartet. Das erzeugte PNG wird anschließend mit `createImageBitmap()` geprüft; nur ein tatsächliches Bild mit exakt 1920 × 1080 Pixeln wird heruntergeladen. Der Browser-Test gegen die konfigurierte Instanz bestätigt Auswahl, Detailabruf, Fallback-Rendering und die exakte Exportgröße.
+
+## Konva-Bewertung
+
+Empfehlung für den nächsten Ausbauschritt: **Konva weiterverwenden.**
+
+- Die deklarative Vue-3-Integration ist für ein festes Template nachvollziehbar.
+- Dokumentkoordinaten und responsive Vorschau lassen sich sauber trennen.
+- Textumbruch, feste Textbereiche und Ellipsis reichen für den Durchstich aus.
+- Bild-Cropping im Cover-Stil ist mit dem nativen Crop-Rechteck direkt abbildbar.
+- Der PNG-Export ist deterministisch, sofern vorab auf Bilder und Fonts gewartet wird.
+- Auswahl, Transformer, Ebenen und Snapping können später auf demselben Szenengraph ergänzt werden.
+
+Der End-to-End-Test gegen `joschatest.church.tools` wurde mit einem eigens angelegten Termin inklusive hochgeladenem Bild durchgeführt. Das ChurchTools-Bild ließ sich mit der realen CORS-Konfiguration laden, im Cover-Stil zuschneiden und als Bestandteil eines verifizierten PNGs mit exakt 1920 × 1080 Pixeln exportieren. Ein Bildfehler ist weiterhin sichtbar behandelt und fällt für Vorschau und Export auf die definierte Farbfläche zurück. Aktuell gibt es keinen konkreten Grund für einen Alternativ-Spike mit Fabric.js oder DOM/SVG.

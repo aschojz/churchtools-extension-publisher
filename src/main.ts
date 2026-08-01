@@ -1,17 +1,19 @@
-import type { Person } from './utils/ct-types';
 import { churchtoolsClient } from '@churchtools/churchtools-client';
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
+import { createApp } from 'vue';
+import VueKonva from 'vue-konva/core';
+
+import 'konva/lib/shapes/Image';
+import 'konva/lib/shapes/Rect';
+import 'konva/lib/shapes/Text';
+
+import App from './App.vue';
+import './styles.css';
 
 // only import reset.css in development mode to keep the production bundle small and to simulate CT environment
 if (import.meta.env.MODE === 'development') {
     import('./utils/reset.css');
 }
-
-declare const window: Window &
-    typeof globalThis & {
-        settings: {
-            base_url?: string;
-        };
-    };
 
 const baseUrl = window.settings?.base_url ?? import.meta.env.VITE_BASE_URL;
 churchtoolsClient.setBaseUrl(baseUrl);
@@ -25,10 +27,13 @@ if (import.meta.env.MODE === 'development' && username && password) {
 const KEY = import.meta.env.VITE_KEY;
 export { KEY };
 
-const user = await churchtoolsClient.get<Person>(`/whoami`);
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            retry: 1,
+            staleTime: 60_000,
+        },
+    },
+});
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <div style="display: flex; place-content: center; place-items: center; height: 100vh;">
-    <h1>Welcome ${[user.firstName, user.lastName].join(' ')}</h1>
-  </div>
-`;
+createApp(App).use(VueQueryPlugin, { queryClient }).use(VueKonva).mount('#app');
