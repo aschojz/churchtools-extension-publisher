@@ -137,6 +137,10 @@ const nudgeLayoutElement = (deltaX: number, deltaY: number) => {
     templateRef.value?.nudgeSelectedElement(deltaX, deltaY);
 };
 
+const resizeLayoutElement = (deltaWidth: number, deltaHeight: number) => {
+    templateRef.value?.resizeSelectedElement(deltaWidth, deltaHeight);
+};
+
 const formatAppointmentDate = ({ appointment }: AppointmentCalculatedWithIncludes) => {
     const { base, calculated } = appointment;
     const options: Intl.DateTimeFormatOptions = base.allDay
@@ -342,7 +346,7 @@ const exportPng = async () => {
                 <div class="layout-controls">
                     <div>
                         <h2>Layout anpassen</h2>
-                        <p>Wähle Titel, Datum/Uhrzeit oder Ort direkt in der Vorschau aus und ziehe das Element an eine neue Position.</p>
+                        <p>Wähle Titel, Datum/Uhrzeit oder Ort aus. Anschließend kannst du den Bereich verschieben oder seine Größe verändern.</p>
                         <p v-if="selectedLayoutElement" class="layout-controls__selection" role="status">
                             Ausgewählt: {{ layoutElementLabels[selectedLayoutElement] }}
                         </p>
@@ -362,6 +366,12 @@ const exportPng = async () => {
                             <button type="button" aria-label="Nach oben verschieben" @click="nudgeLayoutElement(0, -20)">↑</button>
                             <button type="button" aria-label="Nach unten verschieben" @click="nudgeLayoutElement(0, 20)">↓</button>
                             <button type="button" aria-label="Nach rechts verschieben" @click="nudgeLayoutElement(20, 0)">→</button>
+                        </div>
+                        <div v-if="selectedLayoutElement" class="layout-controls__sizes" aria-label="Elementgröße ändern">
+                            <button type="button" @click="resizeLayoutElement(-20, 0)">Schmaler</button>
+                            <button type="button" @click="resizeLayoutElement(20, 0)">Breiter</button>
+                            <button type="button" @click="resizeLayoutElement(0, -20)">Flacher</button>
+                            <button type="button" @click="resizeLayoutElement(0, 20)">Höher</button>
                         </div>
                     </div>
                     <button

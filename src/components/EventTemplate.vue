@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type Konva from 'konva';
+import type { Box } from 'konva/lib/shapes/Transformer';
 import type { VueKonvaRef } from 'vue-konva';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 
@@ -8,8 +9,10 @@ import type { EventTemplateProps } from '../domain/EventTemplateProps';
 import {
     clampLayoutPosition,
     createLayoutOffsets,
+    createLayoutSizes,
     type LayoutElementId,
     type LayoutFrame,
+    resizeLayoutFrame,
     TEMPLATE_ELEMENT_FRAMES,
 } from '../domain/layoutEditing';
 import type { TemplateId } from '../domain/templates';
@@ -34,6 +37,7 @@ const emit = defineEmits<{
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const stageRef = ref<VueKonvaRef<Konva.Stage> | null>(null);
+const transformerRef = ref<VueKonvaRef<Konva.Transformer> | null>(null);
 const containerWidth = ref(DOCUMENT_WIDTH);
 const image = shallowRef<HTMLImageElement | null>(null);
 const imageStatus = ref<ImageStatus>('idle');
@@ -42,6 +46,10 @@ const isExporting = ref(false);
 const layoutOffsets = ref<Record<TemplateId, ReturnType<typeof createLayoutOffsets>>>({
     split: createLayoutOffsets(),
     poster: createLayoutOffsets(),
+});
+const layoutSizes = ref<Record<TemplateId, ReturnType<typeof createLayoutSizes>>>({
+    split: createLayoutSizes('split'),
+    poster: createLayoutSizes('poster'),
 });
 let resizeObserver: ResizeObserver | undefined;
 
@@ -52,6 +60,25 @@ const stageConfig = computed(() => ({
     scaleX: previewScale.value,
     scaleY: previewScale.value,
 }));
+const transformerConfig = {
+    rotateEnabled: false,
+    flipEnabled: false,
+    keepRatio: false,
+    enabledAnchors: ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'],
+    anchorFill: '#ffffff',
+    anchorStroke: '#2479c5',
+    anchorSize: 18,
+    borderStroke: '#2479c5',
+    borderStrokeWidth: 4,
+    boundBoxFunc: (oldBox: Box, newBox: Box) => {
+        const insideDocument =
+            newBox.x >= 0 &&
+            newBox.y >= 0 &&
+            newBox.x + newBox.width <= DOCUMENT_WIDTH &&
+            newBox.y + newBox.height <= DOCUMENT_HEIGHT;
+        return newBox.width >= 120 && newBox.height >= 50 && insideDocument ? newBox : oldBox;
+    },
+};
 
 const imageCrop = computed(() => {
     if (!image.value) {
@@ -93,22 +120,47 @@ const imageConfig = computed(() => ({
 
 const dateAndTime = computed(() => [props.template.date, props.template.time].filter(Boolean).join(' · '));
 const currentLayoutChanged = computed(() =>
-    Object.values(layoutOffsets.value[props.templateId]).some(({ x, y }) => x !== 0 || y !== 0),
+    (Object.entries(layoutOffsets.value[props.templateId]) as [LayoutElementId, { x: number; y: number }][]).some(
+        ([elementId, { x, y }]) => {
+            const size = layoutSizes.value[props.templateId][elementId];
+            const base = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+            return x !== 0 || y !== 0 || size.width !== base.width || size.height !== base.height;
+        },
+    ),
 );
 
 const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
     const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
     const offset = layoutOffsets.value[props.templateId][elementId];
+    const size = layoutSizes.value[props.templateId][elementId];
     return {
         ...baseFrame,
         x: baseFrame.x + offset.x,
         y: baseFrame.y + offset.y,
+        width: size.width,
+        height: size.height,
     };
+};
+
+const syncTransformer = async () => {
+    await nextTick();
+    const transformer = transformerRef.value?.getNode();
+    const stage = stageRef.value?.getNode();
+    if (!transformer || !stage) {
+        return;
+    }
+
+    const selectedNode = selectedElement.value
+        ? stage.findOne(`#editable-${selectedElement.value}`)
+        : undefined;
+    transformer.nodes(selectedNode && !isExporting.value ? [selectedNode] : []);
+    transformer.getLayer()?.batchDraw();
 };
 
 const selectElement = (elementId: LayoutElementId) => {
     selectedElement.value = elementId;
     emit('selectionChange', elementId);
+    void syncTransformer();
 };
 
 const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -122,13 +174,40 @@ const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEven
 
 const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
     const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
-    const position = clampLayoutPosition(event.target.position(), baseFrame);
+    const position = clampLayoutPosition(event.target.position(), elementFrame(elementId));
     event.target.position(position);
     layoutOffsets.value[props.templateId][elementId] = {
         x: position.x - baseFrame.x,
         y: position.y - baseFrame.y,
     };
     emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
+};
+
+const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<Event>) => {
+    const node = event.target;
+    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+    const currentFrame = elementFrame(elementId);
+    const resizedFrame = resizeLayoutFrame(
+        { ...currentFrame, x: node.x(), y: node.y() },
+        {
+            width: currentFrame.width * Math.abs(node.scaleX()),
+            height: currentFrame.height * Math.abs(node.scaleY()),
+        },
+    );
+
+    node.scale({ x: 1, y: 1 });
+    node.position({ x: resizedFrame.x, y: resizedFrame.y });
+    layoutOffsets.value[props.templateId][elementId] = {
+        x: resizedFrame.x - baseFrame.x,
+        y: resizedFrame.y - baseFrame.y,
+    };
+    layoutSizes.value[props.templateId][elementId] = {
+        width: resizedFrame.width,
+        height: resizedFrame.height,
+    };
+    emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
 };
 
 const nudgeSelectedElement = (deltaX: number, deltaY: number) => {
@@ -141,17 +220,37 @@ const nudgeSelectedElement = (deltaX: number, deltaY: number) => {
     const currentFrame = elementFrame(elementId);
     const position = clampLayoutPosition(
         { x: currentFrame.x + deltaX, y: currentFrame.y + deltaY },
-        baseFrame,
+        currentFrame,
     );
     layoutOffsets.value[props.templateId][elementId] = {
         x: position.x - baseFrame.x,
         y: position.y - baseFrame.y,
     };
     emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
+};
+
+const resizeSelectedElement = (deltaWidth: number, deltaHeight: number) => {
+    if (!selectedElement.value) {
+        return;
+    }
+
+    const elementId = selectedElement.value;
+    const resizedFrame = resizeLayoutFrame(elementFrame(elementId), {
+        width: elementFrame(elementId).width + deltaWidth,
+        height: elementFrame(elementId).height + deltaHeight,
+    });
+    layoutSizes.value[props.templateId][elementId] = {
+        width: resizedFrame.width,
+        height: resizedFrame.height,
+    };
+    emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
 };
 
 const resetLayout = () => {
     layoutOffsets.value[props.templateId] = createLayoutOffsets();
+    layoutSizes.value[props.templateId] = createLayoutSizes(props.templateId);
     selectedElement.value = null;
     emit('selectionChange', null);
     emit('layoutChange', false);
@@ -195,6 +294,7 @@ watch(
         selectedElement.value = null;
         emit('selectionChange', null);
         emit('layoutChange', currentLayoutChanged.value);
+        void syncTransformer();
     },
 );
 
@@ -234,7 +334,7 @@ const exportPng = async () => {
 
     try {
         isExporting.value = true;
-        await nextTick();
+        await syncTransformer();
         stage.size({ width: DOCUMENT_WIDTH, height: DOCUMENT_HEIGHT });
         stage.scale({ x: 1, y: 1 });
         stage.draw();
@@ -243,11 +343,12 @@ const exportPng = async () => {
         isExporting.value = false;
         stage.size({ width: previewState.width, height: previewState.height });
         stage.scale({ x: previewState.scaleX, y: previewState.scaleY });
+        await syncTransformer();
         stage.draw();
     }
 };
 
-defineExpose({ exportPng, nudgeSelectedElement, resetLayout, selectElement });
+defineExpose({ exportPng, nudgeSelectedElement, resetLayout, resizeSelectedElement, selectElement });
 </script>
 
 <template>
@@ -287,6 +388,7 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, selectElement });
                         ellipsis: true,
                     }"
                     @move="moveElement"
+                    @resize="resizeElement"
                 />
                 <v-rect :config="{ x: 1030, y: 485, width: 120, height: 8, fill: '#f3b562' }" />
                 <EditableTextElement
@@ -302,6 +404,7 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, selectElement });
                         lineHeight: 1.25,
                     }"
                     @move="moveElement"
+                    @resize="resizeElement"
                 />
                 <EditableTextElement
                     v-if="template.location"
@@ -318,6 +421,7 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, selectElement });
                         ellipsis: true,
                     }"
                     @move="moveElement"
+                    @resize="resizeElement"
                 />
                 <v-text
                     :config="{
@@ -367,6 +471,7 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, selectElement });
                         ellipsis: true,
                     }"
                     @move="moveElement"
+                    @resize="resizeElement"
                 />
                 <v-rect :config="{ x: 820, y: 610, width: 280, height: 8, fill: '#f3b562' }" />
                 <EditableTextElement
@@ -382,6 +487,7 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, selectElement });
                         fontStyle: 'bold',
                     }"
                     @move="moveElement"
+                    @resize="resizeElement"
                 />
                 <EditableTextElement
                     v-if="template.location"
@@ -399,6 +505,7 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, selectElement });
                         ellipsis: true,
                     }"
                     @move="moveElement"
+                    @resize="resizeElement"
                 />
                 <v-text
                     :config="{
@@ -414,6 +521,9 @@ defineExpose({ exportPng, nudgeSelectedElement, resetLayout, selectElement });
                         letterSpacing: 5,
                     }"
                 />
+            </v-layer>
+            <v-layer>
+                <v-transformer ref="transformerRef" :config="transformerConfig" />
             </v-layer>
         </v-stage>
     </div>

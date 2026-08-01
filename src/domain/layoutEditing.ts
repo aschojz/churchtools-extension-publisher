@@ -15,7 +15,16 @@ export interface LayoutPoint {
     y: number;
 }
 
+export interface LayoutSize {
+    width: number;
+    height: number;
+}
+
 export type LayoutOffsets = Record<LayoutElementId, LayoutPoint>;
+export type LayoutSizes = Record<LayoutElementId, LayoutSize>;
+
+export const MIN_ELEMENT_WIDTH = 120;
+export const MIN_ELEMENT_HEIGHT = 50;
 
 export const TEMPLATE_ELEMENT_FRAMES: Record<TemplateId, Record<LayoutElementId, LayoutFrame>> = {
     split: {
@@ -36,7 +45,28 @@ export const createLayoutOffsets = (): LayoutOffsets => ({
     location: { x: 0, y: 0 },
 });
 
+export const createLayoutSizes = (templateId: TemplateId): LayoutSizes => ({
+    title: {
+        width: TEMPLATE_ELEMENT_FRAMES[templateId].title.width,
+        height: TEMPLATE_ELEMENT_FRAMES[templateId].title.height,
+    },
+    dateTime: {
+        width: TEMPLATE_ELEMENT_FRAMES[templateId].dateTime.width,
+        height: TEMPLATE_ELEMENT_FRAMES[templateId].dateTime.height,
+    },
+    location: {
+        width: TEMPLATE_ELEMENT_FRAMES[templateId].location.width,
+        height: TEMPLATE_ELEMENT_FRAMES[templateId].location.height,
+    },
+});
+
 export const clampLayoutPosition = (position: LayoutPoint, frame: LayoutFrame): LayoutPoint => ({
     x: Math.min(Math.max(position.x, 0), DOCUMENT_WIDTH - frame.width),
     y: Math.min(Math.max(position.y, 0), DOCUMENT_HEIGHT - frame.height),
+});
+
+export const resizeLayoutFrame = (frame: LayoutFrame, size: LayoutSize): LayoutFrame => ({
+    ...frame,
+    width: Math.min(Math.max(size.width, MIN_ELEMENT_WIDTH), DOCUMENT_WIDTH - frame.x),
+    height: Math.min(Math.max(size.height, MIN_ELEMENT_HEIGHT), DOCUMENT_HEIGHT - frame.y),
 });

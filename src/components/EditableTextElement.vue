@@ -12,10 +12,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     move: [elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>];
+    resize: [elementId: LayoutElementId, event: Konva.KonvaEventObject<Event>];
 }>();
 
 const finishDrag = (event: Konva.KonvaEventObject<DragEvent>) => {
     emit('move', props.elementId, event);
+};
+
+const finishTransform = (event: Konva.KonvaEventObject<Event>) => {
+    emit('resize', props.elementId, event);
 };
 </script>
 
@@ -25,10 +30,12 @@ const finishDrag = (event: Konva.KonvaEventObject<DragEvent>) => {
             x: frame.x,
             y: frame.y,
             draggable: true,
+            id: `editable-${elementId}`,
             name: 'editable-element',
             layoutElementId: elementId,
         }"
         @dragend="finishDrag"
+        @transformend="finishTransform"
     >
         <v-rect
             :config="{

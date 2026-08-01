@@ -179,7 +179,8 @@ textarea {
 }
 
 .layout-controls__elements,
-.layout-controls__directions {
+.layout-controls__directions,
+.layout-controls__sizes {
     display: flex;
     flex-wrap: wrap;
     gap: 7px;
@@ -187,7 +188,8 @@ textarea {
 }
 
 .layout-controls__elements button,
-.layout-controls__directions button {
+.layout-controls__directions button,
+.layout-controls__sizes button {
     min-height: 34px;
     padding: 0 11px;
     border: 1px solid #aebdca;
@@ -201,6 +203,7 @@ textarea {
 
 .layout-controls__elements button:hover,
 .layout-controls__directions button:hover,
+.layout-controls__sizes button:hover,
 .layout-controls__elements button.is-selected {
     border-color: #2768ad;
     background: #dcecfb;
