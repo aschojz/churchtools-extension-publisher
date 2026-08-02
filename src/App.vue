@@ -5,6 +5,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import EventTemplate from './components/EventTemplate.vue';
 import { useAppointmentsQuery } from './composables/useAppointmentsQuery';
+import { matchesAppointmentFilters } from './domain/appointmentFilters';
 import { resolveEditorShortcut } from './domain/editorShortcuts';
 import { createImageFocusByTemplate, type ImageFocus } from './domain/imageFocus';
 import { mapAppointmentToTemplateProps } from './domain/mapAppointmentToTemplateProps';
@@ -28,6 +29,8 @@ import { TEMPLATE_OPTIONS, type TemplateId } from './domain/templates';
 const userLanguage = window.settings?.language ?? navigator.language;
 const userTimeZone = window.settings?.timezone;
 const selectedAppointmentKey = ref('');
+const appointmentSearch = ref('');
+const selectedCalendarFilter = ref('');
 const templateRef = ref<InstanceType<typeof EventTemplate> | null>(null);
 const imageStatus = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle');
 const exportError = ref('');
@@ -86,6 +89,24 @@ const sortedAppointments = computed(() =>
         left.appointment.calculated.startDate.localeCompare(right.appointment.calculated.startDate),
     ),
 );
+const sortedCalendars = computed(() =>
+    [...(calendars.value ?? [])].sort((left, right) =>
+        left.nameTranslated.localeCompare(right.nameTranslated, userLanguage),
+    ),
+);
+const filteredAppointments = computed(() =>
+    sortedAppointments.value.filter(({ appointment }) =>
+        matchesAppointmentFilters(
+            {
+                title: appointment.base.title,
+                calendarId: String(appointment.base.calendar.id),
+                calendarName: appointment.base.calendar.nameTranslated,
+            },
+            appointmentSearch.value,
+            selectedCalendarFilter.value,
+        ),
+    ),
+);
 
 const selectedAppointment = computed(
     () => sortedAppointments.value.find((appointment) => appointmentKey(appointment) === selectedAppointmentKey.value),
@@ -128,6 +149,13 @@ const hasTemplateOverrides = computed(
 
 const isLoading = computed(() => calendarsPending.value || appointmentsPending.value);
 const loadingError = computed(() => calendarsError.value ?? appointmentsError.value);
+
+watch([appointmentSearch, selectedCalendarFilter], () => {
+    if (selectedAppointmentKey.value &&
+        !filteredAppointments.value.some((appointment) => appointmentKey(appointment) === selectedAppointmentKey.value)) {
+        selectedAppointmentKey.value = '';
+    }
+});
 
 const saveCurrentDraft = () => {
     if (!selectedAppointmentKey.value || restoringDraft.value) {
@@ -518,8 +546,6 @@ const exportPng = async () => {
             </header>
 
             <div class="appointment-picker">
-                <label for="appointment">Kalendertermin</label>
-
                 <p v-if="isLoading" class="status-message" role="status">Termine werden geladen …</p>
 
                 <p v-else-if="loadingError" class="status-message status-message--error" role="alert">
@@ -530,16 +556,46 @@ const exportPng = async () => {
                     In den nächsten zwölf Monaten wurden keine sichtbaren Termine gefunden.
                 </p>
 
-                <select v-else id="appointment" v-model="selectedAppointmentKey">
-                    <option value="">Bitte Termin auswählen</option>
-                    <option
-                        v-for="appointment in sortedAppointments"
-                        :key="appointmentKey(appointment)"
-                        :value="appointmentKey(appointment)"
-                    >
-                        {{ appointmentLabel(appointment) }}
-                    </option>
-                </select>
+                <template v-else>
+                    <div class="appointment-picker__filters">
+                        <label>
+                            Termine durchsuchen
+                            <input
+                                v-model="appointmentSearch"
+                                type="search"
+                                placeholder="Titel oder Kalender"
+                            />
+                        </label>
+                        <label>
+                            Kalender filtern
+                            <select v-model="selectedCalendarFilter">
+                                <option value="">Alle Kalender</option>
+                                <option v-for="calendar in sortedCalendars" :key="calendar.id" :value="String(calendar.id)">
+                                    {{ calendar.nameTranslated }}
+                                </option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <p class="appointment-picker__result-count" role="status">
+                        <template v-if="filteredAppointments.length">
+                            {{ filteredAppointments.length }} von {{ sortedAppointments.length }} Terminen
+                        </template>
+                        <template v-else>Keine passenden Termine gefunden.</template>
+                    </p>
+
+                    <label for="appointment">Kalendertermin</label>
+                    <select id="appointment" v-model="selectedAppointmentKey" :disabled="filteredAppointments.length === 0">
+                        <option value="">Bitte Termin auswählen</option>
+                        <option
+                            v-for="appointment in filteredAppointments"
+                            :key="appointmentKey(appointment)"
+                            :value="appointmentKey(appointment)"
+                        >
+                            {{ appointmentLabel(appointment) }}
+                        </option>
+                    </select>
+                </template>
             </div>
 
             <p v-if="appointmentDetailsPending" class="status-message template-status" role="status">

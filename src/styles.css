@@ -64,14 +64,27 @@ textarea {
     gap: 10px;
 }
 
+.appointment-picker__filters {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+    gap: 14px;
+}
+
+.appointment-picker__filters label {
+    display: grid;
+    gap: 7px;
+}
+
 .appointment-picker label {
     font-size: 14px;
     font-weight: 700;
 }
 
+.appointment-picker input,
 .appointment-picker select {
     width: 100%;
     min-height: 48px;
+    box-sizing: border-box;
     padding: 0 42px 0 14px;
     border: 1px solid #aeb8c2;
     border-radius: 8px;
@@ -79,9 +92,16 @@ textarea {
     color: #17202a;
 }
 
+.appointment-picker input:focus,
 .appointment-picker select:focus {
     border-color: #3478c7;
     outline: 3px solid rgb(52 120 199 / 18%);
+}
+
+.appointment-picker__result-count {
+    color: #627384 !important;
+    font-size: 13px;
+    font-weight: 700;
 }
 
 .status-message {
@@ -599,6 +619,10 @@ textarea {
     }
 
     .template-overrides__grid {
+        grid-template-columns: 1fr;
+    }
+
+    .appointment-picker__filters {
         grid-template-columns: 1fr;
     }
 

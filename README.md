@@ -64,6 +64,8 @@ GET /calendars/appointments?calendar_ids[]=…&from=…&to=…
 
 Die Antwort verwendet den generierten Typ `AppointmentCalculatedWithIncludes`. Die Optionen werden chronologisch sortiert und durch Termin-ID plus konkretem Startzeitpunkt eindeutig identifiziert. Datum und Uhrzeit im Select richten sich nach der Benutzersprache; Ganztagstermine zeigen keine Uhrzeit.
 
+Die geladene Liste kann clientseitig akzentunabhängig nach mehreren Begriffen in Titel und Kalendername durchsucht sowie auf einen sichtbaren Kalender begrenzt werden. Eine Trefferanzeige und ein eigener Leerzustand geben direkt Rückmeldung, ohne zusätzliche API-Anfragen auszulösen.
+
 Das Monorepo exportiert außerdem `useAppointmentQuery()` aus `@churchtools/vue-query`. Der Hook verwendet:
 
 ```text
