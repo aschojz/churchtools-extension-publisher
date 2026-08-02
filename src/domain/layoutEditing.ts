@@ -47,6 +47,13 @@ export type LayoutSizes = Record<LayoutElementId, LayoutSize>;
 export type LayoutRotations = Record<LayoutElementId, number>;
 export type LayoutOrder = LayoutElementId[];
 
+export interface LayoutElementState {
+    offsets: LayoutOffsets;
+    sizes: LayoutSizes;
+    rotations: LayoutRotations;
+    order: LayoutOrder;
+}
+
 export const MIN_ELEMENT_WIDTH = 120;
 export const MIN_ELEMENT_HEIGHT = 50;
 export const SNAP_GRID_SIZE = 20;
@@ -94,6 +101,29 @@ export const createLayoutRotations = (): LayoutRotations => ({
 });
 
 export const createLayoutOrder = (): LayoutOrder => ['title', 'dateTime', 'location'];
+
+export const resetLayoutElementState = (
+    templateId: TemplateId,
+    elementId: LayoutElementId,
+    state: LayoutElementState,
+): LayoutElementState => {
+    const defaultOrder = createLayoutOrder();
+    const orderWithoutElement = state.order.filter((candidate) => candidate !== elementId);
+    orderWithoutElement.splice(defaultOrder.indexOf(elementId), 0, elementId);
+
+    return {
+        offsets: { ...state.offsets, [elementId]: { x: 0, y: 0 } },
+        sizes: {
+            ...state.sizes,
+            [elementId]: {
+                width: TEMPLATE_ELEMENT_FRAMES[templateId][elementId].width,
+                height: TEMPLATE_ELEMENT_FRAMES[templateId][elementId].height,
+            },
+        },
+        rotations: { ...state.rotations, [elementId]: 0 },
+        order: orderWithoutElement,
+    };
+};
 
 export const moveLayoutElementInOrder = (
     order: LayoutOrder,

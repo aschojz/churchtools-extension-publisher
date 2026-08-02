@@ -42,6 +42,7 @@ const canUndoLayout = ref(false);
 const canRedoLayout = ref(false);
 const selectedLayoutElement = ref<LayoutElementId | null>(null);
 const selectedLayoutGeometry = ref<(LayoutGeometry & { elementId: LayoutElementId }) | null>(null);
+const selectedLayoutElementChanged = ref(false);
 const selectedLayerPosition = ref(0);
 const selectedLayerTotal = ref(0);
 const snapEnabled = ref(true);
@@ -275,6 +276,10 @@ const resetTemplateOverrides = () => {
 
 const resetLayout = () => {
     templateRef.value?.resetLayout();
+};
+
+const resetSelectedLayoutElement = () => {
+    templateRef.value?.resetSelectedElement();
 };
 
 const undoLayout = () => {
@@ -760,6 +765,15 @@ const exportPng = async () => {
                         <p v-if="selectedLayoutElement" class="layout-controls__selection" role="status">
                             Ausgewählt: {{ layoutElementLabels[selectedLayoutElement] }}
                         </p>
+                        <button
+                            v-if="selectedLayoutElement"
+                            type="button"
+                            class="layout-controls__element-reset"
+                            :disabled="!selectedLayoutElementChanged"
+                            @click="resetSelectedLayoutElement"
+                        >
+                            Ausgewähltes Element zurücksetzen
+                        </button>
                         <div class="layout-controls__elements" aria-label="Layoutelement auswählen">
                             <button
                                 v-for="(label, elementId) in layoutElementLabels"
@@ -899,6 +913,7 @@ const exportPng = async () => {
                     @layout-change="layoutChanged = $event"
                     @layout-state-change="updateDraftLayout"
                     @selection-change="selectedLayoutElement = $event"
+                    @selection-default-change="selectedLayoutElementChanged = $event"
                     @selection-geometry-change="selectedLayoutGeometry = $event"
                 />
             </section>

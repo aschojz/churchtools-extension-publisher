@@ -11,6 +11,7 @@ import {
     normalizeRotation,
     moveLayoutElementInOrder,
     resizeLayoutFrame,
+    resetLayoutElementState,
     snapLayoutPoint,
     snapLayoutSize,
     snapRotation,
@@ -104,6 +105,36 @@ describe('layout editing', () => {
         expect(movedOrder).toEqual(['dateTime', 'title', 'location']);
         expect(initialOrder).toEqual(['title', 'dateTime', 'location']);
         expect(moveLayoutElementInOrder(initialOrder, 'title', -1)).toBe(initialOrder);
+    });
+
+    it('resets only the selected element geometry and default layer position', () => {
+        const state = {
+            offsets: {
+                title: { x: 40, y: 20 },
+                dateTime: { x: 15, y: 10 },
+                location: { x: 0, y: 0 },
+            },
+            sizes: {
+                title: { width: 500, height: 200 },
+                dateTime: { width: 400, height: 60 },
+                location: { width: 760, height: 170 },
+            },
+            rotations: { title: 30, dateTime: 15, location: 0 },
+            order: ['dateTime', 'location', 'title'] as const,
+        };
+
+        const reset = resetLayoutElementState('split', 'title', {
+            ...state,
+            order: [...state.order],
+        });
+
+        expect(reset.offsets.title).toEqual({ x: 0, y: 0 });
+        expect(reset.sizes.title).toEqual({ width: 760, height: 310 });
+        expect(reset.rotations.title).toBe(0);
+        expect(reset.order).toEqual(['title', 'dateTime', 'location']);
+        expect(reset.offsets.dateTime).toEqual(state.offsets.dateTime);
+        expect(reset.sizes.dateTime).toEqual(state.sizes.dateTime);
+        expect(reset.rotations.dateTime).toBe(15);
     });
 
     it('snaps matching element edges and reports visual alignment guides', () => {

@@ -24,6 +24,7 @@ import {
     type LayoutAlignment,
     moveLayoutElementInOrder,
     resizeLayoutFrame,
+    resetLayoutElementState,
     snapLayoutPoint,
     snapLayoutSize,
     snapRotation,
@@ -63,6 +64,7 @@ const emit = defineEmits<{
     layoutStateChange: [templateId: TemplateId, state: SerializableLayoutState];
     layerPositionChange: [position: number, total: number];
     selectionChange: [elementId: LayoutElementId | null];
+    selectionDefaultChange: [changed: boolean];
     selectionGeometryChange: [geometry: (LayoutGeometry & { elementId: LayoutElementId }) | null];
 }>();
 
@@ -187,14 +189,25 @@ const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
 const emitSelectionGeometry = () => {
     if (!selectedElement.value) {
         emit('selectionGeometryChange', null);
+        emit('selectionDefaultChange', false);
         return;
     }
 
+    const elementId = selectedElement.value;
+    const frame = elementFrame(elementId);
+    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
     emit('selectionGeometryChange', {
-        elementId: selectedElement.value,
-        ...elementFrame(selectedElement.value),
-        rotation: layoutRotations.value[props.templateId][selectedElement.value],
+        elementId,
+        ...frame,
+        rotation: layoutRotations.value[props.templateId][elementId],
     });
+    emit(
+        'selectionDefaultChange',
+        frame.x !== baseFrame.x || frame.y !== baseFrame.y ||
+            frame.width !== baseFrame.width || frame.height !== baseFrame.height ||
+            layoutRotations.value[props.templateId][elementId] !== 0 ||
+            layoutOrder.value[props.templateId].indexOf(elementId) !== createLayoutOrder().indexOf(elementId),
+    );
 };
 
 const captureLayoutState = (): SerializableLayoutState =>
@@ -534,6 +547,27 @@ const resetLayout = () => {
     emit('layoutChange', false);
 };
 
+const resetSelectedElement = () => {
+    if (!selectedElement.value) {
+        return;
+    }
+
+    const previousState = captureLayoutState();
+    const reset = resetLayoutElementState(
+        props.templateId,
+        selectedElement.value,
+        previousState,
+    );
+    layoutOffsets.value[props.templateId] = reset.offsets;
+    layoutSizes.value[props.templateId] = reset.sizes;
+    layoutRotations.value[props.templateId] = reset.rotations;
+    layoutOrder.value[props.templateId] = reset.order;
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+    emitLayerPosition();
+    void syncTransformer();
+};
+
 const undoLayout = () => {
     const result = undoLayoutHistory(layoutHistories.value[props.templateId], captureLayoutState());
     if (!result) {
@@ -689,6 +723,7 @@ defineExpose({
     nudgeSelectedElement,
     redoLayout,
     resetLayout,
+    resetSelectedElement,
     resizeSelectedElement,
     rotateSelectedElement,
     setSelectedElementGeometry,

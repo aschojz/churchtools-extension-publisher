@@ -283,6 +283,22 @@ textarea {
     font-weight: 700;
 }
 
+.layout-controls__element-reset {
+    margin-top: 6px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #2768ad;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.layout-controls__element-reset:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
 .layout-controls__shortcuts {
     margin-top: 6px !important;
     color: #667788 !important;
