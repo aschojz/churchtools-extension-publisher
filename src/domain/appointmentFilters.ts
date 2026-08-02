@@ -28,3 +28,23 @@ export const matchesAppointmentFilters = (
     const haystack = normalizeSearchText(`${appointment.title} ${appointment.calendarName}`);
     return searchTerms.every((term) => haystack.includes(term));
 };
+
+export const isAppointmentWithinDays = (
+    startDate: string,
+    days: number | null,
+    referenceDate: Date,
+) => {
+    const startTime = new Date(startDate).getTime();
+    const referenceTime = referenceDate.getTime();
+    if (!Number.isFinite(startTime) || !Number.isFinite(referenceTime) || (days !== null && days < 0)) {
+        return false;
+    }
+
+    const referenceDayStart = new Date(referenceDate);
+    referenceDayStart.setHours(0, 0, 0, 0);
+    if (startTime < referenceDayStart.getTime()) {
+        return false;
+    }
+
+    return days === null || startTime <= referenceTime + days * 24 * 60 * 60 * 1000;
+};

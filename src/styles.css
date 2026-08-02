@@ -66,7 +66,7 @@ textarea {
 
 .appointment-picker__filters {
     display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+    grid-template-columns: minmax(0, 2fr) repeat(2, minmax(190px, 1fr));
     gap: 14px;
 }
 
@@ -100,6 +100,24 @@ textarea {
 
 .appointment-picker__result-count {
     color: #627384 !important;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.appointment-picker__filter-summary {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.appointment-picker__reset {
+    flex: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #2768ad;
+    cursor: pointer;
     font-size: 13px;
     font-weight: 700;
 }
@@ -624,6 +642,11 @@ textarea {
 
     .appointment-picker__filters {
         grid-template-columns: 1fr;
+    }
+
+    .appointment-picker__filter-summary {
+        align-items: start;
+        flex-direction: column;
     }
 
     .image-focus-controls__sliders {

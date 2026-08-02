@@ -5,7 +5,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import EventTemplate from './components/EventTemplate.vue';
 import { useAppointmentsQuery } from './composables/useAppointmentsQuery';
-import { matchesAppointmentFilters } from './domain/appointmentFilters';
+import { isAppointmentWithinDays, matchesAppointmentFilters } from './domain/appointmentFilters';
 import { resolveEditorShortcut } from './domain/editorShortcuts';
 import { createImageFocusByTemplate, type ImageFocus } from './domain/imageFocus';
 import { mapAppointmentToTemplateProps } from './domain/mapAppointmentToTemplateProps';
@@ -31,6 +31,8 @@ const userTimeZone = window.settings?.timezone;
 const selectedAppointmentKey = ref('');
 const appointmentSearch = ref('');
 const selectedCalendarFilter = ref('');
+const selectedAppointmentRange = ref('');
+const appointmentFilterReferenceDate = new Date();
 const templateRef = ref<InstanceType<typeof EventTemplate> | null>(null);
 const imageStatus = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle');
 const exportError = ref('');
@@ -95,8 +97,8 @@ const sortedCalendars = computed(() =>
     ),
 );
 const filteredAppointments = computed(() =>
-    sortedAppointments.value.filter(({ appointment }) =>
-        matchesAppointmentFilters(
+    sortedAppointments.value.filter(({ appointment }) => {
+        const matchesTextAndCalendar = matchesAppointmentFilters(
             {
                 title: appointment.base.title,
                 calendarId: String(appointment.base.calendar.id),
@@ -104,8 +106,19 @@ const filteredAppointments = computed(() =>
             },
             appointmentSearch.value,
             selectedCalendarFilter.value,
-        ),
-    ),
+        );
+        const rangeDays = selectedAppointmentRange.value
+            ? Number(selectedAppointmentRange.value)
+            : null;
+        return matchesTextAndCalendar && isAppointmentWithinDays(
+            appointment.calculated.startDate,
+            rangeDays,
+            appointmentFilterReferenceDate,
+        );
+    }),
+);
+const hasAppointmentFilters = computed(() =>
+    Boolean(appointmentSearch.value || selectedCalendarFilter.value || selectedAppointmentRange.value),
 );
 
 const selectedAppointment = computed(
@@ -150,12 +163,18 @@ const hasTemplateOverrides = computed(
 const isLoading = computed(() => calendarsPending.value || appointmentsPending.value);
 const loadingError = computed(() => calendarsError.value ?? appointmentsError.value);
 
-watch([appointmentSearch, selectedCalendarFilter], () => {
+watch([appointmentSearch, selectedCalendarFilter, selectedAppointmentRange], () => {
     if (selectedAppointmentKey.value &&
         !filteredAppointments.value.some((appointment) => appointmentKey(appointment) === selectedAppointmentKey.value)) {
         selectedAppointmentKey.value = '';
     }
 });
+
+const resetAppointmentFilters = () => {
+    appointmentSearch.value = '';
+    selectedCalendarFilter.value = '';
+    selectedAppointmentRange.value = '';
+};
 
 const saveCurrentDraft = () => {
     if (!selectedAppointmentKey.value || restoringDraft.value) {
@@ -575,14 +594,33 @@ const exportPng = async () => {
                                 </option>
                             </select>
                         </label>
+                        <label>
+                            Zeitraum
+                            <select v-model="selectedAppointmentRange">
+                                <option value="">Nächste 12 Monate</option>
+                                <option value="30">Nächste 30 Tage</option>
+                                <option value="90">Nächste 90 Tage</option>
+                                <option value="365">Nächste 365 Tage</option>
+                            </select>
+                        </label>
                     </div>
 
-                    <p class="appointment-picker__result-count" role="status">
-                        <template v-if="filteredAppointments.length">
-                            {{ filteredAppointments.length }} von {{ sortedAppointments.length }} Terminen
-                        </template>
-                        <template v-else>Keine passenden Termine gefunden.</template>
-                    </p>
+                    <div class="appointment-picker__filter-summary">
+                        <p class="appointment-picker__result-count" role="status">
+                            <template v-if="filteredAppointments.length">
+                                {{ filteredAppointments.length }} von {{ sortedAppointments.length }} Terminen
+                            </template>
+                            <template v-else>Keine passenden Termine gefunden.</template>
+                        </p>
+                        <button
+                            v-if="hasAppointmentFilters"
+                            type="button"
+                            class="appointment-picker__reset"
+                            @click="resetAppointmentFilters"
+                        >
+                            Filter zurücksetzen
+                        </button>
+                    </div>
 
                     <label for="appointment">Kalendertermin</label>
                     <select id="appointment" v-model="selectedAppointmentKey" :disabled="filteredAppointments.length === 0">
