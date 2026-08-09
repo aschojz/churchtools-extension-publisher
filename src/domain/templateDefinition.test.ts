@@ -56,4 +56,27 @@ describe('template definition', () => {
             },
         }))).toBeNull();
     });
+
+    it('rejects invalid or duplicate decoration layers', () => {
+        const definition = BUILT_IN_TEMPLATE_DEFINITIONS.poster;
+        expect(parseTemplateDefinition(JSON.stringify({
+            ...definition,
+            composition: {
+                ...definition.composition,
+                decorations: definition.composition.decorations.map((decoration) =>
+                    decoration.id === 'overlay' ? { ...decoration, opacity: 2 } : decoration,
+                ),
+            },
+        }))).toBeNull();
+        expect(parseTemplateDefinition(JSON.stringify({
+            ...definition,
+            composition: {
+                ...definition.composition,
+                decorations: [
+                    definition.composition.decorations[0],
+                    definition.composition.decorations[0],
+                ],
+            },
+        }))).toBeNull();
+    });
 });

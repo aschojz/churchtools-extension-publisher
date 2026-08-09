@@ -138,7 +138,7 @@ Ein Entwurf kann zusätzlich als versionierte JSON-Datei heruntergeladen und in 
 
 Die Oberfläche bietet zwei fest codierte 1920-×-1080-Templates: eine geteilte Fläche und ein vollflächiges Bildposter. Beide erhalten dasselbe `EventTemplateProps`-Objekt und verwenden dieselbe Exportlogik. Ein Template-Wechsel beeinflusst deshalb weder die geladenen Termindaten noch manuelle Inhaltsüberschreibungen.
 
-Die gemeinsamen Template-Metadaten liegen inzwischen in einem versionierten `PublisherTemplateDefinition`-Modell. Es beschreibt ID, Name, Dokumentgröße, Kompositionsvariante, Bildfläche sowie Bindung, Ausgangsrahmen und Ausgangstypografie aller editierbaren Texte. Beide eingebauten Templates werden bereits aus diesen Definitionen gespeist; Parser und Serializer bilden die Grundlage für spätere lokale benutzerdefinierte Templates. Die dekorativen Konva-Ebenen werden im nächsten Schritt aus dem komponentenspezifischen Renderer in das Datenmodell überführt.
+Die gemeinsamen Template-Metadaten liegen inzwischen in einem versionierten `PublisherTemplateDefinition`-Modell. Es beschreibt ID, Name, Dokumentgröße, Kompositionsvariante, Bildfläche sowie Bindung, Ausgangsrahmen und Ausgangstypografie aller editierbaren Texte. Auch Hintergrundflächen, Bild-Fallbacks, Overlays, Trennlinien und feste Footer-Texte liegen als geordnete und validierte Dekorationsebenen in der Definition und werden generisch gerendert. Beide eingebauten Templates werden aus diesen Definitionen gespeist; Parser und Serializer bilden die Grundlage für spätere lokale benutzerdefinierte Templates.
 
 ### Erste Layoutbearbeitung
 

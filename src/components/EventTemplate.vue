@@ -43,7 +43,11 @@ import {
     undoLayoutHistory,
 } from '../domain/layoutHistory';
 import type { TemplateId } from '../domain/templates';
-import { BUILT_IN_TEMPLATE_DEFINITIONS } from '../domain/templateDefinition';
+import {
+    BUILT_IN_TEMPLATE_DEFINITIONS,
+    type TemplateDecoration,
+    type TemplateDecorationPlacement,
+} from '../domain/templateDefinition';
 import {
     calculatePreviewScale,
     DOCUMENT_HEIGHT,
@@ -116,6 +120,7 @@ const stageConfig = computed(() => ({
     scaleX: previewScale.value,
     scaleY: previewScale.value,
 }));
+const templateDefinition = computed(() => BUILT_IN_TEMPLATE_DEFINITIONS[props.templateId]);
 const transformerConfig = computed(() => ({
     rotateEnabled: true,
     flipEnabled: false,
@@ -146,7 +151,7 @@ const imageCrop = computed(() => {
         return undefined;
     }
 
-    const imageFrame = BUILT_IN_TEMPLATE_DEFINITIONS[props.templateId].composition.imageFrame;
+    const imageFrame = templateDefinition.value.composition.imageFrame;
     return calculateCoverCrop(
         { width: image.value.naturalWidth, height: image.value.naturalHeight },
         { width: imageFrame.width, height: imageFrame.height },
@@ -156,9 +161,35 @@ const imageCrop = computed(() => {
 
 const imageConfig = computed(() => ({
     image: image.value ?? undefined,
-    ...BUILT_IN_TEMPLATE_DEFINITIONS[props.templateId].composition.imageFrame,
+    ...templateDefinition.value.composition.imageFrame,
     crop: imageCrop.value,
 }));
+
+const decorationLayers = (placement: TemplateDecorationPlacement) =>
+    templateDefinition.value.composition.decorations.filter((decoration) =>
+        decoration.placement === placement &&
+        (decoration.visibility === 'always' || imageStatus.value !== 'loaded'),
+    );
+
+const decorationConfig = (decoration: TemplateDecoration) => ({
+    ...decoration.frame,
+    ...(decoration.type === 'text'
+        ? {
+              text: decoration.text,
+              fill: decoration.fill,
+              fontFamily: decoration.fontFamily,
+              fontSize: decoration.fontSize,
+              fontStyle: decoration.fontStyle,
+              letterSpacing: decoration.letterSpacing,
+              align: decoration.align,
+          }
+        : {
+              fill: decoration.fill,
+              opacity: imageStatus.value === 'loaded' && decoration.imageLoadedOpacity !== undefined
+                  ? decoration.imageLoadedOpacity
+                  : decoration.opacity,
+          }),
+});
 
 const dateAndTime = computed(() => [props.template.date, props.template.time].filter(Boolean).join(' · '));
 const currentLayoutChanged = computed(() => {
@@ -789,27 +820,17 @@ defineExpose({
 <template>
     <div ref="containerRef" class="template-preview">
         <v-stage ref="stageRef" :config="stageConfig" @mousedown="handleStagePointer" @touchstart="handleStagePointer">
-            <v-layer v-if="templateId === 'split'">
-                <v-rect :config="{ x: 0, y: 0, width: DOCUMENT_WIDTH, height: DOCUMENT_HEIGHT, fill: '#172235' }" />
-                <v-rect :config="{ x: 0, y: 0, width: 920, height: DOCUMENT_HEIGHT, fill: '#d8c8ae' }" />
+            <v-layer>
+                <template v-for="decoration in decorationLayers('behindImage')" :key="decoration.id">
+                    <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration)" />
+                    <v-text v-else :config="decorationConfig(decoration)" />
+                </template>
                 <v-image v-if="imageStatus === 'loaded'" :config="imageConfig" />
-                <v-text
-                    v-else
-                    :config="{
-                        x: 110,
-                        y: 460,
-                        width: 700,
-                        text: 'CHURCHTOOLS',
-                        align: 'center',
-                        fill: '#6e6252',
-                        fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: 42,
-                        fontStyle: 'bold',
-                        letterSpacing: 8,
-                    }"
-                />
-                <v-rect :config="{ x: 1030, y: 485, width: 120, height: 8, fill: '#f3b562' }" />
-                <v-group>
+                <template v-for="decoration in decorationLayers('overImage')" :key="decoration.id">
+                    <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration)" />
+                    <v-text v-else :config="decorationConfig(decoration)" />
+                </template>
+                <v-group v-if="templateId === 'split'">
                 <EditableTextElement
                     element-id="title"
                     :frame="elementFrame('title')"
@@ -869,40 +890,7 @@ defineExpose({
                     @resize="resizeElement"
                 />
                 </v-group>
-                <v-text
-                    :config="{
-                        x: 1030,
-                        y: 955,
-                        width: 760,
-                        text: 'CHURCHTOOLS PUBLISHER',
-                        fill: '#8190a5',
-                        fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: 22,
-                        fontStyle: 'bold',
-                        letterSpacing: 4,
-                    }"
-                />
-            </v-layer>
-            <v-layer v-else>
-                <v-rect :config="{ x: 0, y: 0, width: DOCUMENT_WIDTH, height: DOCUMENT_HEIGHT, fill: '#24364b' }" />
-                <v-image v-if="imageStatus === 'loaded'" :config="imageConfig" />
-                <template v-else>
-                    <v-rect :config="{ x: 0, y: 0, width: DOCUMENT_WIDTH, height: DOCUMENT_HEIGHT, fill: '#c99d5b' }" />
-                    <v-rect :config="{ x: 0, y: 0, width: 720, height: DOCUMENT_HEIGHT, fill: '#18324b', opacity: 0.9 }" />
-                    <v-rect :config="{ x: 1420, y: 0, width: 500, height: DOCUMENT_HEIGHT, fill: '#e9c98f', opacity: 0.7 }" />
-                </template>
-                <v-rect
-                    :config="{
-                        x: 0,
-                        y: 0,
-                        width: DOCUMENT_WIDTH,
-                        height: DOCUMENT_HEIGHT,
-                        fill: '#0e1928',
-                        opacity: imageStatus === 'loaded' ? 0.68 : 0.35,
-                    }"
-                />
-                <v-rect :config="{ x: 820, y: 610, width: 280, height: 8, fill: '#f3b562' }" />
-                <v-group>
+                <v-group v-else>
                 <EditableTextElement
                     element-id="title"
                     :frame="elementFrame('title')"
@@ -964,20 +952,6 @@ defineExpose({
                     @resize="resizeElement"
                 />
                 </v-group>
-                <v-text
-                    :config="{
-                        x: 160,
-                        y: 960,
-                        width: 1600,
-                        text: 'CHURCHTOOLS PUBLISHER',
-                        align: 'center',
-                        fill: '#dce3ed',
-                        fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: 22,
-                        fontStyle: 'bold',
-                        letterSpacing: 5,
-                    }"
-                />
             </v-layer>
             <v-layer v-if="!isExporting" :config="{ listening: false }">
                 <v-line
