@@ -1,4 +1,9 @@
 import type { TemplateId } from './templates';
+import {
+    BUILT_IN_TEMPLATE_DEFINITIONS,
+    MAX_FONT_SIZE,
+    MIN_FONT_SIZE,
+} from './templateDefinition';
 import { DOCUMENT_HEIGHT, DOCUMENT_WIDTH } from '../utils/stageDimensions';
 
 export type LayoutElementId = 'title' | 'dateTime' | 'location';
@@ -66,19 +71,18 @@ export const MIN_ELEMENT_HEIGHT = 50;
 export const SNAP_GRID_SIZE = 20;
 export const SNAP_ROTATION_STEP = 15;
 export const ALIGNMENT_SNAP_THRESHOLD = 10;
-export const MIN_FONT_SIZE = 12;
-export const MAX_FONT_SIZE = 240;
+export { MAX_FONT_SIZE, MIN_FONT_SIZE };
 
 export const TEMPLATE_ELEMENT_FRAMES: Record<TemplateId, Record<LayoutElementId, LayoutFrame>> = {
     split: {
-        title: { x: 1030, y: 130, width: 760, height: 310 },
-        dateTime: { x: 1030, y: 555, width: 760, height: 80 },
-        location: { x: 1030, y: 700, width: 760, height: 170 },
+        title: { ...BUILT_IN_TEMPLATE_DEFINITIONS.split.elements.title.frame },
+        dateTime: { ...BUILT_IN_TEMPLATE_DEFINITIONS.split.elements.dateTime.frame },
+        location: { ...BUILT_IN_TEMPLATE_DEFINITIONS.split.elements.location.frame },
     },
     poster: {
-        title: { x: 160, y: 150, width: 1600, height: 410 },
-        dateTime: { x: 160, y: 675, width: 1600, height: 80 },
-        location: { x: 260, y: 770, width: 1400, height: 120 },
+        title: { ...BUILT_IN_TEMPLATE_DEFINITIONS.poster.elements.title.frame },
+        dateTime: { ...BUILT_IN_TEMPLATE_DEFINITIONS.poster.elements.dateTime.frame },
+        location: { ...BUILT_IN_TEMPLATE_DEFINITIONS.poster.elements.location.frame },
     },
 };
 
@@ -111,18 +115,14 @@ export const createLayoutRotations = (): LayoutRotations => ({
 
 export const createLayoutOrder = (): LayoutOrder => ['title', 'dateTime', 'location'];
 
-export const createLayoutTextStyles = (templateId: TemplateId): LayoutTextStyles =>
-    templateId === 'split'
-        ? {
-              title: { fontSize: 88, color: '#ffffff' },
-              dateTime: { fontSize: 42, color: '#f3b562' },
-              location: { fontSize: 36, color: '#d8dee8' },
-          }
-        : {
-              title: { fontSize: 112, color: '#ffffff' },
-              dateTime: { fontSize: 50, color: '#f7c77f' },
-              location: { fontSize: 38, color: '#ffffff' },
-          };
+export const createLayoutTextStyles = (templateId: TemplateId): LayoutTextStyles => {
+    const elements = BUILT_IN_TEMPLATE_DEFINITIONS[templateId].elements;
+    return {
+        title: { ...elements.title.style },
+        dateTime: { ...elements.dateTime.style },
+        location: { ...elements.location.style },
+    };
+};
 
 export const constrainFontSize = (fontSize: number) =>
     Math.min(Math.max(Math.round(fontSize), MIN_FONT_SIZE), MAX_FONT_SIZE);

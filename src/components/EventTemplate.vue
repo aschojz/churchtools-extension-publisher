@@ -43,6 +43,7 @@ import {
     undoLayoutHistory,
 } from '../domain/layoutHistory';
 import type { TemplateId } from '../domain/templates';
+import { BUILT_IN_TEMPLATE_DEFINITIONS } from '../domain/templateDefinition';
 import {
     calculatePreviewScale,
     DOCUMENT_HEIGHT,
@@ -145,21 +146,17 @@ const imageCrop = computed(() => {
         return undefined;
     }
 
-    const frameWidth = props.templateId === 'split' ? 920 : DOCUMENT_WIDTH;
-    const frameHeight = DOCUMENT_HEIGHT;
+    const imageFrame = BUILT_IN_TEMPLATE_DEFINITIONS[props.templateId].composition.imageFrame;
     return calculateCoverCrop(
         { width: image.value.naturalWidth, height: image.value.naturalHeight },
-        { width: frameWidth, height: frameHeight },
+        { width: imageFrame.width, height: imageFrame.height },
         props.imageFocus,
     ) ?? undefined;
 });
 
 const imageConfig = computed(() => ({
     image: image.value ?? undefined,
-    x: 0,
-    y: 0,
-    width: props.templateId === 'split' ? 920 : DOCUMENT_WIDTH,
-    height: DOCUMENT_HEIGHT,
+    ...BUILT_IN_TEMPLATE_DEFINITIONS[props.templateId].composition.imageFrame,
     crop: imageCrop.value,
 }));
 

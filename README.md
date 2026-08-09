@@ -138,6 +138,8 @@ Ein Entwurf kann zusätzlich als versionierte JSON-Datei heruntergeladen und in 
 
 Die Oberfläche bietet zwei fest codierte 1920-×-1080-Templates: eine geteilte Fläche und ein vollflächiges Bildposter. Beide erhalten dasselbe `EventTemplateProps`-Objekt und verwenden dieselbe Exportlogik. Ein Template-Wechsel beeinflusst deshalb weder die geladenen Termindaten noch manuelle Inhaltsüberschreibungen.
 
+Die gemeinsamen Template-Metadaten liegen inzwischen in einem versionierten `PublisherTemplateDefinition`-Modell. Es beschreibt ID, Name, Dokumentgröße, Kompositionsvariante, Bildfläche sowie Bindung, Ausgangsrahmen und Ausgangstypografie aller editierbaren Texte. Beide eingebauten Templates werden bereits aus diesen Definitionen gespeist; Parser und Serializer bilden die Grundlage für spätere lokale benutzerdefinierte Templates. Die dekorativen Konva-Ebenen werden im nächsten Schritt aus dem komponentenspezifischen Renderer in das Datenmodell überführt.
+
 ### Erste Layoutbearbeitung
 
 Titel, kombinierte Datums-/Uhrzeile und Ort können auf der Konva-Arbeitsfläche ausgewählt, verschoben, in Breite und Höhe verändert sowie frei gedreht werden. Der Konva-Transformer stellt dafür Größen- und Rotationsgriffe bereit. Zusätzlich erlaubt eine tastaturfähige Elementleiste dieselben Änderungen in festen Schritten und kann die drei Texte schrittweise nach vorne oder hinten anordnen. Auswahlrahmen und Transformer werden vor dem Export ausgeblendet. Positionen, Größen, normalisierte Winkel und Ebenenreihenfolge liegen als serialisierbare Werte im Vue-Zustand und nicht ausschließlich in den Konva-Nodes. Sie werden pro Template getrennt gehalten, bleiben innerhalb der Dokumentgrenzen und können auf die Ausgangswerte zurückgesetzt werden.

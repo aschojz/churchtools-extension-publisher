@@ -1,6 +1,12 @@
-export const TEMPLATE_OPTIONS = [
-    { id: 'split', label: 'Geteilte Fläche' },
-    { id: 'poster', label: 'Bildposter' },
-] as const;
+import {
+    BUILT_IN_TEMPLATE_DEFINITIONS,
+    BUILT_IN_TEMPLATE_IDS,
+    type BuiltInTemplateId,
+} from './templateDefinition';
 
-export type TemplateId = (typeof TEMPLATE_OPTIONS)[number]['id'];
+export type TemplateId = BuiltInTemplateId;
+
+export const TEMPLATE_OPTIONS = BUILT_IN_TEMPLATE_IDS.map((id) => ({
+    id,
+    label: BUILT_IN_TEMPLATE_DEFINITIONS[id].name,
+}));
