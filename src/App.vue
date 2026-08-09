@@ -9,7 +9,12 @@ import { isAppointmentWithinDays, matchesAppointmentFilters } from './domain/app
 import { resolveEditorShortcut } from './domain/editorShortcuts';
 import { createImageFocusByTemplate, type ImageFocus } from './domain/imageFocus';
 import { mapAppointmentToTemplateProps } from './domain/mapAppointmentToTemplateProps';
-import type { LayoutAlignment, LayoutElementId, LayoutGeometry } from './domain/layoutEditing';
+import type {
+    LayoutAlignment,
+    LayoutElementId,
+    LayoutGeometry,
+    LayoutTextStyle,
+} from './domain/layoutEditing';
 import { cloneLayoutState, type SerializableLayoutState } from './domain/layoutHistory';
 import { validateLocalImage } from './domain/localImageOverride';
 import {
@@ -56,6 +61,7 @@ const canUndoLayout = ref(false);
 const canRedoLayout = ref(false);
 const selectedLayoutElement = ref<LayoutElementId | null>(null);
 const selectedLayoutGeometry = ref<(LayoutGeometry & { elementId: LayoutElementId }) | null>(null);
+const selectedLayoutStyle = ref<(LayoutTextStyle & { elementId: LayoutElementId }) | null>(null);
 const selectedLayoutElementChanged = ref(false);
 const selectedLayerPosition = ref(0);
 const selectedLayerTotal = ref(0);
@@ -524,6 +530,17 @@ const restoreSelectedLayoutGeometryInput = (field: keyof LayoutGeometry, event: 
     const input = event.target as HTMLInputElement;
     const currentValue = selectedLayoutGeometry.value?.[field];
     input.value = currentValue === undefined ? '' : String(Math.round(currentValue));
+};
+
+const updateSelectedTextStyle = (field: keyof LayoutTextStyle, event: Event) => {
+    const input = event.target as HTMLInputElement;
+    const value = field === 'fontSize' ? input.valueAsNumber : input.value;
+    templateRef.value?.setSelectedElementTextStyle(field, value);
+};
+
+const restoreSelectedFontSizeInput = (event: FocusEvent) => {
+    const input = event.target as HTMLInputElement;
+    input.value = selectedLayoutStyle.value ? String(selectedLayoutStyle.value.fontSize) : '';
 };
 
 const changeSelectedLayer = (direction: -1 | 1) => {
@@ -1046,6 +1063,31 @@ const exportPng = async () => {
                                 />
                             </label>
                         </fieldset>
+                        <fieldset v-if="selectedLayoutStyle" class="layout-controls__style">
+                            <legend>Typografie</legend>
+                            <label>
+                                Schriftgröße
+                                <input
+                                    type="number"
+                                    min="12"
+                                    max="240"
+                                    step="1"
+                                    aria-label="Schriftgröße"
+                                    :value="selectedLayoutStyle.fontSize"
+                                    @blur="restoreSelectedFontSizeInput"
+                                    @input="updateSelectedTextStyle('fontSize', $event)"
+                                />
+                            </label>
+                            <label>
+                                Textfarbe
+                                <input
+                                    type="color"
+                                    aria-label="Textfarbe"
+                                    :value="selectedLayoutStyle.color"
+                                    @input="updateSelectedTextStyle('color', $event)"
+                                />
+                            </label>
+                        </fieldset>
                         <div v-if="selectedLayoutElement" class="layout-controls__alignment" aria-label="Element ausrichten">
                             <span>Ausrichten:</span>
                             <button type="button" aria-label="Links ausrichten" @click="alignLayoutElement('left')">Links</button>
@@ -1146,6 +1188,7 @@ const exportPng = async () => {
                     @selection-change="selectedLayoutElement = $event"
                     @selection-default-change="selectedLayoutElementChanged = $event"
                     @selection-geometry-change="selectedLayoutGeometry = $event"
+                    @selection-style-change="selectedLayoutStyle = $event"
                 />
             </section>
 

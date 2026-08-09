@@ -142,6 +142,8 @@ Die Oberfläche bietet zwei fest codierte 1920-×-1080-Templates: eine geteilte 
 
 Titel, kombinierte Datums-/Uhrzeile und Ort können auf der Konva-Arbeitsfläche ausgewählt, verschoben, in Breite und Höhe verändert sowie frei gedreht werden. Der Konva-Transformer stellt dafür Größen- und Rotationsgriffe bereit. Zusätzlich erlaubt eine tastaturfähige Elementleiste dieselben Änderungen in festen Schritten und kann die drei Texte schrittweise nach vorne oder hinten anordnen. Auswahlrahmen und Transformer werden vor dem Export ausgeblendet. Positionen, Größen, normalisierte Winkel und Ebenenreihenfolge liegen als serialisierbare Werte im Vue-Zustand und nicht ausschließlich in den Konva-Nodes. Sie werden pro Template getrennt gehalten, bleiben innerhalb der Dokumentgrenzen und können auf die Ausgangswerte zurückgesetzt werden.
 
+Für jedes ausgewählte Textelement können außerdem Schriftgröße und Textfarbe geändert werden. Die Schriftgröße wird auf 12 bis 240 Pixel begrenzt, die Farbe als sechsstelliger Hex-Wert gespeichert. Beide Werte sind Bestandteil des Layoutzustands, der Undo-/Redo-Historie, lokaler und portabler Entwürfe sowie des PNG-Exports. Ältere Entwürfe ohne Stilwerte werden beim Laden mit den bisherigen Template-Standardwerten ergänzt.
+
 Für das ausgewählte Element stehen zusätzlich exakte Zahlenfelder für X, Y, Breite, Höhe und Drehung bereit. Eingaben werden auf gültige Dokumentgrenzen und Mindestgrößen begrenzt; auch diese Änderungen sind rückgängig machbar und Bestandteil des lokalen Entwurfs.
 
 Ein einzelnes ausgewähltes Element kann unabhängig vom restlichen Layout auf seine ursprüngliche Position, Größe, Drehung und Ebenenposition zurückgesetzt werden.

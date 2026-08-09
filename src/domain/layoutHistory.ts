@@ -3,6 +3,7 @@ import type {
     LayoutOrder,
     LayoutRotations,
     LayoutSizes,
+    LayoutTextStyles,
 } from './layoutEditing';
 
 export interface SerializableLayoutState {
@@ -10,6 +11,7 @@ export interface SerializableLayoutState {
     sizes: LayoutSizes;
     rotations: LayoutRotations;
     order: LayoutOrder;
+    styles: LayoutTextStyles;
 }
 
 export interface LayoutHistory {
@@ -34,6 +36,11 @@ export const cloneLayoutState = (state: SerializableLayoutState): SerializableLa
     },
     rotations: { ...state.rotations },
     order: [...state.order],
+    styles: {
+        title: { ...state.styles.title },
+        dateTime: { ...state.styles.dateTime },
+        location: { ...state.styles.location },
+    },
 });
 
 const layoutStatesEqual = (left: SerializableLayoutState, right: SerializableLayoutState) =>

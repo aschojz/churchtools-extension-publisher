@@ -1,5 +1,13 @@
 import type { SerializableLayoutState } from './layoutHistory';
 import { createImageFocusByTemplate, type ImageFocusByTemplate } from './imageFocus';
+import {
+    createLayoutTextStyles,
+    isHexColor,
+    MAX_FONT_SIZE,
+    MIN_FONT_SIZE,
+    type LayoutElementId,
+    type LayoutTextStyles,
+} from './layoutEditing';
 import type { EventTemplateOverrides } from './templateOverrides';
 import type { TemplateId } from './templates';
 
@@ -25,10 +33,31 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isFiniteNumber = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value);
 
-const isLayoutState = (value: unknown): value is SerializableLayoutState => {
+const parseLayoutStyles = (value: unknown, templateId: TemplateId): LayoutTextStyles | null => {
+    if (value === undefined) {
+        return createLayoutTextStyles(templateId);
+    }
+    if (!isRecord(value)) {
+        return null;
+    }
+
+    const styles = createLayoutTextStyles(templateId);
+    for (const elementId of ['title', 'dateTime', 'location'] as const) {
+        const style = value[elementId];
+        if (!isRecord(style) || !isFiniteNumber(style.fontSize) ||
+            style.fontSize < MIN_FONT_SIZE || style.fontSize > MAX_FONT_SIZE ||
+            typeof style.color !== 'string' || !isHexColor(style.color)) {
+            return null;
+        }
+        styles[elementId] = { fontSize: style.fontSize, color: style.color.toLowerCase() };
+    }
+    return styles;
+};
+
+const parseLayoutState = (value: unknown, templateId: TemplateId): SerializableLayoutState | null => {
     if (!isRecord(value) || !isRecord(value.offsets) || !isRecord(value.sizes) ||
         !isRecord(value.rotations) || !Array.isArray(value.order)) {
-        return false;
+        return null;
     }
 
     const offsets = value.offsets;
@@ -36,7 +65,7 @@ const isLayoutState = (value: unknown): value is SerializableLayoutState => {
     const rotations = value.rotations;
     const order = value.order;
     const elementIds = ['title', 'dateTime', 'location'] as const;
-    return elementIds.every((elementId) => {
+    const geometryIsValid = elementIds.every((elementId) => {
         const offset = offsets[elementId];
         const size = sizes[elementId];
         return isRecord(offset) && isFiniteNumber(offset.x) && isFiniteNumber(offset.y) &&
@@ -44,6 +73,18 @@ const isLayoutState = (value: unknown): value is SerializableLayoutState => {
             isFiniteNumber(rotations[elementId]);
     }) && order.length === elementIds.length &&
         elementIds.every((elementId) => order.includes(elementId));
+    const styles = parseLayoutStyles(value.styles, templateId);
+    if (!geometryIsValid || !styles) {
+        return null;
+    }
+
+    return {
+        offsets: offsets as SerializableLayoutState['offsets'],
+        sizes: sizes as SerializableLayoutState['sizes'],
+        rotations: rotations as SerializableLayoutState['rotations'],
+        order: order as LayoutElementId[],
+        styles,
+    };
 };
 
 const parseTemplateOverrides = (value: unknown): EventTemplateOverrides | null => {
@@ -110,11 +151,12 @@ export const parsePublisherDraft = (value: string | null): PublisherDraft | null
         }
         const layouts: PublisherDraft['layouts'] = {};
         for (const templateId of ['split', 'poster'] as const) {
-            const layout = parsed.layouts[templateId];
-            if (layout !== undefined && !isLayoutState(layout)) {
+            const layoutValue = parsed.layouts[templateId];
+            const layout = parseLayoutState(layoutValue, templateId);
+            if (layoutValue !== undefined && !layout) {
                 return null;
             }
-            if (isLayoutState(layout)) {
+            if (layout) {
                 layouts[templateId] = layout;
             }
         }

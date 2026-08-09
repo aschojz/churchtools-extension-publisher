@@ -12,16 +12,20 @@ import {
     calculateAlignmentSnap,
     clampLayoutPosition,
     constrainLayoutGeometry,
+    constrainFontSize,
     createLayoutOrder,
     createLayoutOffsets,
     createLayoutRotations,
     createLayoutSizes,
+    createLayoutTextStyles,
+    isHexColor,
     keepRotatedFrameInDocument,
     type AlignmentGuide,
     type LayoutElementId,
     type LayoutFrame,
     type LayoutGeometry,
     type LayoutAlignment,
+    type LayoutTextStyle,
     moveLayoutElementInOrder,
     resizeLayoutFrame,
     resetLayoutElementState,
@@ -66,6 +70,7 @@ const emit = defineEmits<{
     selectionChange: [elementId: LayoutElementId | null];
     selectionDefaultChange: [changed: boolean];
     selectionGeometryChange: [geometry: (LayoutGeometry & { elementId: LayoutElementId }) | null];
+    selectionStyleChange: [style: (LayoutTextStyle & { elementId: LayoutElementId }) | null];
 }>();
 
 const containerRef = ref<HTMLDivElement | null>(null);
@@ -92,6 +97,10 @@ const layoutRotations = ref<Record<TemplateId, ReturnType<typeof createLayoutRot
 const layoutOrder = ref<Record<TemplateId, ReturnType<typeof createLayoutOrder>>>({
     split: createLayoutOrder(),
     poster: createLayoutOrder(),
+});
+const layoutTextStyles = ref<Record<TemplateId, ReturnType<typeof createLayoutTextStyles>>>({
+    split: createLayoutTextStyles('split'),
+    poster: createLayoutTextStyles('poster'),
 });
 const layoutHistories = ref<Record<TemplateId, ReturnType<typeof createLayoutHistory>>>({
     split: createLayoutHistory(),
@@ -170,7 +179,13 @@ const currentLayoutChanged = computed(() => {
     const orderChanged = layoutOrder.value[props.templateId].some(
         (elementId, index) => elementId !== defaultOrder[index],
     );
-    return geometryChanged || orderChanged;
+    const defaultStyles = createLayoutTextStyles(props.templateId);
+    const styleChanged = createLayoutOrder().some((elementId) => {
+        const style = layoutTextStyles.value[props.templateId][elementId];
+        return style.fontSize !== defaultStyles[elementId].fontSize ||
+            style.color !== defaultStyles[elementId].color;
+    });
+    return geometryChanged || orderChanged || styleChanged;
 });
 
 const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
@@ -189,6 +204,7 @@ const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
 const emitSelectionGeometry = () => {
     if (!selectedElement.value) {
         emit('selectionGeometryChange', null);
+        emit('selectionStyleChange', null);
         emit('selectionDefaultChange', false);
         return;
     }
@@ -201,12 +217,20 @@ const emitSelectionGeometry = () => {
         ...frame,
         rotation: layoutRotations.value[props.templateId][elementId],
     });
+    emit('selectionStyleChange', {
+        elementId,
+        ...layoutTextStyles.value[props.templateId][elementId],
+    });
     emit(
         'selectionDefaultChange',
         frame.x !== baseFrame.x || frame.y !== baseFrame.y ||
             frame.width !== baseFrame.width || frame.height !== baseFrame.height ||
             layoutRotations.value[props.templateId][elementId] !== 0 ||
-            layoutOrder.value[props.templateId].indexOf(elementId) !== createLayoutOrder().indexOf(elementId),
+            layoutOrder.value[props.templateId].indexOf(elementId) !== createLayoutOrder().indexOf(elementId) ||
+            layoutTextStyles.value[props.templateId][elementId].fontSize !==
+                createLayoutTextStyles(props.templateId)[elementId].fontSize ||
+            layoutTextStyles.value[props.templateId][elementId].color !==
+                createLayoutTextStyles(props.templateId)[elementId].color,
     );
 };
 
@@ -216,6 +240,7 @@ const captureLayoutState = (): SerializableLayoutState =>
         sizes: layoutSizes.value[props.templateId],
         rotations: layoutRotations.value[props.templateId],
         order: layoutOrder.value[props.templateId],
+        styles: layoutTextStyles.value[props.templateId],
     });
 
 const emitHistoryState = () => {
@@ -240,6 +265,7 @@ const restoreLayoutState = (state: SerializableLayoutState) => {
     layoutSizes.value[props.templateId] = restored.sizes;
     layoutRotations.value[props.templateId] = restored.rotations;
     layoutOrder.value[props.templateId] = restored.order;
+    layoutTextStyles.value[props.templateId] = restored.styles;
     emit('layoutStateChange', props.templateId, captureLayoutState());
     emit('layoutChange', currentLayoutChanged.value);
     emitLayerPosition();
@@ -495,6 +521,32 @@ const setSelectedElementGeometry = (
     commitSelectedGeometry(geometry);
 };
 
+const setSelectedElementTextStyle = (
+    field: keyof LayoutTextStyle,
+    value: number | string,
+) => {
+    if (!selectedElement.value) {
+        return;
+    }
+
+    const currentStyle = layoutTextStyles.value[props.templateId][selectedElement.value];
+    const nextStyle = field === 'fontSize'
+        ? { ...currentStyle, fontSize: constrainFontSize(Number(value)) }
+        : { ...currentStyle, color: String(value).toLowerCase() };
+    if (!Number.isFinite(nextStyle.fontSize) || !isHexColor(nextStyle.color)) {
+        emitSelectionGeometry();
+        return;
+    }
+
+    const previousState = captureLayoutState();
+    layoutTextStyles.value[props.templateId] = {
+        ...layoutTextStyles.value[props.templateId],
+        [selectedElement.value]: nextStyle,
+    };
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
 const alignSelectedElement = (alignment: LayoutAlignment) => {
     if (!selectedElement.value) {
         return;
@@ -538,6 +590,7 @@ const resetLayout = () => {
     layoutSizes.value[props.templateId] = createLayoutSizes(props.templateId);
     layoutRotations.value[props.templateId] = createLayoutRotations();
     layoutOrder.value[props.templateId] = createLayoutOrder();
+    layoutTextStyles.value[props.templateId] = createLayoutTextStyles(props.templateId);
     commitCurrentLayout(previousState);
     selectedElement.value = null;
     activeAlignmentGuides.value = [];
@@ -562,6 +615,7 @@ const resetSelectedElement = () => {
     layoutSizes.value[props.templateId] = reset.sizes;
     layoutRotations.value[props.templateId] = reset.rotations;
     layoutOrder.value[props.templateId] = reset.order;
+    layoutTextStyles.value[props.templateId] = reset.styles;
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     emitLayerPosition();
@@ -600,11 +654,13 @@ const restoreDraftLayouts = () => {
                   sizes: createLayoutSizes(templateId),
                   rotations: createLayoutRotations(),
                   order: createLayoutOrder(),
+                  styles: createLayoutTextStyles(templateId),
               };
         layoutOffsets.value[templateId] = restored.offsets;
         layoutSizes.value[templateId] = restored.sizes;
         layoutRotations.value[templateId] = restored.rotations;
         layoutOrder.value[templateId] = restored.order;
+        layoutTextStyles.value[templateId] = restored.styles;
         layoutHistories.value[templateId] = createLayoutHistory();
     }
     selectedElement.value = null;
@@ -727,6 +783,7 @@ defineExpose({
     resizeSelectedElement,
     rotateSelectedElement,
     setSelectedElementGeometry,
+    setSelectedElementTextStyle,
     selectElement,
     undoLayout,
 });
@@ -764,9 +821,9 @@ defineExpose({
                     :z-index="layoutOrder[templateId].indexOf('title')"
                     :text-config="{
                         text: template.title,
-                        fill: '#ffffff',
+                        fill: layoutTextStyles[templateId].title.color,
                         fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: 88,
+                        fontSize: layoutTextStyles[templateId].title.fontSize,
                         fontStyle: 'bold',
                         lineHeight: 1.08,
                         wrap: 'word',
@@ -784,9 +841,9 @@ defineExpose({
                     :z-index="layoutOrder[templateId].indexOf('dateTime')"
                     :text-config="{
                         text: dateAndTime,
-                        fill: '#f3b562',
+                        fill: layoutTextStyles[templateId].dateTime.color,
                         fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: 42,
+                        fontSize: layoutTextStyles[templateId].dateTime.fontSize,
                         fontStyle: 'bold',
                         lineHeight: 1.25,
                     }"
@@ -803,9 +860,9 @@ defineExpose({
                     :z-index="layoutOrder[templateId].indexOf('location')"
                     :text-config="{
                         text: template.location,
-                        fill: '#d8dee8',
+                        fill: layoutTextStyles[templateId].location.color,
                         fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: 36,
+                        fontSize: layoutTextStyles[templateId].location.fontSize,
                         lineHeight: 1.35,
                         wrap: 'word',
                         ellipsis: true,
@@ -858,9 +915,9 @@ defineExpose({
                     :text-config="{
                         text: template.title,
                         align: 'center',
-                        fill: '#ffffff',
+                        fill: layoutTextStyles[templateId].title.color,
                         fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: 112,
+                        fontSize: layoutTextStyles[templateId].title.fontSize,
                         fontStyle: 'bold',
                         lineHeight: 1.05,
                         wrap: 'word',
@@ -879,9 +936,9 @@ defineExpose({
                     :text-config="{
                         text: dateAndTime,
                         align: 'center',
-                        fill: '#f7c77f',
+                        fill: layoutTextStyles[templateId].dateTime.color,
                         fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: 50,
+                        fontSize: layoutTextStyles[templateId].dateTime.fontSize,
                         fontStyle: 'bold',
                     }"
                     @dragging="alignElementWhileDragging"
@@ -898,9 +955,9 @@ defineExpose({
                     :text-config="{
                         text: template.location,
                         align: 'center',
-                        fill: '#ffffff',
+                        fill: layoutTextStyles[templateId].location.color,
                         fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: 38,
+                        fontSize: layoutTextStyles[templateId].location.fontSize,
                         lineHeight: 1.3,
                         wrap: 'word',
                         ellipsis: true,

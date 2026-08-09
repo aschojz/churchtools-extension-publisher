@@ -418,6 +418,7 @@ textarea {
 .layout-controls__sizes,
 .layout-controls__rotations,
 .layout-controls__geometry,
+.layout-controls__style,
 .layout-controls__alignment,
 .layout-controls__layers {
     display: flex;
@@ -426,21 +427,24 @@ textarea {
     margin-top: 10px;
 }
 
-.layout-controls__geometry {
+.layout-controls__geometry,
+.layout-controls__style {
     max-width: 610px;
     padding: 10px 12px 12px;
     border: 1px solid #c5d3df;
     border-radius: 8px;
 }
 
-.layout-controls__geometry legend {
+.layout-controls__geometry legend,
+.layout-controls__style legend {
     padding: 0 4px;
     color: #31465a;
     font-size: 13px;
     font-weight: 700;
 }
 
-.layout-controls__geometry label {
+.layout-controls__geometry label,
+.layout-controls__style label {
     display: grid;
     min-width: 92px;
     gap: 4px;
@@ -449,7 +453,8 @@ textarea {
     font-weight: 700;
 }
 
-.layout-controls__geometry input {
+.layout-controls__geometry input,
+.layout-controls__style input {
     width: 100%;
     min-height: 34px;
     box-sizing: border-box;
@@ -460,9 +465,16 @@ textarea {
     color: #273747;
 }
 
-.layout-controls__geometry input:focus {
+.layout-controls__geometry input:focus,
+.layout-controls__style input:focus {
     border-color: #3478c7;
     outline: 3px solid rgb(52 120 199 / 18%);
+}
+
+.layout-controls__style input[type='color'] {
+    min-width: 92px;
+    padding: 3px 6px;
+    cursor: pointer;
 }
 
 .layout-controls__elements button,

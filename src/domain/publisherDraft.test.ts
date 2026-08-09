@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { createLayoutOffsets, createLayoutOrder, createLayoutRotations, createLayoutSizes } from './layoutEditing';
+import {
+    createLayoutOffsets,
+    createLayoutOrder,
+    createLayoutRotations,
+    createLayoutSizes,
+    createLayoutTextStyles,
+} from './layoutEditing';
 import { createImageFocusByTemplate } from './imageFocus';
 import {
     deletePublisherDraft,
@@ -29,6 +35,7 @@ const createDraft = (): PublisherDraft => ({
             sizes: createLayoutSizes('split'),
             rotations: createLayoutRotations(),
             order: createLayoutOrder(),
+            styles: createLayoutTextStyles('split'),
         },
     },
     imageFocus: { ...createImageFocusByTemplate(), split: { x: 20, y: 80, zoom: 175 } },
@@ -85,6 +92,41 @@ describe('publisher draft', () => {
             split: { x: 20, y: 80, zoom: 100 },
             poster: { x: 50, y: 50, zoom: 100 },
         });
+    });
+
+    it('migrates older layout drafts to the template text styles', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        const splitLayout = draft.layouts.split;
+        expect(splitLayout).toBeDefined();
+        const { styles: _, ...legacyLayout } = splitLayout!;
+        storage.setItem('churchtools-publisher:draft:layout-legacy', JSON.stringify({
+            ...draft,
+            layouts: { split: legacyLayout },
+        }));
+
+        expect(loadPublisherDraft(storage, 'layout-legacy')?.layouts.split?.styles)
+            .toEqual(createLayoutTextStyles('split'));
+    });
+
+    it('rejects invalid persisted text styles', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        const splitLayout = draft.layouts.split!;
+        storage.setItem('churchtools-publisher:draft:invalid-style', JSON.stringify({
+            ...draft,
+            layouts: {
+                split: {
+                    ...splitLayout,
+                    styles: {
+                        ...splitLayout.styles,
+                        title: { fontSize: 500, color: 'white' },
+                    },
+                },
+            },
+        }));
+
+        expect(loadPublisherDraft(storage, 'invalid-style')).toBeNull();
     });
 
     it('finds only valid drafts among the supplied appointment keys', () => {

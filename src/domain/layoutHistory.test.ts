@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { createLayoutOffsets, createLayoutOrder, createLayoutRotations, createLayoutSizes } from './layoutEditing';
+import {
+    createLayoutOffsets,
+    createLayoutOrder,
+    createLayoutRotations,
+    createLayoutSizes,
+    createLayoutTextStyles,
+} from './layoutEditing';
 import {
     commitLayoutHistory,
     createLayoutHistory,
@@ -14,6 +20,7 @@ const createState = (): SerializableLayoutState => ({
     sizes: createLayoutSizes('split'),
     rotations: createLayoutRotations(),
     order: createLayoutOrder(),
+    styles: createLayoutTextStyles('split'),
 });
 
 describe('layout history', () => {
@@ -46,5 +53,17 @@ describe('layout history', () => {
 
         expect(commitLayoutHistory(history, state, state)).toBe(history);
         expect(undoLayoutHistory(history, state)).toBeNull();
+    });
+
+    it('includes text styles in undo and redo snapshots', () => {
+        const initial = createState();
+        const styled = createState();
+        styled.styles.title = { fontSize: 120, color: '#123456' };
+        const history = commitLayoutHistory(createLayoutHistory(), initial, styled);
+        const undone = undoLayoutHistory(history, styled);
+
+        expect(undone?.state.styles.title).toEqual({ fontSize: 88, color: '#ffffff' });
+        const redone = undone && redoLayoutHistory(undone.history, undone.state);
+        expect(redone?.state.styles.title).toEqual({ fontSize: 120, color: '#123456' });
     });
 });

@@ -5,8 +5,11 @@ import {
     calculateAlignmentSnap,
     clampLayoutPosition,
     constrainLayoutGeometry,
+    constrainFontSize,
     createLayoutOrder,
     createLayoutOffsets,
+    createLayoutTextStyles,
+    isHexColor,
     keepRotatedFrameInDocument,
     normalizeRotation,
     moveLayoutElementInOrder,
@@ -121,6 +124,10 @@ describe('layout editing', () => {
             },
             rotations: { title: 30, dateTime: 15, location: 0 },
             order: ['dateTime', 'location', 'title'] as const,
+            styles: {
+                ...createLayoutTextStyles('split'),
+                title: { fontSize: 120, color: '#123456' },
+            },
         };
 
         const reset = resetLayoutElementState('split', 'title', {
@@ -132,9 +139,18 @@ describe('layout editing', () => {
         expect(reset.sizes.title).toEqual({ width: 760, height: 310 });
         expect(reset.rotations.title).toBe(0);
         expect(reset.order).toEqual(['title', 'dateTime', 'location']);
+        expect(reset.styles.title).toEqual({ fontSize: 88, color: '#ffffff' });
         expect(reset.offsets.dateTime).toEqual(state.offsets.dateTime);
         expect(reset.sizes.dateTime).toEqual(state.sizes.dateTime);
         expect(reset.rotations.dateTime).toBe(15);
+    });
+
+    it('validates text color and constrains font sizes', () => {
+        expect(isHexColor('#12aBcF')).toBe(true);
+        expect(isHexColor('red')).toBe(false);
+        expect(constrainFontSize(8)).toBe(12);
+        expect(constrainFontSize(88.6)).toBe(89);
+        expect(constrainFontSize(500)).toBe(240);
     });
 
     it('snaps matching element edges and reports visual alignment guides', () => {

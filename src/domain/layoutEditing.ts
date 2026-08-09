@@ -24,6 +24,11 @@ export interface LayoutSize {
     height: number;
 }
 
+export interface LayoutTextStyle {
+    fontSize: number;
+    color: string;
+}
+
 export interface AlignmentGuide {
     orientation: 'horizontal' | 'vertical';
     position: number;
@@ -46,12 +51,14 @@ export type LayoutOffsets = Record<LayoutElementId, LayoutPoint>;
 export type LayoutSizes = Record<LayoutElementId, LayoutSize>;
 export type LayoutRotations = Record<LayoutElementId, number>;
 export type LayoutOrder = LayoutElementId[];
+export type LayoutTextStyles = Record<LayoutElementId, LayoutTextStyle>;
 
 export interface LayoutElementState {
     offsets: LayoutOffsets;
     sizes: LayoutSizes;
     rotations: LayoutRotations;
     order: LayoutOrder;
+    styles: LayoutTextStyles;
 }
 
 export const MIN_ELEMENT_WIDTH = 120;
@@ -59,6 +66,8 @@ export const MIN_ELEMENT_HEIGHT = 50;
 export const SNAP_GRID_SIZE = 20;
 export const SNAP_ROTATION_STEP = 15;
 export const ALIGNMENT_SNAP_THRESHOLD = 10;
+export const MIN_FONT_SIZE = 12;
+export const MAX_FONT_SIZE = 240;
 
 export const TEMPLATE_ELEMENT_FRAMES: Record<TemplateId, Record<LayoutElementId, LayoutFrame>> = {
     split: {
@@ -102,6 +111,24 @@ export const createLayoutRotations = (): LayoutRotations => ({
 
 export const createLayoutOrder = (): LayoutOrder => ['title', 'dateTime', 'location'];
 
+export const createLayoutTextStyles = (templateId: TemplateId): LayoutTextStyles =>
+    templateId === 'split'
+        ? {
+              title: { fontSize: 88, color: '#ffffff' },
+              dateTime: { fontSize: 42, color: '#f3b562' },
+              location: { fontSize: 36, color: '#d8dee8' },
+          }
+        : {
+              title: { fontSize: 112, color: '#ffffff' },
+              dateTime: { fontSize: 50, color: '#f7c77f' },
+              location: { fontSize: 38, color: '#ffffff' },
+          };
+
+export const constrainFontSize = (fontSize: number) =>
+    Math.min(Math.max(Math.round(fontSize), MIN_FONT_SIZE), MAX_FONT_SIZE);
+
+export const isHexColor = (color: string) => /^#[0-9a-f]{6}$/i.test(color);
+
 export const resetLayoutElementState = (
     templateId: TemplateId,
     elementId: LayoutElementId,
@@ -122,6 +149,10 @@ export const resetLayoutElementState = (
         },
         rotations: { ...state.rotations, [elementId]: 0 },
         order: orderWithoutElement,
+        styles: {
+            ...state.styles,
+            [elementId]: { ...createLayoutTextStyles(templateId)[elementId] },
+        },
     };
 };
 
