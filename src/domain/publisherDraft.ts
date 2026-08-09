@@ -137,6 +137,15 @@ export const parsePublisherDraft = (value: string | null): PublisherDraft | null
 export const loadPublisherDraft = (storage: Pick<Storage, 'getItem'>, appointmentKey: string) =>
     parsePublisherDraft(storage.getItem(publisherDraftStorageKey(appointmentKey)));
 
+export const findPublisherDraftAppointmentKeys = (
+    storage: Pick<Storage, 'getItem'>,
+    appointmentKeys: Iterable<string>,
+) => new Set(
+    [...appointmentKeys].filter((appointmentKey) =>
+        Boolean(loadPublisherDraft(storage, appointmentKey)),
+    ),
+);
+
 export const savePublisherDraft = (
     storage: Pick<Storage, 'setItem'>,
     appointmentKey: string,

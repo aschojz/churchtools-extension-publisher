@@ -114,6 +114,32 @@ textarea {
     justify-content: space-between;
 }
 
+.appointment-picker__filter-actions,
+.appointment-picker__draft-filter {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.appointment-picker__filter-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.appointment-picker__draft-filter {
+    color: #31465a;
+    font-size: 13px !important;
+    white-space: nowrap;
+}
+
+.appointment-picker__draft-filter input {
+    width: 17px;
+    height: 17px;
+    min-height: auto;
+    padding: 0;
+    accent-color: #2768ad;
+}
+
 .appointment-picker__reset {
     flex: none;
     padding: 0;
@@ -679,6 +705,11 @@ textarea {
 
     .appointment-picker__filter-summary {
         align-items: start;
+        flex-direction: column;
+    }
+
+    .appointment-picker__filter-actions {
+        align-items: flex-start;
         flex-direction: column;
     }
 

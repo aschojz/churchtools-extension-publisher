@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import { createLayoutOffsets, createLayoutOrder, createLayoutRotations, createLayoutSizes } from './layoutEditing';
 import { createImageFocusByTemplate } from './imageFocus';
-import { deletePublisherDraft, loadPublisherDraft, type PublisherDraft, savePublisherDraft } from './publisherDraft';
+import {
+    deletePublisherDraft,
+    findPublisherDraftAppointmentKeys,
+    loadPublisherDraft,
+    type PublisherDraft,
+    savePublisherDraft,
+} from './publisherDraft';
 
 const createStorage = () => {
     const values = new Map<string, string>();
@@ -79,5 +85,17 @@ describe('publisher draft', () => {
             split: { x: 20, y: 80, zoom: 100 },
             poster: { x: 50, y: 50, zoom: 100 },
         });
+    });
+
+    it('finds only valid drafts among the supplied appointment keys', () => {
+        const storage = createStorage();
+        savePublisherDraft(storage, '42:first', createDraft());
+        storage.setItem('churchtools-publisher:draft:42:broken', '{invalid');
+
+        expect(findPublisherDraftAppointmentKeys(storage, [
+            '42:first',
+            '42:broken',
+            '42:missing',
+        ])).toEqual(new Set(['42:first']));
     });
 });

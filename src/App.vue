@@ -14,6 +14,7 @@ import { cloneLayoutState, type SerializableLayoutState } from './domain/layoutH
 import { validateLocalImage } from './domain/localImageOverride';
 import {
     deletePublisherDraft,
+    findPublisherDraftAppointmentKeys,
     loadPublisherDraft,
     PUBLISHER_DRAFT_VERSION,
     savePublisherDraft,
@@ -39,6 +40,7 @@ const selectedAppointmentKey = ref('');
 const appointmentSearch = ref('');
 const selectedCalendarFilter = ref('');
 const selectedAppointmentRange = ref('');
+const onlyAppointmentsWithDraft = ref(false);
 const appointmentFilterReferenceDate = new Date();
 const templateRef = ref<InstanceType<typeof EventTemplate> | null>(null);
 const imageStatus = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle');
@@ -66,6 +68,7 @@ const draftStatus = ref('');
 const draftError = ref('');
 const hasLocalDraft = ref(false);
 const restoringDraft = ref(false);
+const draftIndexRevision = ref(0);
 const imageFocusByTemplate = ref(createImageFocusByTemplate());
 const layoutStep = computed(() => (snapEnabled.value ? 20 : 5));
 const rotationStep = computed(() => (snapEnabled.value ? 15 : 5));
@@ -103,6 +106,17 @@ const sortedCalendars = computed(() =>
         left.nameTranslated.localeCompare(right.nameTranslated, userLanguage),
     ),
 );
+const draftAppointmentKeys = computed(() => {
+    draftIndexRevision.value;
+    try {
+        return findPublisherDraftAppointmentKeys(
+            window.localStorage,
+            sortedAppointments.value.map(appointmentKey),
+        );
+    } catch {
+        return new Set<string>();
+    }
+});
 const filteredAppointments = computed(() =>
     sortedAppointments.value.filter(({ appointment }) => {
         const matchesTextAndCalendar = matchesAppointmentFilters(
@@ -117,7 +131,9 @@ const filteredAppointments = computed(() =>
         const rangeDays = selectedAppointmentRange.value
             ? Number(selectedAppointmentRange.value)
             : null;
-        return matchesTextAndCalendar && isAppointmentWithinDays(
+        const key = `${appointment.base.id}:${appointment.calculated.startDate}`;
+        return (!onlyAppointmentsWithDraft.value || draftAppointmentKeys.value.has(key)) &&
+            matchesTextAndCalendar && isAppointmentWithinDays(
             appointment.calculated.startDate,
             rangeDays,
             appointmentFilterReferenceDate,
@@ -125,7 +141,10 @@ const filteredAppointments = computed(() =>
     }),
 );
 const hasAppointmentFilters = computed(() =>
-    Boolean(appointmentSearch.value || selectedCalendarFilter.value || selectedAppointmentRange.value),
+    Boolean(
+        appointmentSearch.value || selectedCalendarFilter.value || selectedAppointmentRange.value ||
+        onlyAppointmentsWithDraft.value,
+    ),
 );
 
 const selectedAppointment = computed(
@@ -170,17 +189,22 @@ const hasTemplateOverrides = computed(
 const isLoading = computed(() => calendarsPending.value || appointmentsPending.value);
 const loadingError = computed(() => calendarsError.value ?? appointmentsError.value);
 
-watch([appointmentSearch, selectedCalendarFilter, selectedAppointmentRange], () => {
-    if (selectedAppointmentKey.value &&
-        !filteredAppointments.value.some((appointment) => appointmentKey(appointment) === selectedAppointmentKey.value)) {
-        selectedAppointmentKey.value = '';
-    }
-});
+watch(
+    [appointmentSearch, selectedCalendarFilter, selectedAppointmentRange, onlyAppointmentsWithDraft, draftIndexRevision],
+    () => {
+        if (selectedAppointmentKey.value && !filteredAppointments.value.some(
+            (appointment) => appointmentKey(appointment) === selectedAppointmentKey.value,
+        )) {
+            selectedAppointmentKey.value = '';
+        }
+    },
+);
 
 const resetAppointmentFilters = () => {
     appointmentSearch.value = '';
     selectedCalendarFilter.value = '';
     selectedAppointmentRange.value = '';
+    onlyAppointmentsWithDraft.value = false;
 };
 
 const currentPublisherDraft = (): PublisherDraft => ({
@@ -208,8 +232,12 @@ const saveCurrentDraft = () => {
     }
 
     try {
+        const wasLocalDraft = hasLocalDraft.value;
         savePublisherDraft(window.localStorage, selectedAppointmentKey.value, currentPublisherDraft());
         hasLocalDraft.value = true;
+        if (!wasLocalDraft) {
+            draftIndexRevision.value += 1;
+        }
         draftStatus.value = 'Lokaler Entwurf gespeichert.';
         draftError.value = '';
     } catch {
@@ -281,6 +309,7 @@ watch(selectedAppointmentKey, () => {
         draftLayouts.value = {};
         imageFocusByTemplate.value = createImageFocusByTemplate();
         hasLocalDraft.value = false;
+        draftIndexRevision.value += 1;
         draftError.value = 'Der lokale Entwurf konnte nicht geladen werden.';
     }
     draftRevision.value += 1;
@@ -371,6 +400,7 @@ const deleteLocalDraft = () => {
         snapEnabled.value = true;
         previewZoomPercent.value = 100;
         hasLocalDraft.value = false;
+        draftIndexRevision.value += 1;
         draftStatus.value = 'Lokaler Entwurf gelöscht.';
         draftError.value = '';
         revokeReplacementImage();
@@ -520,7 +550,8 @@ const formatAppointmentDate = ({ appointment }: AppointmentCalculatedWithInclude
 
 const appointmentLabel = (appointment: AppointmentCalculatedWithIncludes) => {
     const { base } = appointment.appointment;
-    return `${base.title} — ${formatAppointmentDate(appointment)} — ${base.calendar.nameTranslated}`;
+    const draftLabel = draftAppointmentKeys.value.has(appointmentKey(appointment)) ? ' — Entwurf' : '';
+    return `${base.title} — ${formatAppointmentDate(appointment)} — ${base.calendar.nameTranslated}${draftLabel}`;
 };
 
 const slugify = (value: string) =>
@@ -579,6 +610,7 @@ const importDraftFile = async (event: Event) => {
         }
 
         restoringDraft.value = true;
+        const wasLocalDraft = hasLocalDraft.value;
         savePublisherDraft(window.localStorage, selectedAppointmentKey.value, imported.draft);
         templateOverrides.value = { ...imported.draft.templateOverrides };
         selectedTemplateId.value = imported.draft.selectedTemplateId;
@@ -595,6 +627,9 @@ const importDraftFile = async (event: Event) => {
         snapEnabled.value = imported.draft.snapEnabled;
         previewZoomPercent.value = imported.draft.previewZoomPercent;
         hasLocalDraft.value = true;
+        if (!wasLocalDraft) {
+            draftIndexRevision.value += 1;
+        }
         draftStatus.value = 'Entwurf aus JSON importiert.';
         draftError.value = '';
         exportError.value = '';
@@ -699,14 +734,20 @@ const exportPng = async () => {
                             </template>
                             <template v-else>Keine passenden Termine gefunden.</template>
                         </p>
-                        <button
-                            v-if="hasAppointmentFilters"
-                            type="button"
-                            class="appointment-picker__reset"
-                            @click="resetAppointmentFilters"
-                        >
-                            Filter zurücksetzen
-                        </button>
+                        <div class="appointment-picker__filter-actions">
+                            <label class="appointment-picker__draft-filter">
+                                <input v-model="onlyAppointmentsWithDraft" type="checkbox" />
+                                Nur Termine mit Entwurf
+                            </label>
+                            <button
+                                v-if="hasAppointmentFilters"
+                                type="button"
+                                class="appointment-picker__reset"
+                                @click="resetAppointmentFilters"
+                            >
+                                Filter zurücksetzen
+                            </button>
+                        </div>
                     </div>
 
                     <label for="appointment">Kalendertermin</label>
