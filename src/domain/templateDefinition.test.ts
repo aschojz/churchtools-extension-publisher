@@ -43,6 +43,24 @@ describe('template definition', () => {
         }))).toBeNull();
     });
 
+    it('rejects unsupported editable text rendering options', () => {
+        const definition = BUILT_IN_TEMPLATE_DEFINITIONS.poster;
+        expect(parseTemplateDefinition(JSON.stringify({
+            ...definition,
+            elements: {
+                ...definition.elements,
+                title: {
+                    ...definition.elements.title,
+                    style: {
+                        ...definition.elements.title.style,
+                        align: 'justify',
+                        wrap: 'character',
+                    },
+                },
+            },
+        }))).toBeNull();
+    });
+
     it('rejects text sizes outside the editor limits', () => {
         const definition = BUILT_IN_TEMPLATE_DEFINITIONS.split;
         expect(parseTemplateDefinition(JSON.stringify({

@@ -45,8 +45,10 @@ import {
 import type { TemplateId } from '../domain/templates';
 import {
     BUILT_IN_TEMPLATE_DEFINITIONS,
+    TEMPLATE_TEXT_BINDINGS,
     type TemplateDecoration,
     type TemplateDecorationPlacement,
+    type TemplateTextBinding,
 } from '../domain/templateDefinition';
 import {
     calculatePreviewScale,
@@ -192,6 +194,27 @@ const decorationConfig = (decoration: TemplateDecoration) => ({
 });
 
 const dateAndTime = computed(() => [props.template.date, props.template.time].filter(Boolean).join(' · '));
+const editableTextValues = computed<Record<TemplateTextBinding, string>>(() => ({
+    title: props.template.title,
+    dateTime: dateAndTime.value,
+    location: props.template.location,
+}));
+
+const editableTextConfig = (binding: TemplateTextBinding) => {
+    const definitionStyle = templateDefinition.value.elements[binding].style;
+    const editableStyle = layoutTextStyles.value[props.templateId][binding];
+    return {
+        text: editableTextValues.value[binding],
+        fill: editableStyle.color,
+        fontSize: editableStyle.fontSize,
+        fontFamily: definitionStyle.fontFamily,
+        fontStyle: definitionStyle.fontStyle,
+        lineHeight: definitionStyle.lineHeight,
+        wrap: definitionStyle.wrap,
+        ellipsis: definitionStyle.ellipsis,
+        align: definitionStyle.align,
+    };
+};
 const currentLayoutChanged = computed(() => {
     const geometryChanged = (
         Object.entries(layoutOffsets.value[props.templateId]) as [LayoutElementId, { x: number; y: number }][]
@@ -830,127 +853,21 @@ defineExpose({
                     <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration)" />
                     <v-text v-else :config="decorationConfig(decoration)" />
                 </template>
-                <v-group v-if="templateId === 'split'">
-                <EditableTextElement
-                    element-id="title"
-                    :frame="elementFrame('title')"
-                    :rotation="layoutRotations[templateId].title"
-                    :selected="selectedElement === 'title' && !isExporting"
-                    :z-index="layoutOrder[templateId].indexOf('title')"
-                    :text-config="{
-                        text: template.title,
-                        fill: layoutTextStyles[templateId].title.color,
-                        fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: layoutTextStyles[templateId].title.fontSize,
-                        fontStyle: 'bold',
-                        lineHeight: 1.08,
-                        wrap: 'word',
-                        ellipsis: true,
-                    }"
-                    @dragging="alignElementWhileDragging"
-                    @move="moveElement"
-                    @resize="resizeElement"
-                />
-                <EditableTextElement
-                    element-id="dateTime"
-                    :frame="elementFrame('dateTime')"
-                    :rotation="layoutRotations[templateId].dateTime"
-                    :selected="selectedElement === 'dateTime' && !isExporting"
-                    :z-index="layoutOrder[templateId].indexOf('dateTime')"
-                    :text-config="{
-                        text: dateAndTime,
-                        fill: layoutTextStyles[templateId].dateTime.color,
-                        fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: layoutTextStyles[templateId].dateTime.fontSize,
-                        fontStyle: 'bold',
-                        lineHeight: 1.25,
-                    }"
-                    @dragging="alignElementWhileDragging"
-                    @move="moveElement"
-                    @resize="resizeElement"
-                />
-                <EditableTextElement
-                    v-if="template.location"
-                    element-id="location"
-                    :frame="elementFrame('location')"
-                    :rotation="layoutRotations[templateId].location"
-                    :selected="selectedElement === 'location' && !isExporting"
-                    :z-index="layoutOrder[templateId].indexOf('location')"
-                    :text-config="{
-                        text: template.location,
-                        fill: layoutTextStyles[templateId].location.color,
-                        fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: layoutTextStyles[templateId].location.fontSize,
-                        lineHeight: 1.35,
-                        wrap: 'word',
-                        ellipsis: true,
-                    }"
-                    @dragging="alignElementWhileDragging"
-                    @move="moveElement"
-                    @resize="resizeElement"
-                />
-                </v-group>
-                <v-group v-else>
-                <EditableTextElement
-                    element-id="title"
-                    :frame="elementFrame('title')"
-                    :rotation="layoutRotations[templateId].title"
-                    :selected="selectedElement === 'title' && !isExporting"
-                    :z-index="layoutOrder[templateId].indexOf('title')"
-                    :text-config="{
-                        text: template.title,
-                        align: 'center',
-                        fill: layoutTextStyles[templateId].title.color,
-                        fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: layoutTextStyles[templateId].title.fontSize,
-                        fontStyle: 'bold',
-                        lineHeight: 1.05,
-                        wrap: 'word',
-                        ellipsis: true,
-                    }"
-                    @dragging="alignElementWhileDragging"
-                    @move="moveElement"
-                    @resize="resizeElement"
-                />
-                <EditableTextElement
-                    element-id="dateTime"
-                    :frame="elementFrame('dateTime')"
-                    :rotation="layoutRotations[templateId].dateTime"
-                    :selected="selectedElement === 'dateTime' && !isExporting"
-                    :z-index="layoutOrder[templateId].indexOf('dateTime')"
-                    :text-config="{
-                        text: dateAndTime,
-                        align: 'center',
-                        fill: layoutTextStyles[templateId].dateTime.color,
-                        fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: layoutTextStyles[templateId].dateTime.fontSize,
-                        fontStyle: 'bold',
-                    }"
-                    @dragging="alignElementWhileDragging"
-                    @move="moveElement"
-                    @resize="resizeElement"
-                />
-                <EditableTextElement
-                    v-if="template.location"
-                    element-id="location"
-                    :frame="elementFrame('location')"
-                    :rotation="layoutRotations[templateId].location"
-                    :selected="selectedElement === 'location' && !isExporting"
-                    :z-index="layoutOrder[templateId].indexOf('location')"
-                    :text-config="{
-                        text: template.location,
-                        align: 'center',
-                        fill: layoutTextStyles[templateId].location.color,
-                        fontFamily: 'Lato, Arial, sans-serif',
-                        fontSize: layoutTextStyles[templateId].location.fontSize,
-                        lineHeight: 1.3,
-                        wrap: 'word',
-                        ellipsis: true,
-                    }"
-                    @dragging="alignElementWhileDragging"
-                    @move="moveElement"
-                    @resize="resizeElement"
-                />
+                <v-group>
+                    <template v-for="binding in TEMPLATE_TEXT_BINDINGS" :key="binding">
+                        <EditableTextElement
+                            v-if="binding !== 'location' || template.location"
+                            :element-id="binding"
+                            :frame="elementFrame(binding)"
+                            :rotation="layoutRotations[templateId][binding]"
+                            :selected="selectedElement === binding && !isExporting"
+                            :z-index="layoutOrder[templateId].indexOf(binding)"
+                            :text-config="editableTextConfig(binding)"
+                            @dragging="alignElementWhileDragging"
+                            @move="moveElement"
+                            @resize="resizeElement"
+                        />
+                    </template>
                 </v-group>
             </v-layer>
             <v-layer v-if="!isExporting" :config="{ listening: false }">

@@ -118,9 +118,9 @@ export const createLayoutOrder = (): LayoutOrder => ['title', 'dateTime', 'locat
 export const createLayoutTextStyles = (templateId: TemplateId): LayoutTextStyles => {
     const elements = BUILT_IN_TEMPLATE_DEFINITIONS[templateId].elements;
     return {
-        title: { ...elements.title.style },
-        dateTime: { ...elements.dateTime.style },
-        location: { ...elements.location.style },
+        title: { fontSize: elements.title.style.fontSize, color: elements.title.style.color },
+        dateTime: { fontSize: elements.dateTime.style.fontSize, color: elements.dateTime.style.color },
+        location: { fontSize: elements.location.style.fontSize, color: elements.location.style.color },
     };
 };
 

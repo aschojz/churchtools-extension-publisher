@@ -7,7 +7,8 @@ export const MIN_FONT_SIZE = 12;
 export const MAX_FONT_SIZE = 240;
 
 export type BuiltInTemplateId = (typeof BUILT_IN_TEMPLATE_IDS)[number];
-export type TemplateTextBinding = 'title' | 'dateTime' | 'location';
+export const TEMPLATE_TEXT_BINDINGS = ['title', 'dateTime', 'location'] as const;
+export type TemplateTextBinding = (typeof TEMPLATE_TEXT_BINDINGS)[number];
 
 export interface TemplateFrame {
     x: number;
@@ -22,6 +23,12 @@ export interface TemplateTextElementDefinition {
     style: {
         fontSize: number;
         color: string;
+        fontFamily: string;
+        fontStyle: 'normal' | 'bold';
+        lineHeight: number;
+        wrap: 'none' | 'word';
+        ellipsis: boolean;
+        align: 'left' | 'center' | 'right';
     };
 }
 
@@ -77,7 +84,22 @@ const textElement = (
     frame: TemplateFrame,
     fontSize: number,
     color: string,
-): TemplateTextElementDefinition => ({ binding, frame, style: { fontSize, color } });
+    style: Partial<Omit<TemplateTextElementDefinition['style'], 'fontSize' | 'color'>> = {},
+): TemplateTextElementDefinition => ({
+    binding,
+    frame,
+    style: {
+        fontSize,
+        color,
+        fontFamily: 'Lato, Arial, sans-serif',
+        fontStyle: 'normal',
+        lineHeight: 1,
+        wrap: 'word',
+        ellipsis: false,
+        align: 'left',
+        ...style,
+    },
+});
 
 const fullDocumentFrame = (): TemplateFrame => ({
     x: 0,
@@ -105,9 +127,15 @@ export const BUILT_IN_TEMPLATE_DEFINITIONS: Record<BuiltInTemplateId, PublisherT
             ],
         },
         elements: {
-            title: textElement('title', { x: 1030, y: 130, width: 760, height: 310 }, 88, '#ffffff'),
-            dateTime: textElement('dateTime', { x: 1030, y: 555, width: 760, height: 80 }, 42, '#f3b562'),
-            location: textElement('location', { x: 1030, y: 700, width: 760, height: 170 }, 36, '#d8dee8'),
+            title: textElement('title', { x: 1030, y: 130, width: 760, height: 310 }, 88, '#ffffff', {
+                fontStyle: 'bold', lineHeight: 1.08, wrap: 'word', ellipsis: true,
+            }),
+            dateTime: textElement('dateTime', { x: 1030, y: 555, width: 760, height: 80 }, 42, '#f3b562', {
+                fontStyle: 'bold', lineHeight: 1.25,
+            }),
+            location: textElement('location', { x: 1030, y: 700, width: 760, height: 170 }, 36, '#d8dee8', {
+                lineHeight: 1.35, wrap: 'word', ellipsis: true,
+            }),
         },
     },
     poster: {
@@ -130,9 +158,15 @@ export const BUILT_IN_TEMPLATE_DEFINITIONS: Record<BuiltInTemplateId, PublisherT
             ],
         },
         elements: {
-            title: textElement('title', { x: 160, y: 150, width: 1600, height: 410 }, 112, '#ffffff'),
-            dateTime: textElement('dateTime', { x: 160, y: 675, width: 1600, height: 80 }, 50, '#f7c77f'),
-            location: textElement('location', { x: 260, y: 770, width: 1400, height: 120 }, 38, '#ffffff'),
+            title: textElement('title', { x: 160, y: 150, width: 1600, height: 410 }, 112, '#ffffff', {
+                fontStyle: 'bold', lineHeight: 1.05, wrap: 'word', ellipsis: true, align: 'center',
+            }),
+            dateTime: textElement('dateTime', { x: 160, y: 675, width: 1600, height: 80 }, 50, '#f7c77f', {
+                fontStyle: 'bold', align: 'center',
+            }),
+            location: textElement('location', { x: 260, y: 770, width: 1400, height: 120 }, 38, '#ffffff', {
+                lineHeight: 1.3, wrap: 'word', ellipsis: true, align: 'center',
+            }),
         },
     },
 };
@@ -239,12 +273,19 @@ export const parseTemplateDefinition = (value: string): PublisherTemplateDefinit
         }
 
         const elements = {} as PublisherTemplateDefinition['elements'];
-        for (const binding of ['title', 'dateTime', 'location'] as const) {
+        for (const binding of TEMPLATE_TEXT_BINDINGS) {
             const element = parsed.elements[binding];
             if (!isRecord(element) || element.binding !== binding || !isRecord(element.style) ||
                 !isPositiveNumber(element.style.fontSize) || element.style.fontSize < MIN_FONT_SIZE ||
                 element.style.fontSize > MAX_FONT_SIZE || typeof element.style.color !== 'string' ||
-                !/^#[0-9a-f]{6}$/i.test(element.style.color)) {
+                !/^#[0-9a-f]{6}$/i.test(element.style.color) ||
+                typeof element.style.fontFamily !== 'string' || !element.style.fontFamily ||
+                (element.style.fontStyle !== 'normal' && element.style.fontStyle !== 'bold') ||
+                !isPositiveNumber(element.style.lineHeight) || element.style.lineHeight > 5 ||
+                (element.style.wrap !== 'none' && element.style.wrap !== 'word') ||
+                typeof element.style.ellipsis !== 'boolean' ||
+                (element.style.align !== 'left' && element.style.align !== 'center' &&
+                    element.style.align !== 'right')) {
                 return null;
             }
             const frame = parseFrame(element.frame, document.width, document.height);
@@ -254,7 +295,16 @@ export const parseTemplateDefinition = (value: string): PublisherTemplateDefinit
             elements[binding] = {
                 binding,
                 frame,
-                style: { fontSize: element.style.fontSize, color: element.style.color.toLowerCase() },
+                style: {
+                    fontSize: element.style.fontSize,
+                    color: element.style.color.toLowerCase(),
+                    fontFamily: element.style.fontFamily,
+                    fontStyle: element.style.fontStyle,
+                    lineHeight: element.style.lineHeight,
+                    wrap: element.style.wrap,
+                    ellipsis: element.style.ellipsis,
+                    align: element.style.align,
+                },
             };
         }
 
