@@ -18,6 +18,7 @@ textarea {
 
 .publisher-page {
     display: grid;
+    box-sizing: border-box;
     min-height: 100vh;
     padding: clamp(24px, 6vw, 80px);
     place-items: center;
@@ -25,6 +26,8 @@ textarea {
 
 .publisher-card {
     width: min(100%, 1320px);
+    min-width: 0;
+    box-sizing: border-box;
     padding: clamp(28px, 5vw, 56px);
     border: 1px solid #dfe4e8;
     border-radius: 18px;
@@ -196,6 +199,31 @@ textarea {
 .local-draft p {
     margin-top: 3px;
     font-size: 13px;
+}
+
+.local-draft__actions {
+    display: flex;
+    max-width: 430px;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.local-draft__import {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.local-draft__import input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 
 .local-draft__status {
@@ -634,6 +662,11 @@ textarea {
     .template-section__actions {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .local-draft__actions {
+        max-width: none;
+        justify-content: flex-start;
     }
 
     .template-overrides__grid {

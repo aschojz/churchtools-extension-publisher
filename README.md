@@ -132,6 +132,8 @@ Der Fokuspunkt des Cover-Zuschnitts lässt sich horizontal und vertikal von 0 bi
 
 Textüberschreibungen, Template-Auswahl, Layoutzustände und Bildfokus beider Templates, Rastereinstellung und Vorschauzoom werden pro Termin als versionierter Entwurf im `localStorage` des Browsers gespeichert und beim erneuten Öffnen wiederhergestellt. Fehlerhafte oder inkompatible Einträge werden ignoriert. Über die Oberfläche kann der aktuelle lokale Entwurf vollständig gelöscht werden. Ersatzbilder sind nicht Bestandteil des dauerhaften Entwurfs, weil ihre temporären Blob-URLs einen Seitenneustart nicht überleben.
 
+Ein Entwurf kann zusätzlich als versionierte JSON-Datei heruntergeladen und in einem anderen Browser wieder importiert werden. Der Import ist auf dieselbe konkrete Termininstanz beschränkt, validiert alle enthaltenen Editorwerte und akzeptiert Dateien bis 1 MB. Auch die portable Datei enthält aus demselben Grund kein lokales Ersatzbild.
+
 ### Template-Auswahl
 
 Die Oberfläche bietet zwei fest codierte 1920-×-1080-Templates: eine geteilte Fläche und ein vollflächiges Bildposter. Beide erhalten dasselbe `EventTemplateProps`-Objekt und verwenden dieselbe Exportlogik. Ein Template-Wechsel beeinflusst deshalb weder die geladenen Termindaten noch manuelle Inhaltsüberschreibungen.

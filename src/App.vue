@@ -17,7 +17,14 @@ import {
     loadPublisherDraft,
     PUBLISHER_DRAFT_VERSION,
     savePublisherDraft,
+    type PublisherDraft,
 } from './domain/publisherDraft';
+import {
+    belongsToAppointment,
+    createPublisherDraftFile,
+    parsePublisherDraftFile,
+    serializePublisherDraftFile,
+} from './domain/publisherDraftFile';
 import {
     applyTemplateOverrides,
     type EditableTemplateField,
@@ -176,30 +183,32 @@ const resetAppointmentFilters = () => {
     selectedAppointmentRange.value = '';
 };
 
+const currentPublisherDraft = (): PublisherDraft => ({
+    version: PUBLISHER_DRAFT_VERSION,
+    selectedTemplateId: selectedTemplateId.value,
+    templateOverrides: { ...templateOverrides.value },
+    layouts: Object.fromEntries(
+        Object.entries(draftLayouts.value).map(([templateId, state]) => [
+            templateId,
+            state ? cloneLayoutState(state) : state,
+        ]),
+    ),
+    imageFocus: {
+        split: { ...imageFocusByTemplate.value.split },
+        poster: { ...imageFocusByTemplate.value.poster },
+    },
+    snapEnabled: snapEnabled.value,
+    previewZoomPercent: previewZoomPercent.value,
+    updatedAt: new Date().toISOString(),
+});
+
 const saveCurrentDraft = () => {
     if (!selectedAppointmentKey.value || restoringDraft.value) {
         return;
     }
 
     try {
-        savePublisherDraft(window.localStorage, selectedAppointmentKey.value, {
-            version: PUBLISHER_DRAFT_VERSION,
-            selectedTemplateId: selectedTemplateId.value,
-            templateOverrides: { ...templateOverrides.value },
-            layouts: Object.fromEntries(
-                Object.entries(draftLayouts.value).map(([templateId, state]) => [
-                    templateId,
-                    state ? cloneLayoutState(state) : state,
-                ]),
-            ),
-            imageFocus: {
-                split: { ...imageFocusByTemplate.value.split },
-                poster: { ...imageFocusByTemplate.value.poster },
-            },
-            snapEnabled: snapEnabled.value,
-            previewZoomPercent: previewZoomPercent.value,
-            updatedAt: new Date().toISOString(),
-        });
+        savePublisherDraft(window.localStorage, selectedAppointmentKey.value, currentPublisherDraft());
         hasLocalDraft.value = true;
         draftStatus.value = 'Lokaler Entwurf gespeichert.';
         draftError.value = '';
@@ -523,6 +532,84 @@ const slugify = (value: string) =>
         .replace(/^-|-$/g, '')
         .slice(0, 80);
 
+const exportDraftFile = () => {
+    if (!selectedAppointmentKey.value || !selectedAppointmentId.value) {
+        return;
+    }
+
+    try {
+        const file = createPublisherDraftFile(
+            selectedAppointmentKey.value,
+            currentPublisherDraft(),
+        );
+        const blob = new Blob([serializePublisherDraftFile(file)], { type: 'application/json' });
+        const downloadUrl = URL.createObjectURL(blob);
+        const download = document.createElement('a');
+        download.href = downloadUrl;
+        download.download = `publisher-entwurf-${selectedAppointmentId.value}.json`;
+        download.click();
+        window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+        draftStatus.value = 'Entwurf als JSON exportiert.';
+        draftError.value = '';
+    } catch {
+        draftError.value = 'Der Entwurf konnte nicht exportiert werden.';
+    }
+};
+
+const importDraftFile = async (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !selectedAppointmentKey.value) {
+        return;
+    }
+    if (file.size > 1024 * 1024) {
+        draftError.value = 'Die Entwurfsdatei darf höchstens 1 MB groß sein.';
+        return;
+    }
+
+    try {
+        const imported = parsePublisherDraftFile(await file.text());
+        if (!imported) {
+            throw new Error('invalid');
+        }
+        if (!belongsToAppointment(imported, selectedAppointmentKey.value)) {
+            draftError.value = 'Die Entwurfsdatei gehört zu einem anderen Kalendertermin.';
+            return;
+        }
+
+        restoringDraft.value = true;
+        savePublisherDraft(window.localStorage, selectedAppointmentKey.value, imported.draft);
+        templateOverrides.value = { ...imported.draft.templateOverrides };
+        selectedTemplateId.value = imported.draft.selectedTemplateId;
+        draftLayouts.value = Object.fromEntries(
+            Object.entries(imported.draft.layouts).map(([templateId, state]) => [
+                templateId,
+                state ? cloneLayoutState(state) : state,
+            ]),
+        );
+        imageFocusByTemplate.value = {
+            split: { ...imported.draft.imageFocus.split },
+            poster: { ...imported.draft.imageFocus.poster },
+        };
+        snapEnabled.value = imported.draft.snapEnabled;
+        previewZoomPercent.value = imported.draft.previewZoomPercent;
+        hasLocalDraft.value = true;
+        draftStatus.value = 'Entwurf aus JSON importiert.';
+        draftError.value = '';
+        exportError.value = '';
+        exportSuccess.value = '';
+        revokeReplacementImage();
+        draftRevision.value += 1;
+    } catch {
+        draftError.value = 'Die Entwurfsdatei ist ungültig oder nicht kompatibel.';
+    } finally {
+        void nextTick(() => {
+            restoringDraft.value = false;
+        });
+    }
+};
+
 const exportPng = async () => {
     exportError.value = '';
     exportSuccess.value = '';
@@ -664,14 +751,23 @@ const exportPng = async () => {
                         <p v-if="draftStatus" class="local-draft__status" role="status">{{ draftStatus }}</p>
                         <p v-if="draftError" class="local-draft__error" role="alert">{{ draftError }}</p>
                     </div>
-                    <button
-                        type="button"
-                        class="button button--secondary"
-                        :disabled="!hasLocalDraft"
-                        @click="deleteLocalDraft"
-                    >
-                        Lokalen Entwurf löschen
-                    </button>
+                    <div class="local-draft__actions">
+                        <button type="button" class="button button--secondary" @click="exportDraftFile">
+                            Entwurf herunterladen
+                        </button>
+                        <label class="button button--secondary local-draft__import">
+                            Entwurf importieren
+                            <input type="file" accept="application/json,.json" @change="importDraftFile" />
+                        </label>
+                        <button
+                            type="button"
+                            class="button button--secondary"
+                            :disabled="!hasLocalDraft"
+                            @click="deleteLocalDraft"
+                        >
+                            Lokalen Entwurf löschen
+                        </button>
+                    </div>
                 </div>
 
                 <form class="template-overrides" @submit.prevent>
