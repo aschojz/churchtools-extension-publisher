@@ -60,6 +60,7 @@ const layoutChanged = ref(false);
 const canUndoLayout = ref(false);
 const canRedoLayout = ref(false);
 const selectedLayoutElement = ref<LayoutElementId | null>(null);
+const selectedLayoutElements = ref<LayoutElementId[]>([]);
 const selectedLayoutGeometry = ref<(LayoutGeometry & { elementId: LayoutElementId }) | null>(null);
 const selectedLayoutStyle = ref<(LayoutTextStyle & { elementId: LayoutElementId }) | null>(null);
 const selectedLayoutElementChanged = ref(false);
@@ -78,6 +79,8 @@ const draftIndexRevision = ref(0);
 const imageFocusByTemplate = ref(createImageFocusByTemplate());
 const layoutStep = computed(() => (snapEnabled.value ? 20 : 5));
 const rotationStep = computed(() => (snapEnabled.value ? 15 : 5));
+const hasLayoutSelection = computed(() => selectedLayoutElements.value.length > 0);
+const hasMultipleLayoutSelection = computed(() => selectedLayoutElements.value.length > 1);
 const layoutElementLabels: Record<LayoutElementId, string> = {
     title: 'Titel',
     dateTime: 'Datum/Uhrzeit',
@@ -432,7 +435,7 @@ const handleEditorShortcut = (event: KeyboardEvent) => {
         return;
     }
 
-    const shortcut = resolveEditorShortcut(event, Boolean(selectedLayoutElement.value));
+    const shortcut = resolveEditorShortcut(event, hasLayoutSelection.value);
     if (!shortcut) {
         return;
     }
@@ -463,8 +466,8 @@ const handleEditorShortcut = (event: KeyboardEvent) => {
     }
 };
 
-const selectLayoutElement = (elementId: LayoutElementId) => {
-    templateRef.value?.selectElement(elementId);
+const selectLayoutElement = (elementId: LayoutElementId, event: MouseEvent) => {
+    templateRef.value?.selectElement(elementId, event.ctrlKey || event.metaKey || event.shiftKey);
 };
 
 const nudgeLayoutElement = (deltaX: number, deltaY: number) => {
@@ -1002,50 +1005,51 @@ const exportPng = async () => {
                 <div class="layout-controls">
                     <div>
                         <h2>Layout anpassen</h2>
-                        <p>Wähle Titel, Datum/Uhrzeit oder Ort aus. Anschließend kannst du den Bereich verschieben, skalieren, drehen oder in der Ebenenreihenfolge ändern.</p>
+                        <p>Wähle ein oder mehrere Elemente aus. Strg/Cmd- oder Umschalt-Klick erweitert die Auswahl; auf freier Vorschaufläche kannst du einen Auswahlrahmen ziehen.</p>
                         <p class="layout-controls__shortcuts">
-                            Tastatur: Pfeiltasten verschieben, Umschalt vergrößert den Schritt, Escape hebt die Auswahl auf, Strg/Cmd+Z macht Änderungen rückgängig.
+                            Tastatur: Pfeiltasten verschieben alle ausgewählten Elemente, Umschalt vergrößert den Schritt, Escape hebt die Auswahl auf, Strg/Cmd+Z macht Änderungen rückgängig.
                         </p>
                         <label class="layout-controls__snap">
                             <input v-model="snapEnabled" type="checkbox" />
                             Am 20-Pixel-Raster und an 15°-Winkeln ausrichten
                         </label>
-                        <p v-if="selectedLayoutElement" class="layout-controls__selection" role="status">
-                            Ausgewählt: {{ layoutElementLabels[selectedLayoutElement] }}
+                        <p v-if="hasLayoutSelection" class="layout-controls__selection" role="status">
+                            Ausgewählt: {{ selectedLayoutElements.map((elementId) => layoutElementLabels[elementId]).join(', ') }}
                         </p>
                         <button
-                            v-if="selectedLayoutElement"
+                            v-if="hasLayoutSelection"
                             type="button"
                             class="layout-controls__element-reset"
                             :disabled="!selectedLayoutElementChanged"
                             @click="resetSelectedLayoutElement"
                         >
-                            Ausgewähltes Element zurücksetzen
+                            {{ hasMultipleLayoutSelection ? 'Ausgewählte Elemente zurücksetzen' : 'Ausgewähltes Element zurücksetzen' }}
                         </button>
                         <div class="layout-controls__elements" aria-label="Layoutelement auswählen">
                             <button
                                 v-for="(label, elementId) in layoutElementLabels"
                                 :key="elementId"
                                 type="button"
-                                :class="{ 'is-selected': selectedLayoutElement === elementId }"
-                                @click="selectLayoutElement(elementId)"
+                                :aria-pressed="selectedLayoutElements.includes(elementId)"
+                                :class="{ 'is-selected': selectedLayoutElements.includes(elementId) }"
+                                @click="selectLayoutElement(elementId, $event)"
                             >
                                 {{ label }}
                             </button>
                         </div>
-                        <div v-if="selectedLayoutElement" class="layout-controls__directions" aria-label="Element verschieben">
+                        <div v-if="hasLayoutSelection" class="layout-controls__directions" aria-label="Element verschieben">
                             <button type="button" aria-label="Nach links verschieben" @click="nudgeLayoutElement(-layoutStep, 0)">←</button>
                             <button type="button" aria-label="Nach oben verschieben" @click="nudgeLayoutElement(0, -layoutStep)">↑</button>
                             <button type="button" aria-label="Nach unten verschieben" @click="nudgeLayoutElement(0, layoutStep)">↓</button>
                             <button type="button" aria-label="Nach rechts verschieben" @click="nudgeLayoutElement(layoutStep, 0)">→</button>
                         </div>
-                        <div v-if="selectedLayoutElement" class="layout-controls__sizes" aria-label="Elementgröße ändern">
+                        <div v-if="hasLayoutSelection" class="layout-controls__sizes" aria-label="Elementgröße ändern">
                             <button type="button" @click="resizeLayoutElement(-layoutStep, 0)">Schmaler</button>
                             <button type="button" @click="resizeLayoutElement(layoutStep, 0)">Breiter</button>
                             <button type="button" @click="resizeLayoutElement(0, -layoutStep)">Flacher</button>
                             <button type="button" @click="resizeLayoutElement(0, layoutStep)">Höher</button>
                         </div>
-                        <div v-if="selectedLayoutElement" class="layout-controls__rotations" aria-label="Element drehen">
+                        <div v-if="hasLayoutSelection" class="layout-controls__rotations" aria-label="Element drehen">
                             <button type="button" @click="rotateLayoutElement(-rotationStep)">−{{ rotationStep }}° drehen</button>
                             <button type="button" @click="rotateLayoutElement(rotationStep)">+{{ rotationStep }}° drehen</button>
                         </div>
@@ -1065,6 +1069,9 @@ const exportPng = async () => {
                         </fieldset>
                         <fieldset v-if="selectedLayoutStyle" class="layout-controls__style">
                             <legend>Typografie</legend>
+                            <p v-if="hasMultipleLayoutSelection" class="layout-controls__multi-hint">
+                                Änderungen werden auf alle ausgewählten Elemente angewendet.
+                            </p>
                             <label>
                                 Schriftgröße
                                 <input
@@ -1088,7 +1095,7 @@ const exportPng = async () => {
                                 />
                             </label>
                         </fieldset>
-                        <div v-if="selectedLayoutElement" class="layout-controls__alignment" aria-label="Element ausrichten">
+                        <div v-if="hasLayoutSelection" class="layout-controls__alignment" aria-label="Element ausrichten">
                             <span>Ausrichten:</span>
                             <button type="button" aria-label="Links ausrichten" @click="alignLayoutElement('left')">Links</button>
                             <button type="button" aria-label="Horizontal zentrieren" @click="alignLayoutElement('horizontalCenter')">Mitte X</button>
@@ -1097,7 +1104,7 @@ const exportPng = async () => {
                             <button type="button" aria-label="Vertikal zentrieren" @click="alignLayoutElement('verticalCenter')">Mitte Y</button>
                             <button type="button" aria-label="Unten ausrichten" @click="alignLayoutElement('bottom')">Unten</button>
                         </div>
-                        <div v-if="selectedLayoutElement" class="layout-controls__layers" aria-label="Ebenenreihenfolge ändern">
+                        <div v-if="selectedLayoutElement && !hasMultipleLayoutSelection" class="layout-controls__layers" aria-label="Ebenenreihenfolge ändern">
                             <span>Ebene {{ selectedLayerPosition }} von {{ selectedLayerTotal }}</span>
                             <button
                                 type="button"
@@ -1186,6 +1193,7 @@ const exportPng = async () => {
                     @layout-change="layoutChanged = $event"
                     @layout-state-change="updateDraftLayout"
                     @selection-change="selectedLayoutElement = $event"
+                    @selection-ids-change="selectedLayoutElements = $event"
                     @selection-default-change="selectedLayoutElementChanged = $event"
                     @selection-geometry-change="selectedLayoutGeometry = $event"
                     @selection-style-change="selectedLayoutStyle = $event"

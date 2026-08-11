@@ -13,10 +13,15 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+    dragStart: [elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>];
     dragging: [elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>];
     move: [elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>];
     resize: [elementId: LayoutElementId, event: Konva.KonvaEventObject<Event>];
 }>();
+
+const startDrag = (event: Konva.KonvaEventObject<DragEvent>) => {
+    emit('dragStart', props.elementId, event);
+};
 
 const handleDrag = (event: Konva.KonvaEventObject<DragEvent>) => {
     emit('dragging', props.elementId, event);
@@ -43,6 +48,7 @@ const finishTransform = (event: Konva.KonvaEventObject<Event>) => {
             rotation,
             zIndex,
         }"
+        @dragstart="startDrag"
         @dragmove="handleDrag"
         @dragend="finishDrag"
         @transformend="finishTransform"

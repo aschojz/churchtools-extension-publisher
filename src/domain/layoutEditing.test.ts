@@ -5,12 +5,14 @@ import {
     calculateAlignmentSnap,
     clampLayoutPosition,
     constrainLayoutGeometry,
+    constrainLayoutDelta,
     constrainFontSize,
     createLayoutOrder,
     createLayoutOffsets,
     createLayoutTextStyles,
     isHexColor,
     keepRotatedFrameInDocument,
+    layoutFramesIntersect,
     normalizeRotation,
     moveLayoutElementInOrder,
     resizeLayoutFrame,
@@ -37,6 +39,25 @@ describe('layout editing', () => {
 
         expect(clampLayoutPosition({ x: -50, y: 900 }, frame)).toEqual({ x: 0, y: 770 });
         expect(clampLayoutPosition({ x: 1400, y: 20 }, frame)).toEqual({ x: 1160, y: 20 });
+    });
+
+    it('keeps a multi-selection together when movement reaches a document edge', () => {
+        const frames = [
+            { x: 100, y: 50, width: 300, height: 100 },
+            { x: 1600, y: 900, width: 300, height: 100 },
+        ];
+
+        expect(constrainLayoutDelta(frames, { x: 80, y: 120 })).toEqual({ x: 20, y: 80 });
+        expect(constrainLayoutDelta(frames, { x: -200, y: -80 })).toEqual({ x: -100, y: -50 });
+        expect(constrainLayoutDelta([], { x: 20, y: 20 })).toEqual({ x: 0, y: 0 });
+    });
+
+    it('detects elements touched by a selection rectangle', () => {
+        const selection = { x: 100, y: 100, width: 200, height: 150 };
+
+        expect(layoutFramesIntersect(selection, { x: 250, y: 200, width: 100, height: 100 })).toBe(true);
+        expect(layoutFramesIntersect(selection, { x: 300, y: 250, width: 50, height: 50 })).toBe(true);
+        expect(layoutFramesIntersect(selection, { x: 301, y: 251, width: 50, height: 50 })).toBe(false);
     });
 
     it('limits resized elements to minimum dimensions and the document bounds', () => {

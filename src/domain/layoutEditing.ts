@@ -226,6 +226,26 @@ export const clampLayoutPosition = (position: LayoutPoint, frame: LayoutFrame): 
     y: Math.min(Math.max(position.y, 0), DOCUMENT_HEIGHT - frame.height),
 });
 
+export const constrainLayoutDelta = (frames: LayoutFrame[], delta: LayoutPoint): LayoutPoint => {
+    if (frames.length === 0) {
+        return { x: 0, y: 0 };
+    }
+    return {
+        x: Math.min(
+            Math.max(delta.x, ...frames.map((frame) => -frame.x)),
+            ...frames.map((frame) => DOCUMENT_WIDTH - frame.x - frame.width),
+        ),
+        y: Math.min(
+            Math.max(delta.y, ...frames.map((frame) => -frame.y)),
+            ...frames.map((frame) => DOCUMENT_HEIGHT - frame.y - frame.height),
+        ),
+    };
+};
+
+export const layoutFramesIntersect = (left: LayoutFrame, right: LayoutFrame) =>
+    left.x <= right.x + right.width && left.x + left.width >= right.x &&
+    left.y <= right.y + right.height && left.y + left.height >= right.y;
+
 export const resizeLayoutFrame = (frame: LayoutFrame, size: LayoutSize): LayoutFrame => ({
     ...frame,
     width: Math.min(Math.max(size.width, MIN_ELEMENT_WIDTH), DOCUMENT_WIDTH - frame.x),

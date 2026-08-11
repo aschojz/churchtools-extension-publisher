@@ -10,8 +10,8 @@ import { calculateCoverCrop, type ImageFocus } from '../domain/imageFocus';
 import {
     alignLayoutGeometry,
     calculateAlignmentSnap,
-    clampLayoutPosition,
     constrainLayoutGeometry,
+    constrainLayoutDelta,
     constrainFontSize,
     createLayoutOrder,
     createLayoutOffsets,
@@ -20,6 +20,7 @@ import {
     createLayoutTextStyles,
     isHexColor,
     keepRotatedFrameInDocument,
+    layoutFramesIntersect,
     type AlignmentGuide,
     type LayoutElementId,
     type LayoutFrame,
@@ -75,6 +76,7 @@ const emit = defineEmits<{
     layoutStateChange: [templateId: TemplateId, state: SerializableLayoutState];
     layerPositionChange: [position: number, total: number];
     selectionChange: [elementId: LayoutElementId | null];
+    selectionIdsChange: [elementIds: LayoutElementId[]];
     selectionDefaultChange: [changed: boolean];
     selectionGeometryChange: [geometry: (LayoutGeometry & { elementId: LayoutElementId }) | null];
     selectionStyleChange: [style: (LayoutTextStyle & { elementId: LayoutElementId }) | null];
@@ -86,9 +88,11 @@ const transformerRef = ref<VueKonvaRef<Konva.Transformer> | null>(null);
 const containerWidth = ref(DOCUMENT_WIDTH);
 const image = shallowRef<HTMLImageElement | null>(null);
 const imageStatus = ref<ImageStatus>('idle');
-const selectedElement = ref<LayoutElementId | null>(null);
+const selectedElements = ref<LayoutElementId[]>([]);
+const selectedElement = computed(() => selectedElements.value.at(-1) ?? null);
 const isExporting = ref(false);
 const activeAlignmentGuides = ref<AlignmentGuide[]>([]);
+const selectionRectangle = ref<LayoutFrame | null>(null);
 const layoutOffsets = ref<Record<TemplateId, ReturnType<typeof createLayoutOffsets>>>({
     split: createLayoutOffsets(),
     poster: createLayoutOffsets(),
@@ -114,6 +118,13 @@ const layoutHistories = ref<Record<TemplateId, ReturnType<typeof createLayoutHis
     poster: createLayoutHistory(),
 });
 let resizeObserver: ResizeObserver | undefined;
+let selectionStart: { x: number; y: number; additive: boolean } | null = null;
+let activeDrag: {
+    previousState: SerializableLayoutState;
+    startPosition: { x: number; y: number };
+    nodePositions: Partial<Record<LayoutElementId, { x: number; y: number }>>;
+    nodeBounds: Partial<Record<LayoutElementId, LayoutFrame>>;
+} | null = null;
 
 const previewScale = computed(() => calculatePreviewScale(containerWidth.value, props.previewZoom));
 const stageConfig = computed(() => ({
@@ -124,10 +135,12 @@ const stageConfig = computed(() => ({
 }));
 const templateDefinition = computed(() => BUILT_IN_TEMPLATE_DEFINITIONS[props.templateId]);
 const transformerConfig = computed(() => ({
-    rotateEnabled: true,
+    rotateEnabled: selectedElements.value.length === 1,
     flipEnabled: false,
     keepRatio: false,
-    enabledAnchors: ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'],
+    enabledAnchors: selectedElements.value.length === 1
+        ? ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right']
+        : [],
     anchorFill: '#ffffff',
     anchorStroke: '#2479c5',
     anchorSize: 18,
@@ -261,6 +274,26 @@ const emitSelectionGeometry = () => {
     }
 
     const elementId = selectedElement.value;
+    if (selectedElements.value.length > 1) {
+        emit('selectionGeometryChange', null);
+        emit('selectionStyleChange', {
+            elementId,
+            ...layoutTextStyles.value[props.templateId][elementId],
+        });
+        emit('selectionDefaultChange', selectedElements.value.some((selectedId) => {
+            const frame = elementFrame(selectedId);
+            const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][selectedId];
+            const defaultStyle = createLayoutTextStyles(props.templateId)[selectedId];
+            const style = layoutTextStyles.value[props.templateId][selectedId];
+            return frame.x !== baseFrame.x || frame.y !== baseFrame.y ||
+                frame.width !== baseFrame.width || frame.height !== baseFrame.height ||
+                layoutRotations.value[props.templateId][selectedId] !== 0 ||
+                layoutOrder.value[props.templateId].indexOf(selectedId) !== createLayoutOrder().indexOf(selectedId) ||
+                style.fontSize !== defaultStyle.fontSize || style.color !== defaultStyle.color;
+        }));
+        return;
+    }
+
     const frame = elementFrame(elementId);
     const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
     emit('selectionGeometryChange', {
@@ -332,15 +365,15 @@ const syncTransformer = async () => {
         return;
     }
 
-    const selectedNode = selectedElement.value
-        ? stage.findOne(`#editable-${selectedElement.value}`)
-        : undefined;
-    transformer.nodes(selectedNode && !isExporting.value ? [selectedNode] : []);
+    const selectedNodes = selectedElements.value
+        .map((elementId) => stage.findOne(`#editable-${elementId}`))
+        .filter((node): node is Konva.Node => Boolean(node));
+    transformer.nodes(!isExporting.value ? selectedNodes : []);
     transformer.getLayer()?.batchDraw();
 };
 
 const emitLayerPosition = () => {
-    if (!selectedElement.value) {
+    if (!selectedElement.value || selectedElements.value.length !== 1) {
         emit('layerPositionChange', 0, 0);
         return;
     }
@@ -349,20 +382,42 @@ const emitLayerPosition = () => {
     emit('layerPositionChange', order.indexOf(selectedElement.value) + 1, order.length);
 };
 
-const selectElement = (elementId: LayoutElementId) => {
-    selectedElement.value = elementId;
-    emit('selectionChange', elementId);
+const updateSelection = (elementIds: LayoutElementId[]) => {
+    selectedElements.value = elementIds.filter(
+        (elementId, index) => createLayoutOrder().includes(elementId) && elementIds.indexOf(elementId) === index,
+    );
+    emit('selectionIdsChange', [...selectedElements.value]);
+    emit('selectionChange', selectedElement.value);
     emitLayerPosition();
     emitSelectionGeometry();
     void syncTransformer();
 };
 
+const selectElement = (elementId: LayoutElementId, additive = false) => {
+    if (!additive) {
+        updateSelection([elementId]);
+        return;
+    }
+
+    updateSelection(selectedElements.value.includes(elementId)
+        ? selectedElements.value.filter((candidate) => candidate !== elementId)
+        : [...selectedElements.value, elementId]);
+};
+
 const clearSelection = () => {
-    selectedElement.value = null;
-    emit('selectionChange', null);
-    emitLayerPosition();
-    emitSelectionGeometry();
-    void syncTransformer();
+    updateSelection([]);
+};
+
+const eventIsAdditive = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) =>
+    'ctrlKey' in event.evt && (event.evt.ctrlKey || event.evt.metaKey || event.evt.shiftKey);
+
+const stagePointerPosition = () => {
+    const stage = stageRef.value?.getNode();
+    const pointer = stage?.getPointerPosition();
+    if (!stage || !pointer) {
+        return null;
+    }
+    return stage.getAbsoluteTransform().copy().invert().point(pointer);
 };
 
 const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -370,11 +425,90 @@ const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEven
     const elementId = editableGroup?.getAttr('layoutElementId') as LayoutElementId | undefined;
 
     if (elementId) {
-        selectElement(elementId);
+        selectElement(elementId, eventIsAdditive(event));
+        selectionStart = null;
+        selectionRectangle.value = null;
+        return;
     }
+
+    const pointer = stagePointerPosition();
+    if (!pointer) {
+        return;
+    }
+    selectionStart = { ...pointer, additive: eventIsAdditive(event) };
+    selectionRectangle.value = { x: pointer.x, y: pointer.y, width: 0, height: 0 };
 };
 
-const alignElementWhileDragging = (elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
+const updateSelectionRectangle = () => {
+    const pointer = stagePointerPosition();
+    if (!selectionStart || !pointer) {
+        return;
+    }
+    selectionRectangle.value = {
+        x: Math.min(selectionStart.x, pointer.x),
+        y: Math.min(selectionStart.y, pointer.y),
+        width: Math.abs(pointer.x - selectionStart.x),
+        height: Math.abs(pointer.y - selectionStart.y),
+    };
+};
+
+const finishSelectionRectangle = () => {
+    const rectangle = selectionRectangle.value;
+    const start = selectionStart;
+    selectionStart = null;
+    selectionRectangle.value = null;
+    if (!rectangle || !start) {
+        return;
+    }
+    if (rectangle.width < 5 && rectangle.height < 5) {
+        if (!start.additive) {
+            clearSelection();
+        }
+        return;
+    }
+
+    const stage = stageRef.value?.getNode();
+    if (!stage) {
+        return;
+    }
+    const matches = createLayoutOrder().filter((elementId) => {
+        const node = stage.findOne(`#editable-${elementId}`);
+        if (!node) {
+            return false;
+        }
+        const bounds = node.getClientRect({ relativeTo: stage });
+        return layoutFramesIntersect(rectangle, bounds);
+    });
+    updateSelection(start.additive ? [...new Set([...selectedElements.value, ...matches])] : matches);
+};
+
+const startElementDrag = (elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
+    if (!selectedElements.value.includes(elementId)) {
+        selectElement(elementId);
+    }
+    const stage = stageRef.value?.getNode();
+    const parent = event.target.getParent();
+    if (!stage || !parent) {
+        return;
+    }
+    const nodePositions: Partial<Record<LayoutElementId, { x: number; y: number }>> = {};
+    const nodeBounds: Partial<Record<LayoutElementId, LayoutFrame>> = {};
+    for (const selectedId of selectedElements.value) {
+        const node = stage.findOne(`#editable-${selectedId}`);
+        if (node) {
+            nodePositions[selectedId] = { ...node.position() };
+            nodeBounds[selectedId] = node.getClientRect({ relativeTo: parent, skipStroke: true });
+        }
+    }
+    activeDrag = {
+        previousState: captureLayoutState(),
+        startPosition: { ...event.target.position() },
+        nodePositions,
+        nodeBounds,
+    };
+};
+
+const alignElementWhileDragging = (_elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
     const node = event.target;
     const parent = node.getParent();
     const stage = stageRef.value?.getNode();
@@ -383,10 +517,11 @@ const alignElementWhileDragging = (elementId: LayoutElementId, event: Konva.Konv
     }
 
     const targetFrames = createLayoutOrder()
-        .filter((candidateId) => candidateId !== elementId)
+        .filter((candidateId) => !selectedElements.value.includes(candidateId))
         .map((candidateId) => stage.findOne(`#editable-${candidateId}`))
         .filter((candidate): candidate is Konva.Node => Boolean(candidate))
         .map((candidate) => candidate.getClientRect({ relativeTo: parent, skipStroke: true }));
+    node.position(snapLayoutPoint(node.position(), props.snapEnabled));
     const frame = node.getClientRect({ relativeTo: parent, skipStroke: true });
     const alignment = calculateAlignmentSnap(frame, targetFrames);
 
@@ -395,21 +530,42 @@ const alignElementWhileDragging = (elementId: LayoutElementId, event: Konva.Konv
         y: node.y() + alignment.offset.y,
     });
     activeAlignmentGuides.value = alignment.guides;
+
+    if (!activeDrag) {
+        return;
+    }
+    const requestedDelta = {
+        x: node.x() - activeDrag.startPosition.x,
+        y: node.y() - activeDrag.startPosition.y,
+    };
+    const bounds = Object.values(activeDrag.nodeBounds).filter((value): value is LayoutFrame => Boolean(value));
+    const delta = constrainLayoutDelta(bounds, requestedDelta);
+    for (const selectedId of selectedElements.value) {
+        const selectedNode = stage.findOne(`#editable-${selectedId}`);
+        const startPosition = activeDrag.nodePositions[selectedId];
+        if (selectedNode && startPosition) {
+            selectedNode.position({ x: startPosition.x + delta.x, y: startPosition.y + delta.y });
+        }
+    }
 };
 
 const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
     activeAlignmentGuides.value = [];
-    const previousState = captureLayoutState();
-    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
-    const position = clampLayoutPosition(
-        snapLayoutPoint(event.target.position(), props.snapEnabled),
-        elementFrame(elementId),
-    );
-    event.target.position(position);
-    layoutOffsets.value[props.templateId][elementId] = {
-        x: position.x - baseFrame.x,
-        y: position.y - baseFrame.y,
-    };
+    const previousState = activeDrag?.previousState ?? captureLayoutState();
+    const stage = stageRef.value?.getNode();
+    const movedIds = activeDrag ? selectedElements.value : [elementId];
+    for (const movedId of movedIds) {
+        const node = stage?.findOne(`#editable-${movedId}`) ?? (movedId === elementId ? event.target : null);
+        if (!node) {
+            continue;
+        }
+        const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][movedId];
+        layoutOffsets.value[props.templateId][movedId] = {
+            x: node.x() - baseFrame.x,
+            y: node.y() - baseFrame.y,
+        };
+    }
+    activeDrag = null;
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
@@ -462,68 +618,73 @@ const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject
 };
 
 const nudgeSelectedElement = (deltaX: number, deltaY: number) => {
-    if (!selectedElement.value) {
+    if (selectedElements.value.length === 0) {
         return;
     }
 
-    const elementId = selectedElement.value;
     const previousState = captureLayoutState();
-    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
-    const currentFrame = elementFrame(elementId);
-    const position = clampLayoutPosition(
-        { x: currentFrame.x + deltaX, y: currentFrame.y + deltaY },
-        currentFrame,
-    );
-    layoutOffsets.value[props.templateId][elementId] = {
-        x: position.x - baseFrame.x,
-        y: position.y - baseFrame.y,
-    };
+    const frames = selectedElements.value.map(elementFrame);
+    const appliedDelta = constrainLayoutDelta(frames, { x: deltaX, y: deltaY });
+    for (const elementId of selectedElements.value) {
+        const offset = layoutOffsets.value[props.templateId][elementId];
+        layoutOffsets.value[props.templateId][elementId] = {
+            x: offset.x + appliedDelta.x,
+            y: offset.y + appliedDelta.y,
+        };
+    }
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
 };
 
 const resizeSelectedElement = (deltaWidth: number, deltaHeight: number) => {
-    if (!selectedElement.value) {
+    if (selectedElements.value.length === 0) {
         return;
     }
 
-    const elementId = selectedElement.value;
     const previousState = captureLayoutState();
-    const resizedFrame = resizeLayoutFrame(elementFrame(elementId), {
-        width: elementFrame(elementId).width + deltaWidth,
-        height: elementFrame(elementId).height + deltaHeight,
-    });
-    layoutSizes.value[props.templateId][elementId] = {
-        width: resizedFrame.width,
-        height: resizedFrame.height,
-    };
+    for (const elementId of selectedElements.value) {
+        const frame = elementFrame(elementId);
+        const resizedFrame = resizeLayoutFrame(frame, {
+            width: frame.width + deltaWidth,
+            height: frame.height + deltaHeight,
+        });
+        layoutSizes.value[props.templateId][elementId] = {
+            width: resizedFrame.width,
+            height: resizedFrame.height,
+        };
+    }
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
 };
 
 const rotateSelectedElement = (deltaRotation: number) => {
-    if (!selectedElement.value) {
+    if (selectedElements.value.length === 0) {
         return;
     }
 
-    const elementId = selectedElement.value;
-    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
-    const rotatedLayout = keepRotatedFrameInDocument(
-        elementFrame(elementId),
-        layoutRotations.value[props.templateId][elementId] + deltaRotation,
-    );
-    if (!rotatedLayout) {
+    const rotations = selectedElements.value.map((elementId) => ({
+        elementId,
+        layout: keepRotatedFrameInDocument(
+            elementFrame(elementId),
+            layoutRotations.value[props.templateId][elementId] + deltaRotation,
+        ),
+    }));
+    if (rotations.some(({ layout }) => !layout)) {
         return;
     }
 
     const previousState = captureLayoutState();
-    layoutOffsets.value[props.templateId][elementId] = {
-        x: rotatedLayout.frame.x - baseFrame.x,
-        y: rotatedLayout.frame.y - baseFrame.y,
-    };
-    layoutRotations.value[props.templateId][elementId] = rotatedLayout.rotation;
+    for (const { elementId, layout } of rotations) {
+        if (!layout) continue;
+        const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+        layoutOffsets.value[props.templateId][elementId] = {
+            x: layout.frame.x - baseFrame.x,
+            y: layout.frame.y - baseFrame.y,
+        };
+        layoutRotations.value[props.templateId][elementId] = layout.rotation;
+    }
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
@@ -576,7 +737,7 @@ const setSelectedElementTextStyle = (
     field: keyof LayoutTextStyle,
     value: number | string,
 ) => {
-    if (!selectedElement.value) {
+    if (selectedElements.value.length === 0 || !selectedElement.value) {
         return;
     }
 
@@ -590,34 +751,95 @@ const setSelectedElementTextStyle = (
     }
 
     const previousState = captureLayoutState();
-    layoutTextStyles.value[props.templateId] = {
-        ...layoutTextStyles.value[props.templateId],
-        [selectedElement.value]: nextStyle,
-    };
+    layoutTextStyles.value[props.templateId] = selectedElements.value.reduce(
+        (styles, elementId) => ({ ...styles, [elementId]: { ...styles[elementId], [field]: nextStyle[field] } }),
+        layoutTextStyles.value[props.templateId],
+    );
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
 };
 
 const alignSelectedElement = (alignment: LayoutAlignment) => {
-    if (!selectedElement.value) {
+    if (selectedElements.value.length === 0) {
         return;
     }
 
-    const elementId = selectedElement.value;
-    const geometry = alignLayoutGeometry(
-        {
-            ...elementFrame(elementId),
-            rotation: layoutRotations.value[props.templateId][elementId],
-        },
-        alignment,
-    );
-    if (geometry) {
-        commitSelectedGeometry(geometry);
+    if (selectedElements.value.length > 1) {
+        const stage = stageRef.value?.getNode();
+        if (!stage) {
+            return;
+        }
+        const bounds = selectedElements.value.map((elementId) => ({
+            elementId,
+            bounds: stage.findOne(`#editable-${elementId}`)?.getClientRect({ relativeTo: stage, skipStroke: true }),
+        }));
+        if (bounds.some(({ bounds: elementBounds }) => !elementBounds)) {
+            return;
+        }
+        const validBounds = bounds as { elementId: LayoutElementId; bounds: LayoutFrame }[];
+        const group = {
+            left: Math.min(...validBounds.map(({ bounds: elementBounds }) => elementBounds.x)),
+            right: Math.max(...validBounds.map(({ bounds: elementBounds }) => elementBounds.x + elementBounds.width)),
+            top: Math.min(...validBounds.map(({ bounds: elementBounds }) => elementBounds.y)),
+            bottom: Math.max(...validBounds.map(({ bounds: elementBounds }) => elementBounds.y + elementBounds.height)),
+        };
+        const previousState = captureLayoutState();
+        for (const { elementId, bounds: elementBounds } of validBounds) {
+            const shift = {
+                left: { x: group.left - elementBounds.x, y: 0 },
+                horizontalCenter: {
+                    x: (group.left + group.right - elementBounds.width) / 2 - elementBounds.x,
+                    y: 0,
+                },
+                right: { x: group.right - elementBounds.x - elementBounds.width, y: 0 },
+                top: { x: 0, y: group.top - elementBounds.y },
+                verticalCenter: {
+                    x: 0,
+                    y: (group.top + group.bottom - elementBounds.height) / 2 - elementBounds.y,
+                },
+                bottom: { x: 0, y: group.bottom - elementBounds.y - elementBounds.height },
+            }[alignment];
+            const offset = layoutOffsets.value[props.templateId][elementId];
+            layoutOffsets.value[props.templateId][elementId] = {
+                x: offset.x + shift.x,
+                y: offset.y + shift.y,
+            };
+        }
+        commitCurrentLayout(previousState);
+        emit('layoutChange', currentLayoutChanged.value);
+        void syncTransformer();
+        return;
     }
+
+    const aligned = selectedElements.value.map((elementId) => ({
+        elementId,
+        geometry: alignLayoutGeometry(
+            {
+                ...elementFrame(elementId),
+                rotation: layoutRotations.value[props.templateId][elementId],
+            },
+            alignment,
+        ),
+    }));
+    if (aligned.some(({ geometry }) => !geometry)) {
+        return;
+    }
+    const previousState = captureLayoutState();
+    for (const { elementId, geometry } of aligned) {
+        if (!geometry) continue;
+        const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+        layoutOffsets.value[props.templateId][elementId] = {
+            x: geometry.x - baseFrame.x,
+            y: geometry.y - baseFrame.y,
+        };
+    }
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
 };
 
 const changeSelectedLayer = (direction: -1 | 1) => {
-    if (!selectedElement.value) {
+    if (!selectedElement.value || selectedElements.value.length !== 1) {
         return;
     }
 
@@ -643,23 +865,23 @@ const resetLayout = () => {
     layoutOrder.value[props.templateId] = createLayoutOrder();
     layoutTextStyles.value[props.templateId] = createLayoutTextStyles(props.templateId);
     commitCurrentLayout(previousState);
-    selectedElement.value = null;
+    selectedElements.value = [];
     activeAlignmentGuides.value = [];
     emit('selectionChange', null);
+    emit('selectionIdsChange', []);
     emitLayerPosition();
     emitSelectionGeometry();
     emit('layoutChange', false);
 };
 
 const resetSelectedElement = () => {
-    if (!selectedElement.value) {
+    if (selectedElements.value.length === 0) {
         return;
     }
 
     const previousState = captureLayoutState();
-    const reset = resetLayoutElementState(
-        props.templateId,
-        selectedElement.value,
+    const reset = selectedElements.value.reduce(
+        (state, elementId) => resetLayoutElementState(props.templateId, elementId, state),
         previousState,
     );
     layoutOffsets.value[props.templateId] = reset.offsets;
@@ -714,9 +936,10 @@ const restoreDraftLayouts = () => {
         layoutTextStyles.value[templateId] = restored.styles;
         layoutHistories.value[templateId] = createLayoutHistory();
     }
-    selectedElement.value = null;
+    selectedElements.value = [];
     activeAlignmentGuides.value = [];
     emit('selectionChange', null);
+    emit('selectionIdsChange', []);
     emitLayerPosition();
     emitSelectionGeometry();
     emitHistoryState();
@@ -760,9 +983,10 @@ watch(() => props.draftId, restoreDraftLayouts, { immediate: true });
 watch(
     () => props.templateId,
     () => {
-        selectedElement.value = null;
+        selectedElements.value = [];
         activeAlignmentGuides.value = [];
         emit('selectionChange', null);
+        emit('selectionIdsChange', []);
         emitLayerPosition();
         emitSelectionGeometry();
         emitHistoryState();
@@ -842,7 +1066,18 @@ defineExpose({
 
 <template>
     <div ref="containerRef" class="template-preview">
-        <v-stage ref="stageRef" :config="stageConfig" @mousedown="handleStagePointer" @touchstart="handleStagePointer">
+        <v-stage
+            ref="stageRef"
+            :config="stageConfig"
+            @mousedown="handleStagePointer"
+            @mousemove="updateSelectionRectangle"
+            @mouseup="finishSelectionRectangle"
+            @mouseleave="finishSelectionRectangle"
+            @touchstart="handleStagePointer"
+            @touchmove="updateSelectionRectangle"
+            @touchend="finishSelectionRectangle"
+            @touchcancel="finishSelectionRectangle"
+        >
             <v-layer>
                 <template v-for="decoration in decorationLayers('behindImage')" :key="decoration.id">
                     <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration)" />
@@ -860,9 +1095,10 @@ defineExpose({
                             :element-id="binding"
                             :frame="elementFrame(binding)"
                             :rotation="layoutRotations[templateId][binding]"
-                            :selected="selectedElement === binding && !isExporting"
+                            :selected="selectedElements.includes(binding) && !isExporting"
                             :z-index="layoutOrder[templateId].indexOf(binding)"
                             :text-config="editableTextConfig(binding)"
+                            @drag-start="startElementDrag"
                             @dragging="alignElementWhileDragging"
                             @move="moveElement"
                             @resize="resizeElement"
@@ -871,6 +1107,16 @@ defineExpose({
                 </v-group>
             </v-layer>
             <v-layer v-if="!isExporting" :config="{ listening: false }">
+                <v-rect
+                    v-if="selectionRectangle"
+                    :config="{
+                        ...selectionRectangle,
+                        fill: 'rgba(36, 121, 197, 0.14)',
+                        stroke: '#2479c5',
+                        strokeWidth: 3,
+                        dash: [12, 8],
+                    }"
+                />
                 <v-line
                     v-for="guide in activeAlignmentGuides"
                     :key="`${guide.orientation}-${guide.position}`"
