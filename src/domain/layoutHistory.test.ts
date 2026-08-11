@@ -21,6 +21,7 @@ const createState = (): SerializableLayoutState => ({
     rotations: createLayoutRotations(),
     order: createLayoutOrder(),
     styles: createLayoutTextStyles('split'),
+    groups: [],
 });
 
 describe('layout history', () => {
@@ -65,5 +66,20 @@ describe('layout history', () => {
         expect(undone?.state.styles.title).toEqual({ fontSize: 88, color: '#ffffff' });
         const redone = undone && redoLayoutHistory(undone.history, undone.state);
         expect(redone?.state.styles.title).toEqual({ fontSize: 120, color: '#123456' });
+    });
+
+    it('deep-clones nested groups in history snapshots', () => {
+        const initial = createState();
+        const grouped = createState();
+        grouped.groups = [{
+            id: 'outer',
+            children: [{ id: 'inner', children: ['title', 'dateTime'] }, 'location'],
+        }];
+        const history = commitLayoutHistory(createLayoutHistory(), initial, grouped);
+        const undone = undoLayoutHistory(history, grouped);
+        const redone = undone && redoLayoutHistory(undone.history, undone.state);
+
+        grouped.groups[0]!.children.splice(0, 1);
+        expect(redone?.state.groups[0]?.children).toHaveLength(2);
     });
 });

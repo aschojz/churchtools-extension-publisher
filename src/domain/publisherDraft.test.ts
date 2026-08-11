@@ -36,6 +36,7 @@ const createDraft = (): PublisherDraft => ({
             rotations: createLayoutRotations(),
             order: createLayoutOrder(),
             styles: createLayoutTextStyles('split'),
+            groups: [],
         },
     },
     imageFocus: { ...createImageFocusByTemplate(), split: { x: 20, y: 80, zoom: 175 } },
@@ -109,6 +110,25 @@ describe('publisher draft', () => {
             .toEqual(createLayoutTextStyles('split'));
     });
 
+    it('loads legacy layouts without groups and preserves nested groups', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        const splitLayout = draft.layouts.split!;
+        const { groups: _, ...legacyLayout } = splitLayout;
+        storage.setItem('churchtools-publisher:draft:groups-legacy', JSON.stringify({
+            ...draft,
+            layouts: { split: legacyLayout },
+        }));
+        expect(loadPublisherDraft(storage, 'groups-legacy')?.layouts.split?.groups).toEqual([]);
+
+        splitLayout.groups = [{
+            id: 'outer',
+            children: [{ id: 'inner', children: ['title', 'dateTime'] }, 'location'],
+        }];
+        savePublisherDraft(storage, 'groups-nested', draft);
+        expect(loadPublisherDraft(storage, 'groups-nested')?.layouts.split?.groups).toEqual(splitLayout.groups);
+    });
+
     it('rejects invalid persisted text styles', () => {
         const storage = createStorage();
         const draft = createDraft();
@@ -127,6 +147,26 @@ describe('publisher draft', () => {
         }));
 
         expect(loadPublisherDraft(storage, 'invalid-style')).toBeNull();
+    });
+
+    it('rejects overlapping or malformed persisted groups', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        const splitLayout = draft.layouts.split!;
+        storage.setItem('churchtools-publisher:draft:invalid-groups', JSON.stringify({
+            ...draft,
+            layouts: {
+                split: {
+                    ...splitLayout,
+                    groups: [
+                        { id: 'first', children: ['title', 'dateTime'] },
+                        { id: 'second', children: ['title', 'location'] },
+                    ],
+                },
+            },
+        }));
+
+        expect(loadPublisherDraft(storage, 'invalid-groups')).toBeNull();
     });
 
     it('finds only valid drafts among the supplied appointment keys', () => {

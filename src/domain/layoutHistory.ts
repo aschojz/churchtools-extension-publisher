@@ -1,5 +1,7 @@
 import type {
     LayoutOffsets,
+    LayoutGroups,
+    LayoutGroup,
     LayoutOrder,
     LayoutRotations,
     LayoutSizes,
@@ -12,6 +14,7 @@ export interface SerializableLayoutState {
     rotations: LayoutRotations;
     order: LayoutOrder;
     styles: LayoutTextStyles;
+    groups: LayoutGroups;
 }
 
 export interface LayoutHistory {
@@ -22,6 +25,11 @@ export interface LayoutHistory {
 export const MAX_LAYOUT_HISTORY_LENGTH = 50;
 
 export const createLayoutHistory = (): LayoutHistory => ({ past: [], future: [] });
+
+const cloneLayoutGroup = (group: LayoutGroup): LayoutGroup => ({
+    id: group.id,
+    children: group.children.map((child) => typeof child === 'string' ? child : cloneLayoutGroup(child)),
+});
 
 export const cloneLayoutState = (state: SerializableLayoutState): SerializableLayoutState => ({
     offsets: {
@@ -41,6 +49,7 @@ export const cloneLayoutState = (state: SerializableLayoutState): SerializableLa
         dateTime: { ...state.styles.dateTime },
         location: { ...state.styles.location },
     },
+    groups: state.groups.map(cloneLayoutGroup),
 });
 
 const layoutStatesEqual = (left: SerializableLayoutState, right: SerializableLayoutState) =>

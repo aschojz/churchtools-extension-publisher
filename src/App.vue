@@ -64,6 +64,8 @@ const selectedLayoutElements = ref<LayoutElementId[]>([]);
 const selectedLayoutGeometry = ref<(LayoutGeometry & { elementId: LayoutElementId }) | null>(null);
 const selectedLayoutStyle = ref<(LayoutTextStyle & { elementId: LayoutElementId }) | null>(null);
 const selectedLayoutElementChanged = ref(false);
+const canGroupLayoutSelection = ref(false);
+const canUngroupLayoutSelection = ref(false);
 const selectedLayerPosition = ref(0);
 const selectedLayerTotal = ref(0);
 const snapEnabled = ref(true);
@@ -463,6 +465,12 @@ const handleEditorShortcut = (event: KeyboardEvent) => {
         case 'clearSelection':
             clearLayoutSelection();
             break;
+        case 'group':
+            templateRef.value?.groupSelectedElements();
+            break;
+        case 'ungroup':
+            templateRef.value?.ungroupSelectedElements();
+            break;
     }
 };
 
@@ -472,6 +480,11 @@ const selectLayoutElement = (elementId: LayoutElementId, event: MouseEvent) => {
 
 const nudgeLayoutElement = (deltaX: number, deltaY: number) => {
     templateRef.value?.nudgeSelectedElement(deltaX, deltaY);
+};
+
+const updateLayoutGrouping = (canGroup: boolean, canUngroup: boolean) => {
+    canGroupLayoutSelection.value = canGroup;
+    canUngroupLayoutSelection.value = canUngroup;
 };
 
 onMounted(() => window.addEventListener('keydown', handleEditorShortcut));
@@ -1007,7 +1020,7 @@ const exportPng = async () => {
                         <h2>Layout anpassen</h2>
                         <p>Wähle ein oder mehrere Elemente aus. Strg/Cmd- oder Umschalt-Klick erweitert die Auswahl; auf freier Vorschaufläche kannst du einen Auswahlrahmen ziehen.</p>
                         <p class="layout-controls__shortcuts">
-                            Tastatur: Pfeiltasten verschieben alle ausgewählten Elemente, Umschalt vergrößert den Schritt, Escape hebt die Auswahl auf, Strg/Cmd+Z macht Änderungen rückgängig.
+                            Tastatur: Pfeiltasten verschieben alle ausgewählten Elemente, Strg/Cmd+G gruppiert, Strg/Cmd+Umschalt+G hebt die äußerste Gruppe auf, Escape leert die Auswahl.
                         </p>
                         <label class="layout-controls__snap">
                             <input v-model="snapEnabled" type="checkbox" />
@@ -1016,6 +1029,22 @@ const exportPng = async () => {
                         <p v-if="hasLayoutSelection" class="layout-controls__selection" role="status">
                             Ausgewählt: {{ selectedLayoutElements.map((elementId) => layoutElementLabels[elementId]).join(', ') }}
                         </p>
+                        <div v-if="hasLayoutSelection" class="layout-controls__grouping" aria-label="Elemente gruppieren">
+                            <button
+                                type="button"
+                                :disabled="!canGroupLayoutSelection"
+                                @click="templateRef?.groupSelectedElements()"
+                            >
+                                Gruppieren
+                            </button>
+                            <button
+                                type="button"
+                                :disabled="!canUngroupLayoutSelection"
+                                @click="templateRef?.ungroupSelectedElements()"
+                            >
+                                Äußerste Gruppe aufheben
+                            </button>
+                        </div>
                         <button
                             v-if="hasLayoutSelection"
                             type="button"
@@ -1194,6 +1223,7 @@ const exportPng = async () => {
                     @layout-state-change="updateDraftLayout"
                     @selection-change="selectedLayoutElement = $event"
                     @selection-ids-change="selectedLayoutElements = $event"
+                    @selection-group-change="updateLayoutGrouping"
                     @selection-default-change="selectedLayoutElementChanged = $event"
                     @selection-geometry-change="selectedLayoutGeometry = $event"
                     @selection-style-change="selectedLayoutStyle = $event"

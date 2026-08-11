@@ -1,8 +1,10 @@
 export type EditorShortcut =
     | { type: 'clearSelection' }
+    | { type: 'group' }
     | { type: 'move'; deltaXFactor: number; deltaYFactor: number }
     | { type: 'redo' }
-    | { type: 'undo' };
+    | { type: 'undo' }
+    | { type: 'ungroup' };
 
 type ShortcutKeyboardEvent = Pick<KeyboardEvent, 'ctrlKey' | 'key' | 'metaKey' | 'shiftKey'>;
 
@@ -18,6 +20,9 @@ export const resolveEditorShortcut = (
     }
     if (commandKey && key === 'y') {
         return { type: 'redo' };
+    }
+    if (commandKey && key === 'g' && hasSelection) {
+        return event.shiftKey ? { type: 'ungroup' } : { type: 'group' };
     }
     if (event.key === 'Escape') {
         return hasSelection ? { type: 'clearSelection' } : null;

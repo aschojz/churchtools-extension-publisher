@@ -414,6 +414,7 @@ textarea {
 }
 
 .layout-controls__elements,
+.layout-controls__grouping,
 .layout-controls__directions,
 .layout-controls__sizes,
 .layout-controls__rotations,
@@ -478,6 +479,7 @@ textarea {
 }
 
 .layout-controls__elements button,
+.layout-controls__grouping button,
 .layout-controls__directions button,
 .layout-controls__sizes button,
 .layout-controls__rotations button,
@@ -495,6 +497,7 @@ textarea {
 }
 
 .layout-controls__elements button:hover,
+.layout-controls__grouping button:hover,
 .layout-controls__directions button:hover,
 .layout-controls__sizes button:hover,
 .layout-controls__rotations button:hover,

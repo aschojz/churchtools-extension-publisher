@@ -2,10 +2,13 @@ import type { SerializableLayoutState } from './layoutHistory';
 import { createImageFocusByTemplate, type ImageFocusByTemplate } from './imageFocus';
 import {
     createLayoutTextStyles,
+    createLayoutGroups,
     isHexColor,
     MAX_FONT_SIZE,
     MIN_FONT_SIZE,
     type LayoutElementId,
+    type LayoutGroup,
+    type LayoutGroups,
     type LayoutTextStyles,
 } from './layoutEditing';
 import type { EventTemplateOverrides } from './templateOverrides';
@@ -54,6 +57,50 @@ const parseLayoutStyles = (value: unknown, templateId: TemplateId): LayoutTextSt
     return styles;
 };
 
+const parseLayoutGroups = (value: unknown): LayoutGroups | null => {
+    if (value === undefined) {
+        return createLayoutGroups();
+    }
+    if (!Array.isArray(value)) {
+        return null;
+    }
+    const elementIds = new Set<LayoutElementId>();
+    const groupIds = new Set<string>();
+    const parseGroup = (candidate: unknown): LayoutGroup | null => {
+        if (!isRecord(candidate) || typeof candidate.id !== 'string' || !candidate.id ||
+            groupIds.has(candidate.id) || !Array.isArray(candidate.children) || candidate.children.length < 2) {
+            return null;
+        }
+        groupIds.add(candidate.id);
+        const children: LayoutGroup['children'] = [];
+        for (const child of candidate.children) {
+            if (child === 'title' || child === 'dateTime' || child === 'location') {
+                if (elementIds.has(child)) {
+                    return null;
+                }
+                elementIds.add(child);
+                children.push(child);
+                continue;
+            }
+            const group = parseGroup(child);
+            if (!group) {
+                return null;
+            }
+            children.push(group);
+        }
+        return { id: candidate.id, children };
+    };
+    const groups: LayoutGroups = [];
+    for (const candidate of value) {
+        const group = parseGroup(candidate);
+        if (!group) {
+            return null;
+        }
+        groups.push(group);
+    }
+    return groups;
+};
+
 const parseLayoutState = (value: unknown, templateId: TemplateId): SerializableLayoutState | null => {
     if (!isRecord(value) || !isRecord(value.offsets) || !isRecord(value.sizes) ||
         !isRecord(value.rotations) || !Array.isArray(value.order)) {
@@ -74,7 +121,8 @@ const parseLayoutState = (value: unknown, templateId: TemplateId): SerializableL
     }) && order.length === elementIds.length &&
         elementIds.every((elementId) => order.includes(elementId));
     const styles = parseLayoutStyles(value.styles, templateId);
-    if (!geometryIsValid || !styles) {
+    const groups = parseLayoutGroups(value.groups);
+    if (!geometryIsValid || !styles || !groups) {
         return null;
     }
 
@@ -84,6 +132,7 @@ const parseLayoutState = (value: unknown, templateId: TemplateId): SerializableL
         rotations: rotations as SerializableLayoutState['rotations'],
         order: order as LayoutElementId[],
         styles,
+        groups,
     };
 };
 

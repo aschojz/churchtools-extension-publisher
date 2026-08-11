@@ -56,6 +56,11 @@ export type LayoutOffsets = Record<LayoutElementId, LayoutPoint>;
 export type LayoutSizes = Record<LayoutElementId, LayoutSize>;
 export type LayoutRotations = Record<LayoutElementId, number>;
 export type LayoutOrder = LayoutElementId[];
+export interface LayoutGroup {
+    id: string;
+    children: (LayoutElementId | LayoutGroup)[];
+}
+export type LayoutGroups = LayoutGroup[];
 export type LayoutTextStyles = Record<LayoutElementId, LayoutTextStyle>;
 
 export interface LayoutElementState {
@@ -114,6 +119,55 @@ export const createLayoutRotations = (): LayoutRotations => ({
 });
 
 export const createLayoutOrder = (): LayoutOrder => ['title', 'dateTime', 'location'];
+
+export const createLayoutGroups = (): LayoutGroups => [];
+
+export const layoutGroupElementIds = (group: LayoutGroup): LayoutElementId[] =>
+    group.children.flatMap((child) => typeof child === 'string' ? [child] : layoutGroupElementIds(child));
+
+export const expandLayoutSelection = (groups: LayoutGroups, elementIds: LayoutElementId[]) => {
+    const expanded = new Set(elementIds);
+    for (const group of groups) {
+        const descendants = layoutGroupElementIds(group);
+        if (descendants.some((elementId) => expanded.has(elementId))) {
+            descendants.forEach((elementId) => expanded.add(elementId));
+        }
+    }
+    return createLayoutOrder().filter((elementId) => expanded.has(elementId));
+};
+
+export const groupLayoutElements = (
+    groups: LayoutGroups,
+    elementIds: LayoutElementId[],
+    groupId: string,
+): LayoutGroups => {
+    const selectedIds = new Set(expandLayoutSelection(groups, elementIds));
+    const selectedChildren: (LayoutElementId | LayoutGroup)[] = [];
+    const remainingGroups: LayoutGroups = [];
+    for (const group of groups) {
+        const descendants = layoutGroupElementIds(group);
+        if (descendants.every((elementId) => selectedIds.has(elementId))) {
+            selectedChildren.push(group);
+            descendants.forEach((elementId) => selectedIds.delete(elementId));
+        } else {
+            remainingGroups.push(group);
+        }
+    }
+    selectedChildren.push(...createLayoutOrder().filter((elementId) => selectedIds.has(elementId)));
+    if (selectedChildren.length < 2) {
+        return groups;
+    }
+    return [...remainingGroups, { id: groupId, children: selectedChildren }];
+};
+
+export const ungroupLayoutElements = (
+    groups: LayoutGroups,
+    elementIds: LayoutElementId[],
+) => groups.flatMap((group) =>
+    layoutGroupElementIds(group).every((elementId) => elementIds.includes(elementId))
+        ? group.children
+        : [group],
+).filter((child): child is LayoutGroup => typeof child !== 'string');
 
 export const createLayoutTextStyles = (templateId: TemplateId): LayoutTextStyles => {
     const elements = BUILT_IN_TEMPLATE_DEFINITIONS[templateId].elements;

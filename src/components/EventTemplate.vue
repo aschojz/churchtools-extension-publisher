@@ -13,13 +13,17 @@ import {
     constrainLayoutGeometry,
     constrainLayoutDelta,
     constrainFontSize,
+    createLayoutGroups,
     createLayoutOrder,
     createLayoutOffsets,
     createLayoutRotations,
     createLayoutSizes,
     createLayoutTextStyles,
+    expandLayoutSelection,
+    groupLayoutElements,
     isHexColor,
     keepRotatedFrameInDocument,
+    layoutGroupElementIds,
     layoutFramesIntersect,
     type AlignmentGuide,
     type LayoutElementId,
@@ -34,6 +38,7 @@ import {
     snapLayoutSize,
     snapRotation,
     TEMPLATE_ELEMENT_FRAMES,
+    ungroupLayoutElements,
 } from '../domain/layoutEditing';
 import {
     cloneLayoutState,
@@ -77,6 +82,7 @@ const emit = defineEmits<{
     layerPositionChange: [position: number, total: number];
     selectionChange: [elementId: LayoutElementId | null];
     selectionIdsChange: [elementIds: LayoutElementId[]];
+    selectionGroupChange: [canGroup: boolean, canUngroup: boolean];
     selectionDefaultChange: [changed: boolean];
     selectionGeometryChange: [geometry: (LayoutGeometry & { elementId: LayoutElementId }) | null];
     selectionStyleChange: [style: (LayoutTextStyle & { elementId: LayoutElementId }) | null];
@@ -113,11 +119,16 @@ const layoutTextStyles = ref<Record<TemplateId, ReturnType<typeof createLayoutTe
     split: createLayoutTextStyles('split'),
     poster: createLayoutTextStyles('poster'),
 });
+const layoutGroups = ref<Record<TemplateId, ReturnType<typeof createLayoutGroups>>>({
+    split: createLayoutGroups(),
+    poster: createLayoutGroups(),
+});
 const layoutHistories = ref<Record<TemplateId, ReturnType<typeof createLayoutHistory>>>({
     split: createLayoutHistory(),
     poster: createLayoutHistory(),
 });
 let resizeObserver: ResizeObserver | undefined;
+let layoutGroupSequence = 0;
 let selectionStart: { x: number; y: number; additive: boolean } | null = null;
 let activeDrag: {
     previousState: SerializableLayoutState;
@@ -249,7 +260,7 @@ const currentLayoutChanged = computed(() => {
         return style.fontSize !== defaultStyles[elementId].fontSize ||
             style.color !== defaultStyles[elementId].color;
     });
-    return geometryChanged || orderChanged || styleChanged;
+    return geometryChanged || orderChanged || styleChanged || layoutGroups.value[props.templateId].length > 0;
 });
 
 const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
@@ -325,6 +336,7 @@ const captureLayoutState = (): SerializableLayoutState =>
         rotations: layoutRotations.value[props.templateId],
         order: layoutOrder.value[props.templateId],
         styles: layoutTextStyles.value[props.templateId],
+        groups: layoutGroups.value[props.templateId],
     });
 
 const emitHistoryState = () => {
@@ -350,11 +362,10 @@ const restoreLayoutState = (state: SerializableLayoutState) => {
     layoutRotations.value[props.templateId] = restored.rotations;
     layoutOrder.value[props.templateId] = restored.order;
     layoutTextStyles.value[props.templateId] = restored.styles;
+    layoutGroups.value[props.templateId] = restored.groups;
     emit('layoutStateChange', props.templateId, captureLayoutState());
     emit('layoutChange', currentLayoutChanged.value);
-    emitLayerPosition();
-    emitSelectionGeometry();
-    void syncTransformer();
+    updateSelection(selectedElements.value);
 };
 
 const syncTransformer = async () => {
@@ -388,20 +399,68 @@ const updateSelection = (elementIds: LayoutElementId[]) => {
     );
     emit('selectionIdsChange', [...selectedElements.value]);
     emit('selectionChange', selectedElement.value);
+    const groups = layoutGroups.value[props.templateId];
+    const selectionIsOneGroup = groups.some((group) =>
+        layoutGroupElementIds(group).length === selectedElements.value.length &&
+        layoutGroupElementIds(group).every((elementId) => selectedElements.value.includes(elementId)),
+    );
+    emit(
+        'selectionGroupChange',
+        selectedElements.value.length >= 2 && !selectionIsOneGroup,
+        groups.some((group) =>
+            layoutGroupElementIds(group).every((elementId) => selectedElements.value.includes(elementId)),
+        ),
+    );
     emitLayerPosition();
     emitSelectionGeometry();
     void syncTransformer();
 };
 
+const createLayoutGroupId = () => `group-${Date.now()}-${layoutGroupSequence++}`;
+
+const groupSelectedElements = () => {
+    if (selectedElements.value.length < 2) {
+        return;
+    }
+    const previousState = captureLayoutState();
+    const currentGroups = layoutGroups.value[props.templateId];
+    const nextGroups = groupLayoutElements(currentGroups, selectedElements.value, createLayoutGroupId());
+    if (nextGroups === currentGroups) {
+        return;
+    }
+    layoutGroups.value[props.templateId] = nextGroups;
+    commitCurrentLayout(previousState);
+    updateSelection(selectedElements.value);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
+const ungroupSelectedElements = () => {
+    if (selectedElements.value.length === 0) {
+        return;
+    }
+    const previousState = captureLayoutState();
+    const currentGroups = layoutGroups.value[props.templateId];
+    const nextGroups = ungroupLayoutElements(currentGroups, selectedElements.value);
+    if (nextGroups.length === currentGroups.length &&
+        nextGroups.every((group, index) => group === currentGroups[index])) {
+        return;
+    }
+    layoutGroups.value[props.templateId] = nextGroups;
+    commitCurrentLayout(previousState);
+    updateSelection(selectedElements.value);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
 const selectElement = (elementId: LayoutElementId, additive = false) => {
+    const groupSelection = expandLayoutSelection(layoutGroups.value[props.templateId], [elementId]);
     if (!additive) {
-        updateSelection([elementId]);
+        updateSelection(groupSelection);
         return;
     }
 
     updateSelection(selectedElements.value.includes(elementId)
-        ? selectedElements.value.filter((candidate) => candidate !== elementId)
-        : [...selectedElements.value, elementId]);
+        ? selectedElements.value.filter((candidate) => !groupSelection.includes(candidate))
+        : [...selectedElements.value, ...groupSelection]);
 };
 
 const clearSelection = () => {
@@ -479,7 +538,8 @@ const finishSelectionRectangle = () => {
         const bounds = node.getClientRect({ relativeTo: stage });
         return layoutFramesIntersect(rectangle, bounds);
     });
-    updateSelection(start.additive ? [...new Set([...selectedElements.value, ...matches])] : matches);
+    const expandedMatches = expandLayoutSelection(layoutGroups.value[props.templateId], matches);
+    updateSelection(start.additive ? [...new Set([...selectedElements.value, ...expandedMatches])] : expandedMatches);
 };
 
 const startElementDrag = (elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
@@ -864,11 +924,13 @@ const resetLayout = () => {
     layoutRotations.value[props.templateId] = createLayoutRotations();
     layoutOrder.value[props.templateId] = createLayoutOrder();
     layoutTextStyles.value[props.templateId] = createLayoutTextStyles(props.templateId);
+    layoutGroups.value[props.templateId] = createLayoutGroups();
     commitCurrentLayout(previousState);
     selectedElements.value = [];
     activeAlignmentGuides.value = [];
     emit('selectionChange', null);
     emit('selectionIdsChange', []);
+    emit('selectionGroupChange', false, false);
     emitLayerPosition();
     emitSelectionGeometry();
     emit('layoutChange', false);
@@ -880,8 +942,11 @@ const resetSelectedElement = () => {
     }
 
     const previousState = captureLayoutState();
-    const reset = selectedElements.value.reduce(
-        (state, elementId) => resetLayoutElementState(props.templateId, elementId, state),
+    const reset = selectedElements.value.reduce<SerializableLayoutState>(
+        (state, elementId) => ({
+            ...resetLayoutElementState(props.templateId, elementId, state),
+            groups: state.groups,
+        }),
         previousState,
     );
     layoutOffsets.value[props.templateId] = reset.offsets;
@@ -928,18 +993,21 @@ const restoreDraftLayouts = () => {
                   rotations: createLayoutRotations(),
                   order: createLayoutOrder(),
                   styles: createLayoutTextStyles(templateId),
+                  groups: createLayoutGroups(),
               };
         layoutOffsets.value[templateId] = restored.offsets;
         layoutSizes.value[templateId] = restored.sizes;
         layoutRotations.value[templateId] = restored.rotations;
         layoutOrder.value[templateId] = restored.order;
         layoutTextStyles.value[templateId] = restored.styles;
+        layoutGroups.value[templateId] = restored.groups;
         layoutHistories.value[templateId] = createLayoutHistory();
     }
     selectedElements.value = [];
     activeAlignmentGuides.value = [];
     emit('selectionChange', null);
     emit('selectionIdsChange', []);
+    emit('selectionGroupChange', false, false);
     emitLayerPosition();
     emitSelectionGeometry();
     emitHistoryState();
@@ -987,6 +1055,7 @@ watch(
         activeAlignmentGuides.value = [];
         emit('selectionChange', null);
         emit('selectionIdsChange', []);
+        emit('selectionGroupChange', false, false);
         emitLayerPosition();
         emitSelectionGeometry();
         emitHistoryState();
@@ -1051,6 +1120,7 @@ defineExpose({
     changeSelectedLayer,
     clearSelection,
     exportPng,
+    groupSelectedElements,
     nudgeSelectedElement,
     redoLayout,
     resetLayout,
@@ -1061,6 +1131,7 @@ defineExpose({
     setSelectedElementTextStyle,
     selectElement,
     undoLayout,
+    ungroupSelectedElements,
 });
 </script>
 

@@ -34,4 +34,11 @@ describe('editor shortcuts', () => {
         expect(resolveEditorShortcut(keyboardEvent({ key: 'Escape' }), true)).toEqual({ type: 'clearSelection' });
         expect(resolveEditorShortcut(keyboardEvent({ key: 'Escape' }), false)).toBeNull();
     });
+
+    it('maps the common grouping shortcuts when elements are selected', () => {
+        expect(resolveEditorShortcut(keyboardEvent({ key: 'g', metaKey: true }), true)).toEqual({ type: 'group' });
+        expect(resolveEditorShortcut(keyboardEvent({ key: 'G', ctrlKey: true, shiftKey: true }), true))
+            .toEqual({ type: 'ungroup' });
+        expect(resolveEditorShortcut(keyboardEvent({ key: 'g', metaKey: true }), false)).toBeNull();
+    });
 });
