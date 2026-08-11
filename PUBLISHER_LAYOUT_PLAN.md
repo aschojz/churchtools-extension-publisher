@@ -37,7 +37,7 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 ## 1. Technische und visuelle Grundlage
 
 - [ ] Bestehende Editorbereiche und Funktionen den neuen Zielbereichen zuordnen.
-- [ ] Eine zentrale Layout-Komponente für den Editor-Shell anlegen.
+- [x] Eine zentrale Layout-Komponente für den Editor-Shell anlegen.
 - [x] Einheitliche CSS-Farbvariablen für Flächen, Texte, Rahmen, Akzente und Zustände definieren.
 - [ ] CSS-Variablen für Abstände, Radien und Schatten vervollständigen.
 - [x] Theme-Modi `system`, `light` und `dark` einführen.
@@ -49,12 +49,12 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 
 ## 2. Grundgerüst des Editors
 
-- [ ] Ein vollflächiges Desktop-Layout erstellen.
-- [ ] Bereiche für Hauptleiste, Kontextleiste, Werkzeugleiste, linkes Panel, Canvas, rechtes Panel und Statusleiste anlegen.
+- [x] Ein vollflächiges Desktop-Layout erstellen.
+- [x] Bereiche für Hauptleiste, Kontextleiste, Werkzeugleiste, linkes Panel, Canvas, rechtes Panel und Statusleiste anlegen.
 - [ ] Seitenleisten mit sinnvollen Mindest- und Maximalbreiten versehen.
-- [ ] Scrollverhalten pro Bereich trennen.
-- [ ] Dem Canvas-Bereich den gesamten verbleibenden Platz geben.
-- [ ] Bestehende Publisher-Inhalte zunächst verlustfrei in das Grundgerüst übernehmen.
+- [x] Scrollverhalten pro Bereich trennen.
+- [x] Dem Canvas-Bereich den gesamten verbleibenden Platz geben.
+- [x] Bestehende Publisher-Inhalte zunächst verlustfrei in das Grundgerüst übernehmen.
 
 **Fertig, wenn:** Die neue räumliche Aufteilung steht, ohne eine vorhandene Funktion zu verlieren.
 
@@ -264,5 +264,6 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 
 ## Änderungsprotokoll
 
+- 2026-08-11: Vollflächigen Editor-Shell mit festen Bereichen für Kopfzeile, optionale Werkzeug-/Seitenleisten, unabhängig scrollenden Arbeitsbereich und Statuszeile eingeführt.
 - 2026-08-11: Theme-Grundlage umgesetzt: System/Hell/Dunkel, lokale Speicherung, semantische Farbvariablen und erste Auswahl in der bestehenden Kopfzeile.
 - 2026-08-11: Initialen Detailplan angelegt; automatische sowie manuelle Hell-/Dunkelumschaltung aufgenommen.

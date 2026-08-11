@@ -4,6 +4,7 @@ import { useAppointmentQuery, useCalendarsQuery } from '@churchtools/vue-query';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import EventTemplate from './components/EventTemplate.vue';
+import PublisherEditorShell from './components/PublisherEditorShell.vue';
 import { useAppointmentsQuery } from './composables/useAppointmentsQuery';
 import { isAppointmentWithinDays, matchesAppointmentFilters } from './domain/appointmentFilters';
 import { resolveEditorShortcut } from './domain/editorShortcuts';
@@ -737,13 +738,16 @@ const exportPng = async () => {
 </script>
 
 <template>
-    <main class="publisher-page">
-        <section class="publisher-card">
-            <header class="publisher-card__header">
-                <div>
-                    <p class="publisher-card__eyebrow">ChurchTools Publisher</p>
-                    <h1>Publisher</h1>
-                    <p>Wähle einen Kalendertermin für das spätere Testlayout aus.</p>
+    <PublisherEditorShell>
+        <template #topbar>
+            <div class="publisher-topbar">
+                <div class="publisher-topbar__brand">
+                    <span>ChurchTools</span>
+                    <strong>Publisher</strong>
+                </div>
+                <div class="publisher-topbar__document">
+                    <span>Dokument</span>
+                    <strong>{{ selectedAppointment?.appointment.base.title ?? 'Kein Termin gewählt' }}</strong>
                 </div>
                 <label class="theme-picker">
                     Darstellung
@@ -753,6 +757,16 @@ const exportPng = async () => {
                         <option value="dark">Dunkel</option>
                     </select>
                 </label>
+            </div>
+        </template>
+
+        <section class="publisher-card">
+            <header class="publisher-card__header">
+                <div>
+                    <p class="publisher-card__eyebrow">ChurchTools Publisher</p>
+                    <h1>Publisher</h1>
+                    <p>Wähle einen Kalendertermin für das spätere Testlayout aus.</p>
+                </div>
             </header>
 
             <div class="appointment-picker">
@@ -1267,8 +1281,13 @@ const exportPng = async () => {
                     @selection-style-change="selectedLayoutStyle = $event"
                 />
             </section>
-
-            <p class="publisher-card__meta">Aktive Sprache: {{ userLanguage }}</p>
         </section>
-    </main>
+
+        <template #statusbar>
+            <div class="publisher-statusbar">
+                <span>{{ templateProps ? `${templateProps.title} · 1920 × 1080 px` : 'Kein Termin ausgewählt' }}</span>
+                <span>Aktive Sprache: {{ userLanguage }}</span>
+            </div>
+        </template>
+    </PublisherEditorShell>
 </template>

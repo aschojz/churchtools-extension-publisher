@@ -86,23 +86,74 @@ textarea {
     font: inherit;
 }
 
-.publisher-page {
-    display: grid;
-    box-sizing: border-box;
-    min-height: 100vh;
-    padding: clamp(24px, 6vw, 80px);
-    place-items: center;
-}
-
 .publisher-card {
     width: min(100%, 1320px);
     min-width: 0;
     box-sizing: border-box;
+    margin-inline: auto;
     padding: clamp(28px, 5vw, 56px);
     border: 1px solid var(--color-border);
     border-radius: 18px;
     background: var(--color-surface);
     box-shadow: var(--shadow-card);
+}
+
+.publisher-topbar {
+    display: grid;
+    min-height: 64px;
+    padding: 8px 18px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 24px;
+    align-items: center;
+}
+
+.publisher-topbar__brand,
+.publisher-topbar__document {
+    display: grid;
+    min-width: 0;
+}
+
+.publisher-topbar__brand {
+    grid-template-columns: auto auto;
+    gap: 8px;
+    align-items: baseline;
+}
+
+.publisher-topbar__brand span,
+.publisher-topbar__document span {
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.publisher-topbar__brand strong {
+    font-size: 19px;
+}
+
+.publisher-topbar__document {
+    justify-self: center;
+    text-align: center;
+}
+
+.publisher-topbar__document strong {
+    overflow: hidden;
+    max-width: min(48vw, 620px);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.publisher-statusbar {
+    display: flex;
+    min-height: 30px;
+    padding: 0 12px;
+    gap: 24px;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    font-weight: 700;
 }
 
 .publisher-card__header {
@@ -791,12 +842,6 @@ textarea {
     display: block;
 }
 
-.publisher-card__meta {
-    margin-top: 32px !important;
-    color: var(--color-text-subtle) !important;
-    font-size: 13px;
-}
-
 @media (max-width: 680px) {
     .publisher-card__header {
         align-items: stretch;
@@ -805,6 +850,39 @@ textarea {
 
     .theme-picker {
         width: min(100%, 220px);
+    }
+
+    .publisher-topbar {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+    }
+
+    .publisher-topbar__brand {
+        display: none;
+    }
+
+    .publisher-topbar__document {
+        justify-self: start;
+        text-align: left;
+    }
+
+    .publisher-topbar__document strong {
+        max-width: 52vw;
+    }
+
+    .publisher-topbar .theme-picker {
+        width: auto;
+        min-width: 118px;
+    }
+
+    .publisher-statusbar span:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .publisher-statusbar span:last-child {
+        display: none;
     }
 
     .layout-controls,
