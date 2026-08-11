@@ -790,6 +790,47 @@ const exportPng = async () => {
             </div>
         </template>
 
+        <template #contextbar>
+            <div class="publisher-contextbar">
+                <div class="publisher-contextbar__selection" role="status">
+                    <span>Auswahl</span>
+                    <strong v-if="hasLayoutSelection">
+                        {{ selectedLayoutGroupDepth ? `Gruppe Ebene ${selectedLayoutGroupDepth} · ` : '' }}
+                        {{ selectedLayoutElements.map((elementId) => layoutElementLabels[elementId]).join(', ') }}
+                    </strong>
+                    <strong v-else>Keine Auswahl</strong>
+                </div>
+                <div class="publisher-contextbar__actions" aria-label="Auswahlaktionen">
+                    <button
+                        type="button"
+                        :disabled="!canGroupLayoutSelection"
+                        @click="templateRef?.groupSelectedElements()"
+                    >
+                        Gruppieren
+                    </button>
+                    <button
+                        type="button"
+                        :disabled="!canUngroupLayoutSelection"
+                        @click="templateRef?.ungroupSelectedElements()"
+                    >
+                        Gruppenebene aufheben
+                    </button>
+                </div>
+                <label class="publisher-contextbar__toggle">
+                    <input v-model="snapEnabled" type="checkbox" :disabled="!templateProps" />
+                    Raster
+                </label>
+                <label class="publisher-contextbar__zoom" for="preview-zoom">
+                    Zoom
+                    <select id="preview-zoom" v-model.number="previewZoomPercent" :disabled="!templateProps">
+                        <option v-for="zoom in previewZoomOptions" :key="zoom" :value="zoom">
+                            {{ zoom }} %
+                        </option>
+                    </select>
+                </label>
+            </div>
+        </template>
+
         <section class="publisher-card">
             <header class="publisher-card__header">
                 <div>
@@ -1102,30 +1143,6 @@ const exportPng = async () => {
                         <p class="layout-controls__shortcuts">
                             Tastatur: Pfeiltasten verschieben alle ausgewählten Elemente, Strg/Cmd+G gruppiert, Strg/Cmd+Umschalt+G hebt die ausgewählte Gruppenebene auf, Escape leert die Auswahl.
                         </p>
-                        <label class="layout-controls__snap">
-                            <input v-model="snapEnabled" type="checkbox" />
-                            Am 20-Pixel-Raster und an 15°-Winkeln ausrichten
-                        </label>
-                        <p v-if="hasLayoutSelection" class="layout-controls__selection" role="status">
-                            Ausgewählt{{ selectedLayoutGroupDepth ? ` · Gruppe Ebene ${selectedLayoutGroupDepth}` : '' }}:
-                            {{ selectedLayoutElements.map((elementId) => layoutElementLabels[elementId]).join(', ') }}
-                        </p>
-                        <div v-if="hasLayoutSelection" class="layout-controls__grouping" aria-label="Elemente gruppieren">
-                            <button
-                                type="button"
-                                :disabled="!canGroupLayoutSelection"
-                                @click="templateRef?.groupSelectedElements()"
-                            >
-                                Gruppieren
-                            </button>
-                            <button
-                                type="button"
-                                :disabled="!canUngroupLayoutSelection"
-                                @click="templateRef?.ungroupSelectedElements()"
-                            >
-                                Gruppenebene aufheben
-                            </button>
-                        </div>
                         <button
                             v-if="hasLayoutSelection"
                             type="button"
@@ -1249,16 +1266,6 @@ const exportPng = async () => {
                     <div>
                         <p class="appointment-summary__label">Vorschau · 1920 × 1080 px</p>
                         <h2>{{ templateProps.title }}</h2>
-                    </div>
-                    <div class="template-section__actions">
-                        <label class="preview-zoom" for="preview-zoom">
-                            Vorschauzoom
-                            <select id="preview-zoom" v-model.number="previewZoomPercent">
-                                <option v-for="zoom in previewZoomOptions" :key="zoom" :value="zoom">
-                                    {{ zoom }} %
-                                </option>
-                            </select>
-                        </label>
                     </div>
                 </div>
 

@@ -72,12 +72,12 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 
 ## 4. Kontextabhängige Werkzeugleiste
 
-- [ ] Auswahlmodus und aktuelle Auswahlart anzeigen.
-- [ ] Gruppieren und „Gruppenebene aufheben“ integrieren.
-- [ ] Rasterausrichtung ein- und ausschaltbar machen.
-- [ ] Zoom-Steuerung integrieren.
-- [ ] Aktionen abhängig von der aktuellen Auswahl aktivieren.
-- [ ] Eine Struktur für spätere werkzeugspezifische Aktionen vorsehen.
+- [x] Auswahlmodus und aktuelle Auswahlart anzeigen.
+- [x] Gruppieren und „Gruppenebene aufheben“ integrieren.
+- [x] Rasterausrichtung ein- und ausschaltbar machen.
+- [x] Zoom-Steuerung integrieren.
+- [x] Aktionen abhängig von der aktuellen Auswahl aktivieren.
+- [x] Eine Struktur für spätere werkzeugspezifische Aktionen vorsehen.
 
 **Fertig, wenn:** Die häufigsten Aktionen direkt oberhalb der Arbeitsfläche erreichbar sind.
 
@@ -264,6 +264,7 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 
 ## Änderungsprotokoll
 
+- 2026-08-11: Feste Kontextleiste für Auswahlstatus, Gruppenebene, Gruppieren/Aufheben, Raster und Vorschauzoom eingeführt; bisherige Doppelungen entfernt.
 - 2026-08-11: Globale Undo-/Redo-Aktionen und PNG-Export in die feste Hauptleiste verschoben; doppelte Bedienelemente aus dem Arbeitsbereich entfernt.
 - 2026-08-11: Vollflächigen Editor-Shell mit festen Bereichen für Kopfzeile, optionale Werkzeug-/Seitenleisten, unabhängig scrollenden Arbeitsbereich und Statuszeile eingeführt.
 - 2026-08-11: Theme-Grundlage umgesetzt: System/Hell/Dunkel, lokale Speicherung, semantische Farbvariablen und erste Auswahl in der bestehenden Kopfzeile.

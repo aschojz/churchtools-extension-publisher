@@ -203,6 +203,99 @@ textarea {
     font-weight: 700;
 }
 
+.publisher-contextbar {
+    display: flex;
+    min-width: 0;
+    min-height: 46px;
+    padding: 5px 12px;
+    gap: 10px;
+    align-items: center;
+}
+
+.publisher-contextbar__selection {
+    display: grid;
+    min-width: 180px;
+    margin-right: auto;
+}
+
+.publisher-contextbar__selection span {
+    color: var(--color-text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.publisher-contextbar__selection strong {
+    overflow: hidden;
+    max-width: min(38vw, 480px);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.publisher-contextbar__actions {
+    display: flex;
+    gap: 6px;
+}
+
+.publisher-contextbar__actions button,
+.publisher-contextbar__zoom select {
+    min-height: 34px;
+    border: 1px solid var(--color-border-control);
+    border-radius: 7px;
+    background: var(--color-surface-subtle);
+    color: var(--color-text);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.publisher-contextbar__actions button {
+    padding: 0 10px;
+    cursor: pointer;
+}
+
+.publisher-contextbar__actions button:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    background: var(--color-surface-accent-strong);
+    color: var(--color-accent-text);
+}
+
+.publisher-contextbar__actions button:disabled,
+.publisher-contextbar__zoom select:disabled,
+.publisher-contextbar__toggle input:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.publisher-contextbar__actions button:focus-visible,
+.publisher-contextbar__zoom select:focus-visible,
+.publisher-contextbar__toggle input:focus-visible {
+    outline: 3px solid var(--color-focus-ring-strong);
+    outline-offset: 1px;
+}
+
+.publisher-contextbar__toggle,
+.publisher-contextbar__zoom {
+    display: flex;
+    flex: none;
+    gap: 6px;
+    align-items: center;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.publisher-contextbar__toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-accent);
+}
+
+.publisher-contextbar__zoom select {
+    padding: 0 26px 0 8px;
+}
+
 .publisher-card__header {
     display: flex;
     gap: 24px;
@@ -569,12 +662,6 @@ textarea {
     font-size: 14px;
 }
 
-.layout-controls__selection {
-    margin-top: 5px !important;
-    color: var(--color-accent) !important;
-    font-weight: 700;
-}
-
 .layout-controls__element-reset {
     margin-top: 6px;
     padding: 0;
@@ -597,24 +684,7 @@ textarea {
     font-size: 12px !important;
 }
 
-.layout-controls__snap {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    margin-top: 10px;
-    color: var(--color-text-secondary);
-    font-size: 13px;
-    font-weight: 700;
-}
-
-.layout-controls__snap input {
-    width: 17px;
-    height: 17px;
-    accent-color: var(--color-accent);
-}
-
 .layout-controls__elements,
-.layout-controls__grouping,
 .layout-controls__directions,
 .layout-controls__sizes,
 .layout-controls__rotations,
@@ -679,7 +749,6 @@ textarea {
 }
 
 .layout-controls__elements button,
-.layout-controls__grouping button,
 .layout-controls__directions button,
 .layout-controls__sizes button,
 .layout-controls__rotations button,
@@ -697,7 +766,6 @@ textarea {
 }
 
 .layout-controls__elements button:hover,
-.layout-controls__grouping button:hover,
 .layout-controls__directions button:hover,
 .layout-controls__sizes button:hover,
 .layout-controls__rotations button:hover,
@@ -801,28 +869,6 @@ textarea {
 .template-section__header h2 {
     margin: 0;
     font-size: 24px;
-}
-
-.template-section__actions,
-.preview-zoom {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-}
-
-.preview-zoom {
-    color: var(--color-text-muted);
-    font-size: 13px;
-    font-weight: 700;
-}
-
-.preview-zoom select {
-    min-height: 44px;
-    padding: 0 32px 0 10px;
-    border: 1px solid var(--color-border-control);
-    border-radius: 8px;
-    background: var(--color-surface);
-    color: var(--color-text);
 }
 
 .button {
@@ -944,6 +990,18 @@ textarea {
         font-size: 11px;
     }
 
+    .publisher-contextbar {
+        overflow-x: auto;
+    }
+
+    .publisher-contextbar__selection {
+        min-width: 150px;
+    }
+
+    .publisher-contextbar__selection strong {
+        max-width: 180px;
+    }
+
     .publisher-statusbar span:first-child {
         overflow: hidden;
         text-overflow: ellipsis;
@@ -958,8 +1016,7 @@ textarea {
     .image-focus-controls__header,
     .local-draft,
     .template-overrides__header,
-    .template-section__header,
-    .template-section__actions {
+    .template-section__header {
         align-items: stretch;
         flex-direction: column;
     }
