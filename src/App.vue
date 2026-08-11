@@ -100,6 +100,15 @@ const layoutElementLabels: Record<LayoutElementId, string> = {
     dateTime: 'Datum/Uhrzeit',
     location: 'Ort',
 };
+const editorTools = [
+    { id: 'appointments', targetId: 'appointments-editor', label: 'Termine', icon: '◫', requiresTemplate: false },
+    { id: 'templates', targetId: 'templates-editor', label: 'Templates', icon: '▧', requiresTemplate: true },
+    { id: 'content', targetId: 'content-editor', label: 'Inhalte', icon: 'T', requiresTemplate: true },
+    { id: 'image', targetId: 'image-editor', label: 'Bild', icon: '▣', requiresTemplate: true },
+    { id: 'layout', targetId: 'layout-editor', label: 'Layout', icon: '✥', requiresTemplate: true },
+] as const;
+type EditorToolId = typeof editorTools[number]['id'];
+const activeEditorTool = ref<EditorToolId>('appointments');
 const layoutGeometryFields: { id: keyof LayoutGeometry; label: string }[] = [
     { id: 'x', label: 'X' },
     { id: 'y', label: 'Y' },
@@ -208,6 +217,15 @@ const templateProps = computed(() => {
 const hasTemplateOverrides = computed(
     () => Object.keys(templateOverrides.value).length > 0 || Boolean(replacementImageUrl.value),
 );
+
+const activateEditorTool = async (tool: typeof editorTools[number]) => {
+    if (tool.requiresTemplate && !templateProps.value) {
+        return;
+    }
+    activeEditorTool.value = tool.id;
+    await nextTick();
+    document.getElementById(tool.targetId)?.scrollIntoView({ block: 'start' });
+};
 
 const isLoading = computed(() => calendarsPending.value || appointmentsPending.value);
 const loadingError = computed(() => calendarsError.value ?? appointmentsError.value);
@@ -831,6 +849,24 @@ const exportPng = async () => {
             </div>
         </template>
 
+        <template #tools>
+            <div class="publisher-toolrail">
+                <button
+                    v-for="tool in editorTools"
+                    :key="tool.id"
+                    type="button"
+                    :title="tool.label"
+                    :aria-label="tool.label"
+                    :aria-pressed="activeEditorTool === tool.id"
+                    :class="{ 'is-active': activeEditorTool === tool.id }"
+                    :disabled="tool.requiresTemplate && !templateProps"
+                    @click="activateEditorTool(tool)"
+                >
+                    <span aria-hidden="true">{{ tool.icon }}</span>
+                </button>
+            </div>
+        </template>
+
         <section class="publisher-card">
             <header class="publisher-card__header">
                 <div>
@@ -840,7 +876,7 @@ const exportPng = async () => {
                 </div>
             </header>
 
-            <div class="appointment-picker">
+            <div id="appointments-editor" class="appointment-picker">
                 <p v-if="isLoading" class="status-message" role="status">Termine werden geladen …</p>
 
                 <p v-else-if="loadingError" class="status-message status-message--error" role="alert">
@@ -927,7 +963,7 @@ const exportPng = async () => {
             </p>
 
             <section v-else-if="templateProps" class="template-section" aria-live="polite">
-                <div class="template-picker">
+                <div id="templates-editor" class="template-picker">
                     <div>
                         <label for="template">Template</label>
                         <p>Das Template ändert nur die Gestaltung; Termin und Inhaltsanpassungen bleiben erhalten.</p>
@@ -965,7 +1001,7 @@ const exportPng = async () => {
                     </div>
                 </div>
 
-                <form class="template-overrides" @submit.prevent>
+                <form id="content-editor" class="template-overrides" @submit.prevent>
                     <div class="template-overrides__header">
                         <div>
                             <h2>Inhalte anpassen</h2>
@@ -1051,7 +1087,7 @@ const exportPng = async () => {
                             </button>
                         </div>
 
-                        <div class="template-field template-field--wide local-image-override">
+                        <div id="image-editor" class="template-field template-field--wide local-image-override">
                             <label for="override-image">Veranstaltungsbild</label>
                             <input
                                 id="override-image"
@@ -1136,7 +1172,7 @@ const exportPng = async () => {
                     </div>
                 </div>
 
-                <div class="layout-controls">
+                <div id="layout-editor" class="layout-controls">
                     <div>
                         <h2>Layout anpassen</h2>
                         <p>Wähle ein oder mehrere Elemente aus. Strg/Cmd- oder Umschalt-Klick erweitert die Auswahl; auf freier Vorschaufläche kannst du einen Auswahlrahmen ziehen.</p>

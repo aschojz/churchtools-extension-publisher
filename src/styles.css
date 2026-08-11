@@ -296,6 +296,76 @@ textarea {
     padding: 0 26px 0 8px;
 }
 
+.publisher-toolrail {
+    display: flex;
+    width: 54px;
+    padding: 8px 6px;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+}
+
+.publisher-toolrail button {
+    position: relative;
+    display: grid;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    place-items: center;
+}
+
+.publisher-toolrail button span {
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.publisher-toolrail button:hover:not(:disabled) {
+    border-color: var(--color-border-control);
+    background: var(--color-surface-info);
+    color: var(--color-text);
+}
+
+.publisher-toolrail button.is-active {
+    border-color: var(--color-accent);
+    background: var(--color-surface-accent-strong);
+    color: var(--color-accent-text);
+}
+
+.publisher-toolrail button.is-active::before {
+    position: absolute;
+    top: 7px;
+    bottom: 7px;
+    left: -7px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--color-accent);
+    content: '';
+}
+
+.publisher-toolrail button:focus-visible {
+    outline: 3px solid var(--color-focus-ring-strong);
+    outline-offset: 1px;
+}
+
+.publisher-toolrail button:disabled {
+    cursor: not-allowed;
+    opacity: 0.35;
+}
+
+#appointments-editor,
+#templates-editor,
+#content-editor,
+#image-editor,
+#layout-editor {
+    scroll-margin-top: 18px;
+}
+
 .publisher-card__header {
     display: flex;
     gap: 24px;
@@ -1000,6 +1070,16 @@ textarea {
 
     .publisher-contextbar__selection strong {
         max-width: 180px;
+    }
+
+    .publisher-toolrail {
+        width: 48px;
+        padding-inline: 4px;
+    }
+
+    .publisher-toolrail button {
+        width: 38px;
+        height: 38px;
     }
 
     .publisher-statusbar span:first-child {

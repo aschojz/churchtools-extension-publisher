@@ -83,11 +83,11 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 
 ## 5. Linke Werkzeugleiste
 
-- [ ] Eine schmale vertikale Symbolleiste erstellen.
-- [ ] Vorhandene Funktionen für Auswahl, Inhalte, Bild, Templates und Verschieben zuordnen.
-- [ ] Das aktive Werkzeug deutlich hervorheben.
-- [ ] Tooltips und vollständige Tastaturbedienung ergänzen.
-- [ ] Noch nicht vorhandene Werkzeuge ausblenden statt funktionslose Schaltflächen zu zeigen.
+- [x] Eine schmale vertikale Symbolleiste erstellen.
+- [x] Vorhandene Bereiche für Termine, Inhalte, Bild, Templates und Layout zuordnen.
+- [x] Das aktive Werkzeug deutlich hervorheben.
+- [x] Tooltips und vollständige Tastaturbedienung ergänzen.
+- [x] Noch nicht vorhandene Werkzeuge ausblenden statt funktionslose Schaltflächen zu zeigen.
 
 **Fertig, wenn:** Die aktuelle Bearbeitungsart kompakt und dauerhaft auswählbar ist.
 
@@ -264,6 +264,7 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 
 ## Änderungsprotokoll
 
+- 2026-08-12: Linke Werkzeugleiste mit aktivem Zustand und funktionierender Navigation zu Termine, Templates, Inhalte, Bild und Layout ergänzt.
 - 2026-08-11: Feste Kontextleiste für Auswahlstatus, Gruppenebene, Gruppieren/Aufheben, Raster und Vorschauzoom eingeführt; bisherige Doppelungen entfernt.
 - 2026-08-11: Globale Undo-/Redo-Aktionen und PNG-Export in die feste Hauptleiste verschoben; doppelte Bedienelemente aus dem Arbeitsbereich entfernt.
 - 2026-08-11: Vollflächigen Editor-Shell mit festen Bereichen für Kopfzeile, optionale Werkzeug-/Seitenleisten, unabhängig scrollenden Arbeitsbereich und Statuszeile eingeführt.
