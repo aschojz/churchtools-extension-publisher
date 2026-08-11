@@ -20,6 +20,8 @@ import {
     createLayoutSizes,
     createLayoutTextStyles,
     expandLayoutSelection,
+    flattenLayoutGroups,
+    findLayoutGroupDepth,
     groupLayoutElements,
     isHexColor,
     keepRotatedFrameInDocument,
@@ -34,6 +36,7 @@ import {
     moveLayoutElementInOrder,
     resizeLayoutFrame,
     resetLayoutElementState,
+    resolveLayoutSelectionTarget,
     snapLayoutPoint,
     snapLayoutSize,
     snapRotation,
@@ -82,7 +85,7 @@ const emit = defineEmits<{
     layerPositionChange: [position: number, total: number];
     selectionChange: [elementId: LayoutElementId | null];
     selectionIdsChange: [elementIds: LayoutElementId[]];
-    selectionGroupChange: [canGroup: boolean, canUngroup: boolean];
+    selectionGroupChange: [canGroup: boolean, canUngroup: boolean, groupDepth: number];
     selectionDefaultChange: [changed: boolean];
     selectionGeometryChange: [geometry: (LayoutGeometry & { elementId: LayoutElementId }) | null];
     selectionStyleChange: [style: (LayoutTextStyle & { elementId: LayoutElementId }) | null];
@@ -96,6 +99,7 @@ const image = shallowRef<HTMLImageElement | null>(null);
 const imageStatus = ref<ImageStatus>('idle');
 const selectedElements = ref<LayoutElementId[]>([]);
 const selectedElement = computed(() => selectedElements.value.at(-1) ?? null);
+const selectedGroupId = ref<string | null>(null);
 const isExporting = ref(false);
 const activeAlignmentGuides = ref<AlignmentGuide[]>([]);
 const selectionRectangle = ref<LayoutFrame | null>(null);
@@ -365,7 +369,11 @@ const restoreLayoutState = (state: SerializableLayoutState) => {
     layoutGroups.value[props.templateId] = restored.groups;
     emit('layoutStateChange', props.templateId, captureLayoutState());
     emit('layoutChange', currentLayoutChanged.value);
-    updateSelection(selectedElements.value);
+    const restoredGroupId = flattenLayoutGroups(restored.groups)
+        .some((group) => group.id === selectedGroupId.value)
+        ? selectedGroupId.value
+        : null;
+    updateSelection(selectedElements.value, restoredGroupId);
 };
 
 const syncTransformer = async () => {
@@ -393,13 +401,14 @@ const emitLayerPosition = () => {
     emit('layerPositionChange', order.indexOf(selectedElement.value) + 1, order.length);
 };
 
-const updateSelection = (elementIds: LayoutElementId[]) => {
+const updateSelection = (elementIds: LayoutElementId[], groupId: string | null = null) => {
     selectedElements.value = elementIds.filter(
         (elementId, index) => createLayoutOrder().includes(elementId) && elementIds.indexOf(elementId) === index,
     );
+    selectedGroupId.value = groupId;
     emit('selectionIdsChange', [...selectedElements.value]);
     emit('selectionChange', selectedElement.value);
-    const groups = layoutGroups.value[props.templateId];
+    const groups = flattenLayoutGroups(layoutGroups.value[props.templateId]);
     const selectionIsOneGroup = groups.some((group) =>
         layoutGroupElementIds(group).length === selectedElements.value.length &&
         layoutGroupElementIds(group).every((elementId) => selectedElements.value.includes(elementId)),
@@ -410,6 +419,9 @@ const updateSelection = (elementIds: LayoutElementId[]) => {
         groups.some((group) =>
             layoutGroupElementIds(group).every((elementId) => selectedElements.value.includes(elementId)),
         ),
+        selectedGroupId.value
+            ? findLayoutGroupDepth(layoutGroups.value[props.templateId], selectedGroupId.value)
+            : 0,
     );
     emitLayerPosition();
     emitSelectionGeometry();
@@ -424,13 +436,14 @@ const groupSelectedElements = () => {
     }
     const previousState = captureLayoutState();
     const currentGroups = layoutGroups.value[props.templateId];
-    const nextGroups = groupLayoutElements(currentGroups, selectedElements.value, createLayoutGroupId());
+    const groupId = createLayoutGroupId();
+    const nextGroups = groupLayoutElements(currentGroups, selectedElements.value, groupId);
     if (nextGroups === currentGroups) {
         return;
     }
     layoutGroups.value[props.templateId] = nextGroups;
     commitCurrentLayout(previousState);
-    updateSelection(selectedElements.value);
+    updateSelection(selectedElements.value, groupId);
     emit('layoutChange', currentLayoutChanged.value);
 };
 
@@ -452,15 +465,31 @@ const ungroupSelectedElements = () => {
 };
 
 const selectElement = (elementId: LayoutElementId, additive = false) => {
-    const groupSelection = expandLayoutSelection(layoutGroups.value[props.templateId], [elementId]);
+    const target = resolveLayoutSelectionTarget(
+        layoutGroups.value[props.templateId],
+        elementId,
+        selectedGroupId.value,
+        false,
+    );
     if (!additive) {
-        updateSelection(groupSelection);
+        updateSelection(target.elementIds, target.groupId);
         return;
     }
 
+    const groupSelection = expandLayoutSelection(layoutGroups.value[props.templateId], [elementId]);
     updateSelection(selectedElements.value.includes(elementId)
         ? selectedElements.value.filter((candidate) => !groupSelection.includes(candidate))
         : [...selectedElements.value, ...groupSelection]);
+};
+
+const drillIntoElement = (elementId: LayoutElementId) => {
+    const target = resolveLayoutSelectionTarget(
+        layoutGroups.value[props.templateId],
+        elementId,
+        selectedGroupId.value,
+        true,
+    );
+    updateSelection(target.elementIds, target.groupId);
 };
 
 const clearSelection = () => {
@@ -496,6 +525,14 @@ const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEven
     }
     selectionStart = { ...pointer, additive: eventIsAdditive(event) };
     selectionRectangle.value = { x: pointer.x, y: pointer.y, width: 0, height: 0 };
+};
+
+const handleStageDoubleClick = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    const editableGroup = event.target.findAncestor('.editable-element', true);
+    const elementId = editableGroup?.getAttr('layoutElementId') as LayoutElementId | undefined;
+    if (elementId) {
+        drillIntoElement(elementId);
+    }
 };
 
 const updateSelectionRectangle = () => {
@@ -927,10 +964,11 @@ const resetLayout = () => {
     layoutGroups.value[props.templateId] = createLayoutGroups();
     commitCurrentLayout(previousState);
     selectedElements.value = [];
+    selectedGroupId.value = null;
     activeAlignmentGuides.value = [];
     emit('selectionChange', null);
     emit('selectionIdsChange', []);
-    emit('selectionGroupChange', false, false);
+    emit('selectionGroupChange', false, false, 0);
     emitLayerPosition();
     emitSelectionGeometry();
     emit('layoutChange', false);
@@ -1004,10 +1042,11 @@ const restoreDraftLayouts = () => {
         layoutHistories.value[templateId] = createLayoutHistory();
     }
     selectedElements.value = [];
+    selectedGroupId.value = null;
     activeAlignmentGuides.value = [];
     emit('selectionChange', null);
     emit('selectionIdsChange', []);
-    emit('selectionGroupChange', false, false);
+    emit('selectionGroupChange', false, false, 0);
     emitLayerPosition();
     emitSelectionGeometry();
     emitHistoryState();
@@ -1052,10 +1091,11 @@ watch(
     () => props.templateId,
     () => {
         selectedElements.value = [];
+        selectedGroupId.value = null;
         activeAlignmentGuides.value = [];
         emit('selectionChange', null);
         emit('selectionIdsChange', []);
-        emit('selectionGroupChange', false, false);
+        emit('selectionGroupChange', false, false, 0);
         emitLayerPosition();
         emitSelectionGeometry();
         emitHistoryState();
@@ -1119,6 +1159,7 @@ defineExpose({
     alignSelectedElement,
     changeSelectedLayer,
     clearSelection,
+    drillIntoElement,
     exportPng,
     groupSelectedElements,
     nudgeSelectedElement,
@@ -1141,10 +1182,12 @@ defineExpose({
             ref="stageRef"
             :config="stageConfig"
             @mousedown="handleStagePointer"
+            @dblclick="handleStageDoubleClick"
             @mousemove="updateSelectionRectangle"
             @mouseup="finishSelectionRectangle"
             @mouseleave="finishSelectionRectangle"
             @touchstart="handleStagePointer"
+            @dbltap="handleStageDoubleClick"
             @touchmove="updateSelectionRectangle"
             @touchend="finishSelectionRectangle"
             @touchcancel="finishSelectionRectangle"

@@ -9,6 +9,7 @@ import {
     constrainFontSize,
     createLayoutOrder,
     expandLayoutSelection,
+    findLayoutGroupDepth,
     groupLayoutElements,
     createLayoutOffsets,
     createLayoutTextStyles,
@@ -16,6 +17,7 @@ import {
     keepRotatedFrameInDocument,
     layoutFramesIntersect,
     layoutGroupElementIds,
+    resolveLayoutSelectionTarget,
     normalizeRotation,
     moveLayoutElementInOrder,
     resizeLayoutFrame,
@@ -147,9 +149,23 @@ describe('layout editing', () => {
             ],
         }]);
         expect(layoutGroupElementIds(nested[0]!)).toEqual(['title', 'dateTime', 'location']);
+        expect(findLayoutGroupDepth(nested, 'outer')).toBe(1);
+        expect(findLayoutGroupDepth(nested, 'inner')).toBe(2);
         expect(expandLayoutSelection(nested, ['dateTime'])).toEqual(['title', 'dateTime', 'location']);
+        expect(resolveLayoutSelectionTarget(nested, 'dateTime', null, false)).toEqual({
+            elementIds: ['title', 'dateTime', 'location'], groupId: 'outer',
+        });
+        expect(resolveLayoutSelectionTarget(nested, 'dateTime', 'outer', true)).toEqual({
+            elementIds: ['title', 'dateTime'], groupId: 'inner',
+        });
+        expect(resolveLayoutSelectionTarget(nested, 'dateTime', 'inner', true)).toEqual({
+            elementIds: ['dateTime'], groupId: null,
+        });
         expect(ungroupLayoutElements(nested, ['title', 'dateTime', 'location']))
             .toEqual([{ id: 'inner', children: ['title', 'dateTime'] }]);
+        expect(ungroupLayoutElements(nested, ['title', 'dateTime'])).toEqual([{
+            id: 'outer', children: ['title', 'dateTime', 'location'],
+        }]);
     });
 
     it('resets only the selected element geometry and default layer position', () => {

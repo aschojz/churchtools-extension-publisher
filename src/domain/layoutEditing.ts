@@ -125,6 +125,65 @@ export const createLayoutGroups = (): LayoutGroups => [];
 export const layoutGroupElementIds = (group: LayoutGroup): LayoutElementId[] =>
     group.children.flatMap((child) => typeof child === 'string' ? [child] : layoutGroupElementIds(child));
 
+export const flattenLayoutGroups = (groups: LayoutGroups): LayoutGroup[] =>
+    groups.flatMap((group) => [
+        group,
+        ...flattenLayoutGroups(group.children.filter((child): child is LayoutGroup => typeof child !== 'string')),
+    ]);
+
+export const findLayoutGroupDepth = (groups: LayoutGroups, groupId: string, depth = 1): number => {
+    for (const group of groups) {
+        if (group.id === groupId) {
+            return depth;
+        }
+        const nestedDepth = findLayoutGroupDepth(
+            group.children.filter((child): child is LayoutGroup => typeof child !== 'string'),
+            groupId,
+            depth + 1,
+        );
+        if (nestedDepth > 0) {
+            return nestedDepth;
+        }
+    }
+    return 0;
+};
+
+export const findLayoutGroupPath = (
+    groups: LayoutGroups,
+    elementId: LayoutElementId,
+): LayoutGroup[] => {
+    for (const group of groups) {
+        if (!layoutGroupElementIds(group).includes(elementId)) {
+            continue;
+        }
+        const childGroups = group.children.filter((child): child is LayoutGroup => typeof child !== 'string');
+        return [group, ...findLayoutGroupPath(childGroups, elementId)];
+    }
+    return [];
+};
+
+export const resolveLayoutSelectionTarget = (
+    groups: LayoutGroups,
+    elementId: LayoutElementId,
+    currentGroupId: string | null,
+    drillDown: boolean,
+): { elementIds: LayoutElementId[]; groupId: string | null } => {
+    const path = findLayoutGroupPath(groups, elementId);
+    if (path.length === 0) {
+        return { elementIds: [elementId], groupId: null };
+    }
+    if (!drillDown) {
+        const currentIndex = currentGroupId ? path.findIndex((group) => group.id === currentGroupId) : -1;
+        const group = currentIndex >= 0 ? path[currentIndex]! : path[0]!;
+        return { elementIds: layoutGroupElementIds(group), groupId: group.id };
+    }
+    const currentIndex = currentGroupId ? path.findIndex((group) => group.id === currentGroupId) : -1;
+    const nextGroup = path[currentIndex + 1];
+    return nextGroup
+        ? { elementIds: layoutGroupElementIds(nextGroup), groupId: nextGroup.id }
+        : { elementIds: [elementId], groupId: null };
+};
+
 export const expandLayoutSelection = (groups: LayoutGroups, elementIds: LayoutElementId[]) => {
     const expanded = new Set(elementIds);
     for (const group of groups) {
@@ -163,11 +222,19 @@ export const groupLayoutElements = (
 export const ungroupLayoutElements = (
     groups: LayoutGroups,
     elementIds: LayoutElementId[],
-) => groups.flatMap((group) =>
-    layoutGroupElementIds(group).every((elementId) => elementIds.includes(elementId))
-        ? group.children
-        : [group],
-).filter((child): child is LayoutGroup => typeof child !== 'string');
+) => {
+    const ungroupChildren = (children: (LayoutElementId | LayoutGroup)[]): (LayoutElementId | LayoutGroup)[] =>
+        children.flatMap((child) => {
+            if (typeof child === 'string') {
+                return [child];
+            }
+            if (layoutGroupElementIds(child).every((elementId) => elementIds.includes(elementId))) {
+                return child.children;
+            }
+            return [{ ...child, children: ungroupChildren(child.children) }];
+        });
+    return ungroupChildren(groups).filter((child): child is LayoutGroup => typeof child !== 'string');
+};
 
 export const createLayoutTextStyles = (templateId: TemplateId): LayoutTextStyles => {
     const elements = BUILT_IN_TEMPLATE_DEFINITIONS[templateId].elements;

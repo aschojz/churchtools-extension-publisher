@@ -66,6 +66,7 @@ const selectedLayoutStyle = ref<(LayoutTextStyle & { elementId: LayoutElementId 
 const selectedLayoutElementChanged = ref(false);
 const canGroupLayoutSelection = ref(false);
 const canUngroupLayoutSelection = ref(false);
+const selectedLayoutGroupDepth = ref(0);
 const selectedLayerPosition = ref(0);
 const selectedLayerTotal = ref(0);
 const snapEnabled = ref(true);
@@ -482,9 +483,10 @@ const nudgeLayoutElement = (deltaX: number, deltaY: number) => {
     templateRef.value?.nudgeSelectedElement(deltaX, deltaY);
 };
 
-const updateLayoutGrouping = (canGroup: boolean, canUngroup: boolean) => {
+const updateLayoutGrouping = (canGroup: boolean, canUngroup: boolean, groupDepth: number) => {
     canGroupLayoutSelection.value = canGroup;
     canUngroupLayoutSelection.value = canUngroup;
+    selectedLayoutGroupDepth.value = groupDepth;
 };
 
 onMounted(() => window.addEventListener('keydown', handleEditorShortcut));
@@ -1020,14 +1022,15 @@ const exportPng = async () => {
                         <h2>Layout anpassen</h2>
                         <p>Wähle ein oder mehrere Elemente aus. Strg/Cmd- oder Umschalt-Klick erweitert die Auswahl; auf freier Vorschaufläche kannst du einen Auswahlrahmen ziehen.</p>
                         <p class="layout-controls__shortcuts">
-                            Tastatur: Pfeiltasten verschieben alle ausgewählten Elemente, Strg/Cmd+G gruppiert, Strg/Cmd+Umschalt+G hebt die äußerste Gruppe auf, Escape leert die Auswahl.
+                            Tastatur: Pfeiltasten verschieben alle ausgewählten Elemente, Strg/Cmd+G gruppiert, Strg/Cmd+Umschalt+G hebt die ausgewählte Gruppenebene auf, Escape leert die Auswahl.
                         </p>
                         <label class="layout-controls__snap">
                             <input v-model="snapEnabled" type="checkbox" />
                             Am 20-Pixel-Raster und an 15°-Winkeln ausrichten
                         </label>
                         <p v-if="hasLayoutSelection" class="layout-controls__selection" role="status">
-                            Ausgewählt: {{ selectedLayoutElements.map((elementId) => layoutElementLabels[elementId]).join(', ') }}
+                            Ausgewählt{{ selectedLayoutGroupDepth ? ` · Gruppe Ebene ${selectedLayoutGroupDepth}` : '' }}:
+                            {{ selectedLayoutElements.map((elementId) => layoutElementLabels[elementId]).join(', ') }}
                         </p>
                         <div v-if="hasLayoutSelection" class="layout-controls__grouping" aria-label="Elemente gruppieren">
                             <button
@@ -1042,7 +1045,7 @@ const exportPng = async () => {
                                 :disabled="!canUngroupLayoutSelection"
                                 @click="templateRef?.ungroupSelectedElements()"
                             >
-                                Äußerste Gruppe aufheben
+                                Gruppenebene aufheben
                             </button>
                         </div>
                         <button
@@ -1062,6 +1065,7 @@ const exportPng = async () => {
                                 :aria-pressed="selectedLayoutElements.includes(elementId)"
                                 :class="{ 'is-selected': selectedLayoutElements.includes(elementId) }"
                                 @click="selectLayoutElement(elementId, $event)"
+                                @dblclick="templateRef?.drillIntoElement(elementId)"
                             >
                                 {{ label }}
                             </button>
