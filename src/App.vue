@@ -749,6 +749,36 @@ const exportPng = async () => {
                     <span>Dokument</span>
                     <strong>{{ selectedAppointment?.appointment.base.title ?? 'Kein Termin gewählt' }}</strong>
                 </div>
+                <div class="publisher-topbar__actions" role="toolbar" aria-label="Globale Aktionen">
+                    <button
+                        type="button"
+                        class="publisher-topbar__icon-button"
+                        title="Rückgängig"
+                        aria-label="Rückgängig"
+                        :disabled="!canUndoLayout"
+                        @click="undoLayout"
+                    >
+                        ↶
+                    </button>
+                    <button
+                        type="button"
+                        class="publisher-topbar__icon-button"
+                        title="Wiederholen"
+                        aria-label="Wiederholen"
+                        :disabled="!canRedoLayout"
+                        @click="redoLayout"
+                    >
+                        ↷
+                    </button>
+                    <button
+                        type="button"
+                        class="publisher-topbar__export"
+                        :disabled="!templateProps || imageStatus === 'loading'"
+                        @click="exportPng"
+                    >
+                        {{ imageStatus === 'loading' ? 'Bild wird geladen …' : 'PNG exportieren' }}
+                    </button>
+                </div>
                 <label class="theme-picker">
                     Darstellung
                     <select v-model="themePreference">
@@ -1207,22 +1237,6 @@ const exportPng = async () => {
                         <button
                             type="button"
                             class="button button--secondary"
-                            :disabled="!canUndoLayout"
-                            @click="undoLayout"
-                        >
-                            Rückgängig
-                        </button>
-                        <button
-                            type="button"
-                            class="button button--secondary"
-                            :disabled="!canRedoLayout"
-                            @click="redoLayout"
-                        >
-                            Wiederholen
-                        </button>
-                        <button
-                            type="button"
-                            class="button button--secondary"
                             :disabled="!layoutChanged"
                             @click="resetLayout"
                         >
@@ -1245,9 +1259,6 @@ const exportPng = async () => {
                                 </option>
                             </select>
                         </label>
-                        <button class="button" type="button" :disabled="imageStatus === 'loading'" @click="exportPng">
-                            {{ imageStatus === 'loading' ? 'Bild wird geladen …' : 'PNG exportieren' }}
-                        </button>
                     </div>
                 </div>
 

@@ -60,12 +60,12 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 
 ## 3. Hauptleiste
 
-- [ ] Publisher-Name und aktuell gewählten Termin anzeigen.
-- [ ] Template- beziehungsweise Dokumentname darstellen.
-- [ ] Undo und Redo in die Hauptleiste verschieben.
-- [ ] PNG-Export prominent rechts platzieren.
+- [x] Publisher-Name und aktuell gewählten Termin anzeigen.
+- [x] Template- beziehungsweise Dokumentname darstellen.
+- [x] Undo und Redo in die Hauptleiste verschieben.
+- [x] PNG-Export prominent rechts platzieren.
 - [ ] Import und seltene Dokumentaktionen in einem Menü bündeln.
-- [ ] Theme-Auswahl `System / Hell / Dunkel` integrieren.
+- [x] Theme-Auswahl `System / Hell / Dunkel` integrieren.
 - [ ] Lade-, Speicher- und Exportzustände anzeigen.
 
 **Fertig, wenn:** Alle globalen Aktionen dauerhaft und konsistent erreichbar sind.
@@ -264,6 +264,7 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 
 ## Änderungsprotokoll
 
+- 2026-08-11: Globale Undo-/Redo-Aktionen und PNG-Export in die feste Hauptleiste verschoben; doppelte Bedienelemente aus dem Arbeitsbereich entfernt.
 - 2026-08-11: Vollflächigen Editor-Shell mit festen Bereichen für Kopfzeile, optionale Werkzeug-/Seitenleisten, unabhängig scrollenden Arbeitsbereich und Statuszeile eingeführt.
 - 2026-08-11: Theme-Grundlage umgesetzt: System/Hell/Dunkel, lokale Speicherung, semantische Farbvariablen und erste Auswahl in der bestehenden Kopfzeile.
 - 2026-08-11: Initialen Detailplan angelegt; automatische sowie manuelle Hell-/Dunkelumschaltung aufgenommen.

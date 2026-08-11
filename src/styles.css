@@ -102,7 +102,7 @@ textarea {
     display: grid;
     min-height: 64px;
     padding: 8px 18px;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     gap: 24px;
     align-items: center;
 }
@@ -142,6 +142,53 @@ textarea {
     max-width: min(48vw, 620px);
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.publisher-topbar__actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.publisher-topbar__actions button {
+    min-height: 40px;
+    border: 1px solid var(--color-border-control);
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.publisher-topbar__actions button:focus-visible {
+    outline: 3px solid var(--color-focus-ring-strong);
+    outline-offset: 1px;
+}
+
+.publisher-topbar__actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.publisher-topbar__icon-button {
+    width: 40px;
+    padding: 0;
+    background: var(--color-surface-subtle);
+    color: var(--color-text);
+    font-size: 21px;
+}
+
+.publisher-topbar__icon-button:hover:not(:disabled) {
+    background: var(--color-surface-info);
+}
+
+.publisher-topbar__export {
+    padding: 0 15px;
+    border-color: var(--color-accent) !important;
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+}
+
+.publisher-topbar__export:hover:not(:disabled) {
+    background: var(--color-accent-hover);
 }
 
 .publisher-statusbar {
@@ -853,7 +900,7 @@ textarea {
     }
 
     .publisher-topbar {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr) auto auto;
         gap: 12px;
     }
 
@@ -873,6 +920,28 @@ textarea {
     .publisher-topbar .theme-picker {
         width: auto;
         min-width: 118px;
+    }
+
+    .publisher-topbar__actions {
+        gap: 4px;
+    }
+
+    .publisher-topbar__icon-button {
+        width: 36px;
+    }
+
+    .publisher-topbar__export {
+        width: 42px;
+        overflow: hidden;
+        padding: 0;
+        color: transparent;
+        font-size: 0;
+    }
+
+    .publisher-topbar__export::after {
+        content: 'PNG';
+        color: var(--color-on-accent);
+        font-size: 11px;
     }
 
     .publisher-statusbar span:first-child {
