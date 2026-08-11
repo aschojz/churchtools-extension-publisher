@@ -4,6 +4,7 @@ import { useAppointmentQuery, useCalendarsQuery } from '@churchtools/vue-query';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import EventTemplate from './components/EventTemplate.vue';
+import PublisherAppointmentPanel from './components/PublisherAppointmentPanel.vue';
 import PublisherEditorShell from './components/PublisherEditorShell.vue';
 import { useAppointmentsQuery } from './composables/useAppointmentsQuery';
 import { isAppointmentWithinDays, matchesAppointmentFilters } from './domain/appointmentFilters';
@@ -631,6 +632,14 @@ const appointmentLabel = (appointment: AppointmentCalculatedWithIncludes) => {
     const draftLabel = draftAppointmentKeys.value.has(appointmentKey(appointment)) ? ' — Entwurf' : '';
     return `${base.title} — ${formatAppointmentDate(appointment)} — ${base.calendar.nameTranslated}${draftLabel}`;
 };
+const appointmentPanelOptions = computed(() => filteredAppointments.value.map((appointment) => ({
+    key: appointmentKey(appointment),
+    label: appointmentLabel(appointment),
+})));
+const appointmentCalendarOptions = computed(() => sortedCalendars.value.map((calendar) => ({
+    id: String(calendar.id),
+    label: calendar.nameTranslated,
+})));
 
 const slugify = (value: string) =>
     value
@@ -867,6 +876,23 @@ const exportPng = async () => {
             </div>
         </template>
 
+        <template #left>
+            <PublisherAppointmentPanel
+                v-model:search="appointmentSearch"
+                v-model:selected-calendar="selectedCalendarFilter"
+                v-model:selected-range="selectedAppointmentRange"
+                v-model:only-drafts="onlyAppointmentsWithDraft"
+                v-model:selected-appointment-key="selectedAppointmentKey"
+                :appointments="appointmentPanelOptions"
+                :calendars="appointmentCalendarOptions"
+                :has-error="Boolean(loadingError)"
+                :has-filters="hasAppointmentFilters"
+                :is-loading="isLoading"
+                :total-count="sortedAppointments.length"
+                @reset-filters="resetAppointmentFilters"
+            />
+        </template>
+
         <section class="publisher-card">
             <header class="publisher-card__header">
                 <div>
@@ -875,84 +901,6 @@ const exportPng = async () => {
                     <p>Wähle einen Kalendertermin für das spätere Testlayout aus.</p>
                 </div>
             </header>
-
-            <div id="appointments-editor" class="appointment-picker">
-                <p v-if="isLoading" class="status-message" role="status">Termine werden geladen …</p>
-
-                <p v-else-if="loadingError" class="status-message status-message--error" role="alert">
-                    Die Kalendertermine konnten nicht geladen werden. Prüfe Anmeldung und Berechtigungen.
-                </p>
-
-                <p v-else-if="sortedAppointments.length === 0" class="status-message" role="status">
-                    In den nächsten zwölf Monaten wurden keine sichtbaren Termine gefunden.
-                </p>
-
-                <template v-else>
-                    <div class="appointment-picker__filters">
-                        <label>
-                            Termine durchsuchen
-                            <input
-                                v-model="appointmentSearch"
-                                type="search"
-                                placeholder="Titel oder Kalender"
-                            />
-                        </label>
-                        <label>
-                            Kalender filtern
-                            <select v-model="selectedCalendarFilter">
-                                <option value="">Alle Kalender</option>
-                                <option v-for="calendar in sortedCalendars" :key="calendar.id" :value="String(calendar.id)">
-                                    {{ calendar.nameTranslated }}
-                                </option>
-                            </select>
-                        </label>
-                        <label>
-                            Zeitraum
-                            <select v-model="selectedAppointmentRange">
-                                <option value="">Nächste 12 Monate</option>
-                                <option value="30">Nächste 30 Tage</option>
-                                <option value="90">Nächste 90 Tage</option>
-                                <option value="365">Nächste 365 Tage</option>
-                            </select>
-                        </label>
-                    </div>
-
-                    <div class="appointment-picker__filter-summary">
-                        <p class="appointment-picker__result-count" role="status">
-                            <template v-if="filteredAppointments.length">
-                                {{ filteredAppointments.length }} von {{ sortedAppointments.length }} Terminen
-                            </template>
-                            <template v-else>Keine passenden Termine gefunden.</template>
-                        </p>
-                        <div class="appointment-picker__filter-actions">
-                            <label class="appointment-picker__draft-filter">
-                                <input v-model="onlyAppointmentsWithDraft" type="checkbox" />
-                                Nur Termine mit Entwurf
-                            </label>
-                            <button
-                                v-if="hasAppointmentFilters"
-                                type="button"
-                                class="appointment-picker__reset"
-                                @click="resetAppointmentFilters"
-                            >
-                                Filter zurücksetzen
-                            </button>
-                        </div>
-                    </div>
-
-                    <label for="appointment">Kalendertermin</label>
-                    <select id="appointment" v-model="selectedAppointmentKey" :disabled="filteredAppointments.length === 0">
-                        <option value="">Bitte Termin auswählen</option>
-                        <option
-                            v-for="appointment in filteredAppointments"
-                            :key="appointmentKey(appointment)"
-                            :value="appointmentKey(appointment)"
-                        >
-                            {{ appointmentLabel(appointment) }}
-                        </option>
-                    </select>
-                </template>
-            </div>
 
             <p v-if="appointmentDetailsPending" class="status-message template-status" role="status">
                 Termindetails werden geladen …

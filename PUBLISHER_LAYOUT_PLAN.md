@@ -93,10 +93,10 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 
 ## 6. Linkes Termin- und Dokumentpanel
 
-- [ ] Terminwahl in die linke Seitenleiste verschieben.
-- [ ] Suche, Kalenderfilter und Zeitraum kompakt gestalten.
-- [ ] Terminliste mit Titel, Datum und Entwurfsstatus darstellen.
-- [ ] Einen Termin direkt in den zugehörigen Editorzustand öffnen.
+- [x] Terminwahl in die linke Seitenleiste verschieben.
+- [x] Suche, Kalenderfilter und Zeitraum kompakt gestalten.
+- [x] Terminliste mit Titel, Datum und Entwurfsstatus darstellen.
+- [x] Einen Termin direkt in den zugehörigen Editorzustand öffnen.
 - [ ] Template-Auswahl in das Panel integrieren.
 - [ ] Lokalen Entwurf, Import, Download und Löschen als Dokumentaktionen anbieten.
 - [ ] Das Panel ein- und ausklappbar machen.
@@ -264,6 +264,7 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 
 ## Änderungsprotokoll
 
+- 2026-08-12: Terminsuche, Kalender-/Zeitraumfilter und Terminwahl in ein kompaktes linkes Dokumentpanel verschoben; Auswahl öffnet direkt den Editorzustand.
 - 2026-08-12: Linke Werkzeugleiste mit aktivem Zustand und funktionierender Navigation zu Termine, Templates, Inhalte, Bild und Layout ergänzt.
 - 2026-08-11: Feste Kontextleiste für Auswahlstatus, Gruppenebene, Gruppieren/Aufheben, Raster und Vorschauzoom eingeführt; bisherige Doppelungen entfernt.
 - 2026-08-11: Globale Undo-/Redo-Aktionen und PNG-Export in die feste Hauptleiste verschoben; doppelte Bedienelemente aus dem Arbeitsbereich entfernt.
