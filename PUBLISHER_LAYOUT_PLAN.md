@@ -38,10 +38,11 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 
 - [ ] Bestehende Editorbereiche und Funktionen den neuen Zielbereichen zuordnen.
 - [ ] Eine zentrale Layout-Komponente für den Editor-Shell anlegen.
-- [ ] Einheitliche CSS-Variablen für Flächen, Texte, Rahmen, Akzente, Zustände, Abstände, Radien und Schatten definieren.
-- [ ] Theme-Modi `system`, `light` und `dark` einführen.
-- [ ] Den Systemmodus über `prefers-color-scheme` aktuell halten.
-- [ ] Eine manuelle Theme-Auswahl lokal speichern.
+- [x] Einheitliche CSS-Farbvariablen für Flächen, Texte, Rahmen, Akzente und Zustände definieren.
+- [ ] CSS-Variablen für Abstände, Radien und Schatten vervollständigen.
+- [x] Theme-Modi `system`, `light` und `dark` einführen.
+- [x] Den Systemmodus über `prefers-color-scheme` aktuell halten.
+- [x] Eine manuelle Theme-Auswahl lokal speichern.
 - [ ] Konva-Arbeitsbereich, Auswahlrahmen und Hilfslinien an das Theme anbinden.
 
 **Fertig, wenn:** Die bestehende Oberfläche funktioniert unverändert und verwendet vollständig das neue Theme-System.
@@ -263,4 +264,5 @@ Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu e
 
 ## Änderungsprotokoll
 
+- 2026-08-11: Theme-Grundlage umgesetzt: System/Hell/Dunkel, lokale Speicherung, semantische Farbvariablen und erste Auswahl in der bestehenden Kopfzeile.
 - 2026-08-11: Initialen Detailplan angelegt; automatische sowie manuelle Hell-/Dunkelumschaltung aufgenommen.

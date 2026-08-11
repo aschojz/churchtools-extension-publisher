@@ -38,9 +38,19 @@ import {
     withTemplateOverride,
 } from './domain/templateOverrides';
 import { TEMPLATE_OPTIONS, type TemplateId } from './domain/templates';
+import {
+    loadThemePreference,
+    resolveTheme,
+    saveThemePreference,
+    type ThemePreference,
+} from './domain/theme';
 
 const userLanguage = window.settings?.language ?? navigator.language;
 const userTimeZone = window.settings?.timezone;
+const colorSchemeQuery = window.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
+const themePreference = ref<ThemePreference>(loadThemePreference(window.localStorage));
+const systemPrefersDark = ref(colorSchemeQuery?.matches ?? false);
+const resolvedTheme = computed(() => resolveTheme(themePreference.value, systemPrefersDark.value));
 const selectedAppointmentKey = ref('');
 const appointmentSearch = ref('');
 const selectedCalendarFilter = ref('');
@@ -489,9 +499,23 @@ const updateLayoutGrouping = (canGroup: boolean, canUngroup: boolean, groupDepth
     selectedLayoutGroupDepth.value = groupDepth;
 };
 
-onMounted(() => window.addEventListener('keydown', handleEditorShortcut));
+const updateSystemTheme = (event: MediaQueryListEvent) => {
+    systemPrefersDark.value = event.matches;
+};
+
+watch(themePreference, (preference) => saveThemePreference(window.localStorage, preference));
+watch(resolvedTheme, (theme) => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+}, { immediate: true });
+
+onMounted(() => {
+    window.addEventListener('keydown', handleEditorShortcut);
+    colorSchemeQuery?.addEventListener('change', updateSystemTheme);
+});
 onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleEditorShortcut);
+    colorSchemeQuery?.removeEventListener('change', updateSystemTheme);
     revokeReplacementImage(false);
 });
 
@@ -716,9 +740,19 @@ const exportPng = async () => {
     <main class="publisher-page">
         <section class="publisher-card">
             <header class="publisher-card__header">
-                <p class="publisher-card__eyebrow">ChurchTools Publisher</p>
-                <h1>Publisher</h1>
-                <p>Wähle einen Kalendertermin für das spätere Testlayout aus.</p>
+                <div>
+                    <p class="publisher-card__eyebrow">ChurchTools Publisher</p>
+                    <h1>Publisher</h1>
+                    <p>Wähle einen Kalendertermin für das spätere Testlayout aus.</p>
+                </div>
+                <label class="theme-picker">
+                    Darstellung
+                    <select v-model="themePreference">
+                        <option value="system">System</option>
+                        <option value="light">Hell</option>
+                        <option value="dark">Dunkel</option>
+                    </select>
+                </label>
             </header>
 
             <div class="appointment-picker">
