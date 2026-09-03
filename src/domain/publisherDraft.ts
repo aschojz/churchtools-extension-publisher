@@ -2,6 +2,11 @@ import type { SerializableLayoutState } from './layoutHistory';
 import { createImageFocusByTemplate, type ImageFocusByTemplate } from './imageFocus';
 import {
     createLayoutTextStyles,
+    createLayoutOffsets,
+    createLayoutOrder,
+    createLayoutRotations,
+    createLayoutSizes,
+    createLayoutVisualStyles,
     createLayoutGroups,
     isHexColor,
     MAX_FONT_SIZE,
@@ -10,12 +15,15 @@ import {
     type LayoutGroup,
     type LayoutGroups,
     type LayoutTextStyles,
+    type LayoutVisualStyles,
+    LAYOUT_ELEMENT_IDS,
+    SHAPE_LAYOUT_ELEMENT_IDS,
 } from './layoutEditing';
 import type { EventTemplateOverrides } from './templateOverrides';
 import type { TemplateId } from './templates';
+import { DOCUMENT_HEIGHT, DOCUMENT_WIDTH } from '../utils/stageDimensions';
 
 export const PUBLISHER_DRAFT_VERSION = 1;
-const SUPPORTED_PREVIEW_ZOOM_LEVELS = [50, 75, 100, 125, 150, 200];
 export const publisherDraftStorageKey = (appointmentKey: string) =>
     `churchtools-publisher:draft:${appointmentKey}`;
 
@@ -28,13 +36,27 @@ export interface PublisherDraft {
     snapEnabled: boolean;
     previewZoomPercent: number;
     updatedAt: string;
+    pages?: PublisherDraftPage[];
+    activePageId?: string;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+export interface PublisherDraftPage {
+    id: string;
+    width: number;
+    height: number;
+    templateId: TemplateId;
+    layouts: Partial<Record<TemplateId, SerializableLayoutState>>;
+    imageFocus: ImageFocusByTemplate;
+}
+
+export const isPublisherRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const isFiniteNumber = (value: unknown): value is number =>
+export const isPublisherFiniteNumber = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value);
+
+const isRecord = isPublisherRecord;
+const isFiniteNumber = isPublisherFiniteNumber;
 
 const parseLayoutStyles = (value: unknown, templateId: TemplateId): LayoutTextStyles | null => {
     if (value === undefined) {
@@ -52,7 +74,54 @@ const parseLayoutStyles = (value: unknown, templateId: TemplateId): LayoutTextSt
             typeof style.color !== 'string' || !isHexColor(style.color)) {
             return null;
         }
-        styles[elementId] = { fontSize: style.fontSize, color: style.color.toLowerCase() };
+        const fontFamily = style.fontFamily ?? styles[elementId].fontFamily;
+        const fontStyle = style.fontStyle ?? styles[elementId].fontStyle;
+        const lineHeight = style.lineHeight ?? styles[elementId].lineHeight;
+        const letterSpacing = style.letterSpacing ?? styles[elementId].letterSpacing;
+        const align = style.align ?? styles[elementId].align;
+        const listStyle = style.listStyle ?? styles[elementId].listStyle;
+        if (typeof fontFamily !== 'string' || !fontFamily.trim() ||
+            !['normal', 'bold', 'italic', 'bold italic'].includes(String(fontStyle)) ||
+            !isFiniteNumber(lineHeight) || lineHeight < 0.5 || lineHeight > 3 ||
+            !isFiniteNumber(letterSpacing) || letterSpacing < -20 || letterSpacing > 100 ||
+            !['left', 'center', 'right'].includes(String(align)) ||
+            !['none', 'bullet', 'numbered'].includes(String(listStyle))) {
+            return null;
+        }
+        styles[elementId] = {
+            fontSize: style.fontSize,
+            color: style.color.toLowerCase(),
+            fontFamily: fontFamily.trim(),
+            fontStyle: fontStyle as LayoutTextStyles[typeof elementId]['fontStyle'],
+            lineHeight,
+            letterSpacing,
+            align: align as LayoutTextStyles[typeof elementId]['align'],
+            listStyle: listStyle as LayoutTextStyles[typeof elementId]['listStyle'],
+        };
+    }
+    return styles;
+};
+
+const parseLayoutVisualStyles = (value: unknown, templateId: TemplateId): LayoutVisualStyles | null => {
+    if (value === undefined) {
+        return createLayoutVisualStyles(templateId);
+    }
+    if (!isRecord(value)) {
+        return null;
+    }
+    const styles = createLayoutVisualStyles(templateId);
+    for (const elementId of SHAPE_LAYOUT_ELEMENT_IDS) {
+        const style = value[elementId];
+        if (!isRecord(style) || typeof style.fill !== 'string' || !isHexColor(style.fill) ||
+            typeof style.stroke !== 'string' || !isHexColor(style.stroke) ||
+            !isFiniteNumber(style.strokeWidth) || style.strokeWidth < 0 || style.strokeWidth > 100) {
+            return null;
+        }
+        styles[elementId] = {
+            fill: style.fill.toLowerCase(),
+            stroke: style.stroke.toLowerCase(),
+            strokeWidth: style.strokeWidth,
+        };
     }
     return styles;
 };
@@ -74,12 +143,13 @@ const parseLayoutGroups = (value: unknown): LayoutGroups | null => {
         groupIds.add(candidate.id);
         const children: LayoutGroup['children'] = [];
         for (const child of candidate.children) {
-            if (child === 'title' || child === 'dateTime' || child === 'location') {
-                if (elementIds.has(child)) {
+            if (typeof child === 'string' && LAYOUT_ELEMENT_IDS.includes(child as LayoutElementId)) {
+                const elementId = child as LayoutElementId;
+                if (elementIds.has(elementId)) {
                     return null;
                 }
-                elementIds.add(child);
-                children.push(child);
+                elementIds.add(elementId);
+                children.push(elementId);
                 continue;
             }
             const group = parseGroup(child);
@@ -101,40 +171,88 @@ const parseLayoutGroups = (value: unknown): LayoutGroups | null => {
     return groups;
 };
 
-const parseLayoutState = (value: unknown, templateId: TemplateId): SerializableLayoutState | null => {
+export const parsePublisherLayoutState = (
+    value: unknown,
+    templateId: TemplateId,
+    documentWidth = DOCUMENT_WIDTH,
+    documentHeight = DOCUMENT_HEIGHT,
+): SerializableLayoutState | null => {
     if (!isRecord(value) || !isRecord(value.offsets) || !isRecord(value.sizes) ||
         !isRecord(value.rotations) || !Array.isArray(value.order)) {
         return null;
     }
 
-    const offsets = value.offsets;
-    const sizes = value.sizes;
-    const rotations = value.rotations;
+    const offsets = createLayoutOffsets();
+    const sizes = createLayoutSizes(templateId);
+    const rotations = createLayoutRotations();
     const order = value.order;
-    const elementIds = ['title', 'dateTime', 'location'] as const;
-    const geometryIsValid = elementIds.every((elementId) => {
-        const offset = offsets[elementId];
-        const size = sizes[elementId];
+    const storedOffsets = value.offsets;
+    const storedSizes = value.sizes;
+    const storedRotations = value.rotations;
+    const deleted = value.deleted === undefined
+        ? []
+        : Array.isArray(value.deleted)
+            ? value.deleted.filter((elementId): elementId is LayoutElementId =>
+                typeof elementId === 'string' && LAYOUT_ELEMENT_IDS.includes(elementId as LayoutElementId))
+            : null;
+    if (!deleted || (value.deleted !== undefined && deleted.length !== (value.deleted as unknown[]).length) ||
+        new Set(deleted).size !== deleted.length) {
+        return null;
+    }
+    const storedElementIds = LAYOUT_ELEMENT_IDS.filter((elementId) => storedOffsets[elementId] !== undefined);
+    for (const elementId of LAYOUT_ELEMENT_IDS) {
+        if (!storedElementIds.includes(elementId)) {
+            sizes[elementId] = {
+                width: sizes[elementId].width * documentWidth / DOCUMENT_WIDTH,
+                height: sizes[elementId].height * documentHeight / DOCUMENT_HEIGHT,
+            };
+        }
+    }
+    const geometryIsValid = storedElementIds.every((elementId) => {
+        const offset = storedOffsets[elementId];
+        const size = storedSizes[elementId];
         return isRecord(offset) && isFiniteNumber(offset.x) && isFiniteNumber(offset.y) &&
             isRecord(size) && isFiniteNumber(size.width) && isFiniteNumber(size.height) &&
-            isFiniteNumber(rotations[elementId]);
-    }) && order.length === elementIds.length &&
-        elementIds.every((elementId) => order.includes(elementId));
+            isFiniteNumber(storedRotations[elementId]);
+    });
+    for (const elementId of storedElementIds) {
+        const offset = storedOffsets[elementId] as { x: number; y: number };
+        const size = storedSizes[elementId] as { width: number; height: number };
+        offsets[elementId] = { x: offset.x, y: offset.y };
+        sizes[elementId] = { width: size.width, height: size.height };
+        rotations[elementId] = storedRotations[elementId] as number;
+    }
+    const parsedOrder = order.filter((elementId): elementId is LayoutElementId =>
+        typeof elementId === 'string' && LAYOUT_ELEMENT_IDS.includes(elementId as LayoutElementId));
+    const remainingElementIds = LAYOUT_ELEMENT_IDS.filter((elementId) => !deleted.includes(elementId));
+    const orderIsValid = parsedOrder.length === order.length && new Set(parsedOrder).size === parsedOrder.length &&
+        (parsedOrder.length === remainingElementIds.length &&
+            remainingElementIds.every((elementId) => parsedOrder.includes(elementId)) ||
+            (deleted.length === 0 && parsedOrder.length === 3 &&
+                ['title', 'dateTime', 'location'].every((id) => parsedOrder.includes(id as LayoutElementId))));
+    const restoredOrder = parsedOrder.length === remainingElementIds.length
+        ? parsedOrder
+        : [...createLayoutOrder().filter((id) => !deleted.includes(id) && !parsedOrder.includes(id)), ...parsedOrder];
     const styles = parseLayoutStyles(value.styles, templateId);
+    const visualStyles = parseLayoutVisualStyles(value.visualStyles, templateId);
     const groups = parseLayoutGroups(value.groups);
-    if (!geometryIsValid || !styles || !groups) {
+    if (!geometryIsValid || !orderIsValid || !styles || !visualStyles || !groups) {
         return null;
     }
 
     return {
-        offsets: offsets as SerializableLayoutState['offsets'],
-        sizes: sizes as SerializableLayoutState['sizes'],
-        rotations: rotations as SerializableLayoutState['rotations'],
-        order: order as LayoutElementId[],
+        offsets,
+        sizes,
+        rotations,
+        order: restoredOrder,
         styles,
+        visualStyles,
         groups,
+        deleted,
     };
 };
+
+const parseLayoutState = parsePublisherLayoutState;
 
 const parseTemplateOverrides = (value: unknown): EventTemplateOverrides | null => {
     if (!isRecord(value)) {
@@ -179,6 +297,40 @@ const parseImageFocus = (value: unknown): ImageFocusByTemplate | null => {
     return focus;
 };
 
+export const parsePublisherImageFocus = (value: unknown): ImageFocusByTemplate | null => parseImageFocus(value);
+
+const parseDraftPage = (value: unknown): PublisherDraftPage | null => {
+    if (!isRecord(value) || typeof value.id !== 'string' || !value.id ||
+        !isFiniteNumber(value.width) || !isFiniteNumber(value.height) ||
+        value.width < 64 || value.height < 64 || value.width > 8192 || value.height > 8192 ||
+        (value.templateId !== 'split' && value.templateId !== 'poster') || !isRecord(value.layouts)) {
+        return null;
+    }
+    const imageFocus = parseImageFocus(value.imageFocus);
+    if (!imageFocus) {
+        return null;
+    }
+    const layouts: PublisherDraftPage['layouts'] = {};
+    for (const templateId of ['split', 'poster'] as const) {
+        const layoutValue = value.layouts[templateId];
+        const layout = parsePublisherLayoutState(layoutValue, templateId, value.width, value.height);
+        if (layoutValue !== undefined && !layout) {
+            return null;
+        }
+        if (layout) {
+            layouts[templateId] = layout;
+        }
+    }
+    return {
+        id: value.id,
+        width: Math.round(value.width),
+        height: Math.round(value.height),
+        templateId: value.templateId,
+        layouts,
+        imageFocus,
+    };
+};
+
 export const parsePublisherDraft = (value: string | null): PublisherDraft | null => {
     if (!value) {
         return null;
@@ -189,7 +341,7 @@ export const parsePublisherDraft = (value: string | null): PublisherDraft | null
         if (!isRecord(parsed) || parsed.version !== PUBLISHER_DRAFT_VERSION ||
             (parsed.selectedTemplateId !== 'split' && parsed.selectedTemplateId !== 'poster') ||
             typeof parsed.snapEnabled !== 'boolean' || !isFiniteNumber(parsed.previewZoomPercent) ||
-            !SUPPORTED_PREVIEW_ZOOM_LEVELS.includes(parsed.previewZoomPercent) ||
+            parsed.previewZoomPercent < 25 || parsed.previewZoomPercent > 400 ||
             typeof parsed.updatedAt !== 'string' || !isRecord(parsed.layouts)) {
             return null;
         }
@@ -210,6 +362,28 @@ export const parsePublisherDraft = (value: string | null): PublisherDraft | null
             }
         }
 
+        let pages: PublisherDraftPage[] | undefined;
+        let activePageId: string | undefined;
+        if (parsed.pages !== undefined) {
+            if (!Array.isArray(parsed.pages) || parsed.pages.length === 0 || parsed.pages.length > 50) {
+                return null;
+            }
+            pages = [];
+            const pageIds = new Set<string>();
+            for (const candidate of parsed.pages) {
+                const page = parseDraftPage(candidate);
+                if (!page || pageIds.has(page.id)) {
+                    return null;
+                }
+                pageIds.add(page.id);
+                pages.push(page);
+            }
+            if (typeof parsed.activePageId !== 'string' || !pageIds.has(parsed.activePageId)) {
+                return null;
+            }
+            activePageId = parsed.activePageId;
+        }
+
         return {
             version: PUBLISHER_DRAFT_VERSION,
             selectedTemplateId: parsed.selectedTemplateId,
@@ -219,6 +393,7 @@ export const parsePublisherDraft = (value: string | null): PublisherDraft | null
             snapEnabled: parsed.snapEnabled,
             previewZoomPercent: parsed.previewZoomPercent,
             updatedAt: parsed.updatedAt,
+            ...(pages ? { pages, activePageId } : {}),
         };
     } catch {
         return null;

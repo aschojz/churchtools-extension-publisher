@@ -6,6 +6,7 @@ import {
     createLayoutRotations,
     createLayoutSizes,
     createLayoutTextStyles,
+    createLayoutVisualStyles,
 } from './layoutEditing';
 import { createImageFocusByTemplate } from './imageFocus';
 import {
@@ -36,7 +37,9 @@ const createDraft = (): PublisherDraft => ({
             rotations: createLayoutRotations(),
             order: createLayoutOrder(),
             styles: createLayoutTextStyles('split'),
+            visualStyles: createLayoutVisualStyles('split'),
             groups: [],
+            deleted: [],
         },
     },
     imageFocus: { ...createImageFocusByTemplate(), split: { x: 20, y: 80, zoom: 175 } },
@@ -52,6 +55,72 @@ describe('publisher draft', () => {
         expect(loadPublisherDraft(storage, '42:date')).toEqual(createDraft());
         deletePublisherDraft(storage, '42:date');
         expect(loadPublisherDraft(storage, '42:date')).toBeNull();
+    });
+
+    it('round-trips independently sized document pages', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        draft.pages = [
+            {
+                id: 'page-full-hd',
+                width: 1920,
+                height: 1080,
+                templateId: 'split',
+                layouts: draft.layouts,
+                imageFocus: createImageFocusByTemplate(),
+            },
+            {
+                id: 'page-square',
+                width: 600,
+                height: 600,
+                templateId: 'poster',
+                layouts: {},
+                imageFocus: createImageFocusByTemplate(),
+            },
+            {
+                id: 'page-banner',
+                width: 1920,
+                height: 300,
+                templateId: 'split',
+                layouts: {},
+                imageFocus: createImageFocusByTemplate(),
+            },
+        ];
+        draft.activePageId = 'page-square';
+
+        savePublisherDraft(storage, '42:pages', draft);
+        expect(loadPublisherDraft(storage, '42:pages')?.pages).toEqual(draft.pages);
+        expect(loadPublisherDraft(storage, '42:pages')?.activePageId).toBe('page-square');
+    });
+
+    it('migrates visual layers on older custom-sized pages using the page dimensions', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        const layout = structuredClone(draft.layouts.split!);
+        for (const elementId of ['background', 'image', 'accent'] as const) {
+            delete (layout.offsets as Partial<typeof layout.offsets>)[elementId];
+            delete (layout.sizes as Partial<typeof layout.sizes>)[elementId];
+            delete (layout.rotations as Partial<typeof layout.rotations>)[elementId];
+        }
+        layout.order = ['title', 'dateTime', 'location'];
+        delete (layout as Partial<typeof layout>).visualStyles;
+        storage.setItem('churchtools-publisher:draft:visual-layers-legacy', JSON.stringify({
+            ...draft,
+            pages: [{
+                id: 'page-square',
+                width: 600,
+                height: 600,
+                templateId: 'split',
+                layouts: { split: layout },
+                imageFocus: createImageFocusByTemplate(),
+            }],
+            activePageId: 'page-square',
+        }));
+
+        const restored = loadPublisherDraft(storage, 'visual-layers-legacy')?.pages?.[0]?.layouts.split;
+        expect(restored?.sizes.background).toEqual({ width: 600, height: 600 });
+        expect(restored?.sizes.image).toEqual({ width: 287.5, height: 600 });
+        expect(restored?.visualStyles).toEqual(createLayoutVisualStyles('split'));
     });
 
     it('rejects malformed and unsupported drafts', () => {
@@ -108,6 +177,22 @@ describe('publisher draft', () => {
 
         expect(loadPublisherDraft(storage, 'layout-legacy')?.layouts.split?.styles)
             .toEqual(createLayoutTextStyles('split'));
+    });
+
+    it('persists deleted layers and migrates layouts without deletion metadata', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        draft.layouts.split!.deleted = ['location'];
+        draft.layouts.split!.order = draft.layouts.split!.order.filter((elementId) => elementId !== 'location');
+        savePublisherDraft(storage, 'deleted-layer', draft);
+        expect(loadPublisherDraft(storage, 'deleted-layer')?.layouts.split?.deleted).toEqual(['location']);
+
+        const { deleted: _, ...legacyLayout } = createDraft().layouts.split!;
+        storage.setItem('churchtools-publisher:draft:deleted-legacy', JSON.stringify({
+            ...createDraft(),
+            layouts: { split: legacyLayout },
+        }));
+        expect(loadPublisherDraft(storage, 'deleted-legacy')?.layouts.split?.deleted).toEqual([]);
     });
 
     it('loads legacy layouts without groups and preserves nested groups', () => {

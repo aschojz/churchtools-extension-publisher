@@ -3,10 +3,20 @@ import { describe, expect, it } from 'vitest';
 import {
     BUILT_IN_TEMPLATE_DEFINITIONS,
     parseTemplateDefinition,
+    scaleTemplateDefinition,
     serializeTemplateDefinition,
 } from './templateDefinition';
 
 describe('template definition', () => {
+    it('scales a template into square page coordinates without stretching the stage', () => {
+        const definition = scaleTemplateDefinition(BUILT_IN_TEMPLATE_DEFINITIONS.poster, 600, 600);
+
+        expect(definition.document).toEqual({ width: 600, height: 600 });
+        expect(definition.composition.imageFrame).toEqual({ x: 0, y: 0, width: 600, height: 600 });
+        expect(definition.elements.title.frame.width).toBe(500);
+        expect(definition.elements.title.style.fontSize).toBe(35);
+    });
+
     it.each(['split', 'poster'] as const)('round-trips the built-in %s template', (templateId) => {
         const definition = BUILT_IN_TEMPLATE_DEFINITIONS[templateId];
 

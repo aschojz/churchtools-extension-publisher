@@ -1,4 +1,5 @@
 import type {
+    LayoutElementId,
     LayoutOffsets,
     LayoutGroups,
     LayoutGroup,
@@ -6,6 +7,7 @@ import type {
     LayoutRotations,
     LayoutSizes,
     LayoutTextStyles,
+    LayoutVisualStyles,
 } from './layoutEditing';
 
 export interface SerializableLayoutState {
@@ -14,7 +16,9 @@ export interface SerializableLayoutState {
     rotations: LayoutRotations;
     order: LayoutOrder;
     styles: LayoutTextStyles;
+    visualStyles: LayoutVisualStyles;
     groups: LayoutGroups;
+    deleted: LayoutElementId[];
 }
 
 export interface LayoutHistory {
@@ -33,11 +37,17 @@ const cloneLayoutGroup = (group: LayoutGroup): LayoutGroup => ({
 
 export const cloneLayoutState = (state: SerializableLayoutState): SerializableLayoutState => ({
     offsets: {
+        background: { ...state.offsets.background },
+        image: { ...state.offsets.image },
+        accent: { ...state.offsets.accent },
         title: { ...state.offsets.title },
         dateTime: { ...state.offsets.dateTime },
         location: { ...state.offsets.location },
     },
     sizes: {
+        background: { ...state.sizes.background },
+        image: { ...state.sizes.image },
+        accent: { ...state.sizes.accent },
         title: { ...state.sizes.title },
         dateTime: { ...state.sizes.dateTime },
         location: { ...state.sizes.location },
@@ -49,7 +59,12 @@ export const cloneLayoutState = (state: SerializableLayoutState): SerializableLa
         dateTime: { ...state.styles.dateTime },
         location: { ...state.styles.location },
     },
+    visualStyles: {
+        background: { ...state.visualStyles.background },
+        accent: { ...state.visualStyles.accent },
+    },
     groups: state.groups.map(cloneLayoutGroup),
+    deleted: [...state.deleted],
 });
 
 const layoutStatesEqual = (left: SerializableLayoutState, right: SerializableLayoutState) =>

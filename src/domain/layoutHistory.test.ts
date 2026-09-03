@@ -6,6 +6,7 @@ import {
     createLayoutRotations,
     createLayoutSizes,
     createLayoutTextStyles,
+    createLayoutVisualStyles,
 } from './layoutEditing';
 import {
     commitLayoutHistory,
@@ -21,7 +22,9 @@ const createState = (): SerializableLayoutState => ({
     rotations: createLayoutRotations(),
     order: createLayoutOrder(),
     styles: createLayoutTextStyles('split'),
+    visualStyles: createLayoutVisualStyles('split'),
     groups: [],
+    deleted: [],
 });
 
 describe('layout history', () => {
@@ -59,13 +62,17 @@ describe('layout history', () => {
     it('includes text styles in undo and redo snapshots', () => {
         const initial = createState();
         const styled = createState();
-        styled.styles.title = { fontSize: 120, color: '#123456' };
+        styled.styles.title = { ...styled.styles.title, fontSize: 120, color: '#123456' };
         const history = commitLayoutHistory(createLayoutHistory(), initial, styled);
         const undone = undoLayoutHistory(history, styled);
 
-        expect(undone?.state.styles.title).toEqual({ fontSize: 88, color: '#ffffff' });
+        expect(undone?.state.styles.title).toEqual(createLayoutTextStyles('split').title);
         const redone = undone && redoLayoutHistory(undone.history, undone.state);
-        expect(redone?.state.styles.title).toEqual({ fontSize: 120, color: '#123456' });
+        expect(redone?.state.styles.title).toEqual({
+            ...createLayoutTextStyles('split').title,
+            fontSize: 120,
+            color: '#123456',
+        });
     });
 
     it('deep-clones nested groups in history snapshots', () => {
@@ -81,5 +88,15 @@ describe('layout history', () => {
 
         grouped.groups[0]!.children.splice(0, 1);
         expect(redone?.state.groups[0]?.children).toHaveLength(2);
+    });
+
+    it('includes deleted layers in undo snapshots', () => {
+        const initial = createState();
+        const deleted = createState();
+        deleted.deleted = ['title'];
+        deleted.order = deleted.order.filter((elementId) => elementId !== 'title');
+        const history = commitLayoutHistory(createLayoutHistory(), initial, deleted);
+
+        expect(undoLayoutHistory(history, deleted)?.state.deleted).toEqual([]);
     });
 });

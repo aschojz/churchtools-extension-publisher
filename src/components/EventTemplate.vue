@@ -2,9 +2,10 @@
 import type Konva from 'konva';
 import type { Box } from 'konva/lib/shapes/Transformer';
 import type { VueKonvaRef } from 'vue-konva';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, ref, shallowRef, watch } from 'vue';
 
 import EditableTextElement from './EditableTextElement.vue';
+import EditableVisualElement from './EditableVisualElement.vue';
 import type { EventTemplateProps } from '../domain/EventTemplateProps';
 import { calculateCoverCrop, type ImageFocus } from '../domain/imageFocus';
 import {
@@ -13,12 +14,13 @@ import {
     constrainLayoutGeometry,
     constrainLayoutDelta,
     constrainFontSize,
+    constrainLetterSpacing,
+    constrainLineHeight,
     createLayoutGroups,
     createLayoutOrder,
     createLayoutOffsets,
     createLayoutRotations,
-    createLayoutSizes,
-    createLayoutTextStyles,
+    createLayoutVisualStyles,
     expandLayoutSelection,
     flattenLayoutGroups,
     findLayoutGroupDepth,
@@ -31,16 +33,22 @@ import {
     type LayoutElementId,
     type LayoutFrame,
     type LayoutGeometry,
+    type LayoutGroup,
+    type LayoutGroups,
     type LayoutAlignment,
     type LayoutTextStyle,
+    type LayoutTextStyles,
+    type LayoutVisualStyle,
+    type LayoutVisualStyles,
+    LAYOUT_ELEMENT_IDS,
+    SHAPE_LAYOUT_ELEMENT_IDS,
+    TEXT_LAYOUT_ELEMENT_IDS,
     moveLayoutElementInOrder,
     resizeLayoutFrame,
-    resetLayoutElementState,
     resolveLayoutSelectionTarget,
     snapLayoutPoint,
     snapLayoutSize,
     snapRotation,
-    TEMPLATE_ELEMENT_FRAMES,
     ungroupLayoutElements,
 } from '../domain/layoutEditing';
 import {
@@ -54,21 +62,20 @@ import {
 import type { TemplateId } from '../domain/templates';
 import {
     BUILT_IN_TEMPLATE_DEFINITIONS,
+    scaleTemplateDefinition,
     TEMPLATE_TEXT_BINDINGS,
     type TemplateDecoration,
     type TemplateDecorationPlacement,
     type TemplateTextBinding,
 } from '../domain/templateDefinition';
-import {
-    calculatePreviewScale,
-    DOCUMENT_HEIGHT,
-    DOCUMENT_WIDTH,
-} from '../utils/stageDimensions';
+import { calculatePreviewScale } from '../utils/stageDimensions';
 
 type ImageStatus = 'idle' | 'loading' | 'loaded' | 'error';
 
 const props = defineProps<{
     draftId: string;
+    documentHeight: number;
+    documentWidth: number;
     initialLayouts: Partial<Record<TemplateId, SerializableLayoutState>>;
     imageFocus: ImageFocus;
     previewZoom: number;
@@ -82,6 +89,7 @@ const emit = defineEmits<{
     historyChange: [canUndo: boolean, canRedo: boolean];
     layoutChange: [changed: boolean];
     layoutStateChange: [templateId: TemplateId, state: SerializableLayoutState];
+    availableElementsChange: [elementIds: LayoutElementId[]];
     layerPositionChange: [position: number, total: number];
     selectionChange: [elementId: LayoutElementId | null];
     selectionIdsChange: [elementIds: LayoutElementId[]];
@@ -89,12 +97,59 @@ const emit = defineEmits<{
     selectionDefaultChange: [changed: boolean];
     selectionGeometryChange: [geometry: (LayoutGeometry & { elementId: LayoutElementId }) | null];
     selectionStyleChange: [style: (LayoutTextStyle & { elementId: LayoutElementId }) | null];
+    selectionVisualStyleChange: [style: (LayoutVisualStyle & { elementId: LayoutElementId }) | null];
 }>();
 
-const containerRef = ref<HTMLDivElement | null>(null);
+const scaledTemplateDefinitions = computed(() => ({
+    split: scaleTemplateDefinition(BUILT_IN_TEMPLATE_DEFINITIONS.split, props.documentWidth, props.documentHeight),
+    poster: scaleTemplateDefinition(BUILT_IN_TEMPLATE_DEFINITIONS.poster, props.documentWidth, props.documentHeight),
+}));
+const templateElementFrames = computed(() => ({
+    split: createPageElementFrames('split'),
+    poster: createPageElementFrames('poster'),
+}));
+function createPageElementFrames(templateId: TemplateId): Record<LayoutElementId, LayoutFrame> {
+    const definition = scaledTemplateDefinitions.value[templateId];
+    const decorationFrame = (id: 'background' | 'accent') => ({
+        ...definition.composition.decorations.find((decoration) => decoration.id === id)!.frame,
+    });
+    return {
+        background: decorationFrame('background'),
+        image: { ...definition.composition.imageFrame },
+        accent: decorationFrame('accent'),
+        title: { ...definition.elements.title.frame },
+        dateTime: { ...definition.elements.dateTime.frame },
+        location: { ...definition.elements.location.frame },
+    };
+}
+const createPageLayoutSizes = (templateId: TemplateId) => Object.fromEntries(
+    LAYOUT_ELEMENT_IDS.map((elementId) => [elementId, {
+        width: templateElementFrames.value[templateId][elementId].width,
+        height: templateElementFrames.value[templateId][elementId].height,
+    }]),
+) as Record<LayoutElementId, { width: number; height: number }>;
+const createPageLayoutTextStyles = (templateId: TemplateId) => Object.fromEntries(
+    TEMPLATE_TEXT_BINDINGS.map((binding) => [binding, {
+        fontSize: scaledTemplateDefinitions.value[templateId].elements[binding].style.fontSize,
+        color: scaledTemplateDefinitions.value[templateId].elements[binding].style.color,
+        fontFamily: scaledTemplateDefinitions.value[templateId].elements[binding].style.fontFamily,
+        fontStyle: scaledTemplateDefinitions.value[templateId].elements[binding].style.fontStyle,
+        lineHeight: scaledTemplateDefinitions.value[templateId].elements[binding].style.lineHeight,
+        letterSpacing: 0,
+        align: scaledTemplateDefinitions.value[templateId].elements[binding].style.align,
+        listStyle: 'none',
+    }]),
+) as LayoutTextStyles;
+const createPageLayoutVisualStyles = (templateId: TemplateId): LayoutVisualStyles => {
+    const defaults = createLayoutVisualStyles(templateId);
+    return {
+        background: { ...defaults.background },
+        accent: { ...defaults.accent },
+    };
+};
+
 const stageRef = ref<VueKonvaRef<Konva.Stage> | null>(null);
 const transformerRef = ref<VueKonvaRef<Konva.Transformer> | null>(null);
-const containerWidth = ref(DOCUMENT_WIDTH);
 const image = shallowRef<HTMLImageElement | null>(null);
 const imageStatus = ref<ImageStatus>('idle');
 const selectedElements = ref<LayoutElementId[]>([]);
@@ -107,9 +162,9 @@ const layoutOffsets = ref<Record<TemplateId, ReturnType<typeof createLayoutOffse
     split: createLayoutOffsets(),
     poster: createLayoutOffsets(),
 });
-const layoutSizes = ref<Record<TemplateId, ReturnType<typeof createLayoutSizes>>>({
-    split: createLayoutSizes('split'),
-    poster: createLayoutSizes('poster'),
+const layoutSizes = ref<Record<TemplateId, ReturnType<typeof createPageLayoutSizes>>>({
+    split: createPageLayoutSizes('split'),
+    poster: createPageLayoutSizes('poster'),
 });
 const layoutRotations = ref<Record<TemplateId, ReturnType<typeof createLayoutRotations>>>({
     split: createLayoutRotations(),
@@ -119,19 +174,25 @@ const layoutOrder = ref<Record<TemplateId, ReturnType<typeof createLayoutOrder>>
     split: createLayoutOrder(),
     poster: createLayoutOrder(),
 });
-const layoutTextStyles = ref<Record<TemplateId, ReturnType<typeof createLayoutTextStyles>>>({
-    split: createLayoutTextStyles('split'),
-    poster: createLayoutTextStyles('poster'),
+const layoutTextStyles = ref<Record<TemplateId, ReturnType<typeof createPageLayoutTextStyles>>>({
+    split: createPageLayoutTextStyles('split'),
+    poster: createPageLayoutTextStyles('poster'),
+});
+const layoutVisualStyles = ref<Record<TemplateId, ReturnType<typeof createPageLayoutVisualStyles>>>({
+    split: createPageLayoutVisualStyles('split'),
+    poster: createPageLayoutVisualStyles('poster'),
 });
 const layoutGroups = ref<Record<TemplateId, ReturnType<typeof createLayoutGroups>>>({
     split: createLayoutGroups(),
     poster: createLayoutGroups(),
 });
+const deletedElements = ref<Record<TemplateId, LayoutElementId[]>>({ split: [], poster: [] });
+const availableElements = computed(() =>
+    layoutOrder.value[props.templateId].filter((elementId) => !deletedElements.value[props.templateId].includes(elementId)));
 const layoutHistories = ref<Record<TemplateId, ReturnType<typeof createLayoutHistory>>>({
     split: createLayoutHistory(),
     poster: createLayoutHistory(),
 });
-let resizeObserver: ResizeObserver | undefined;
 let layoutGroupSequence = 0;
 let selectionStart: { x: number; y: number; additive: boolean } | null = null;
 let activeDrag: {
@@ -141,14 +202,17 @@ let activeDrag: {
     nodeBounds: Partial<Record<LayoutElementId, LayoutFrame>>;
 } | null = null;
 
-const previewScale = computed(() => calculatePreviewScale(containerWidth.value, props.previewZoom));
+const previewScale = computed(() => calculatePreviewScale(props.documentWidth, props.previewZoom, props.documentWidth));
+const documentSize = computed(() => ({ width: props.documentWidth, height: props.documentHeight }));
 const stageConfig = computed(() => ({
-    width: DOCUMENT_WIDTH * previewScale.value,
-    height: DOCUMENT_HEIGHT * previewScale.value,
+    width: props.documentWidth * previewScale.value,
+    height: props.documentHeight * previewScale.value,
     scaleX: previewScale.value,
     scaleY: previewScale.value,
 }));
-const templateDefinition = computed(() => BUILT_IN_TEMPLATE_DEFINITIONS[props.templateId]);
+const templateDefinition = computed(() => scaledTemplateDefinitions.value[props.templateId]);
+const imageIsVisible = computed(() =>
+    imageStatus.value === 'loaded' && !deletedElements.value[props.templateId].includes('image'));
 const transformerConfig = computed(() => ({
     rotateEnabled: selectedElements.value.length === 1,
     flipEnabled: false,
@@ -158,10 +222,10 @@ const transformerConfig = computed(() => ({
         : [],
     anchorFill: '#ffffff',
     anchorStroke: '#2479c5',
-    anchorSize: 18,
+    anchorSize: 7,
     borderStroke: '#2479c5',
-    borderStrokeWidth: 4,
-    rotateAnchorOffset: 45,
+    borderStrokeWidth: 1,
+    rotateAnchorOffset: 18,
     rotationSnaps: props.snapEnabled
         ? [-180, -165, -150, -135, -120, -105, -90, -75, -60, -45, -30, -15, 0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180]
         : [],
@@ -170,8 +234,8 @@ const transformerConfig = computed(() => ({
         const insideDocument =
             newBox.x >= 0 &&
             newBox.y >= 0 &&
-            newBox.x + newBox.width <= DOCUMENT_WIDTH &&
-            newBox.y + newBox.height <= DOCUMENT_HEIGHT;
+            newBox.x + newBox.width <= props.documentWidth &&
+            newBox.y + newBox.height <= props.documentHeight;
         return newBox.width >= 120 && newBox.height >= 50 && insideDocument ? newBox : oldBox;
     },
 }));
@@ -181,7 +245,7 @@ const imageCrop = computed(() => {
         return undefined;
     }
 
-    const imageFrame = templateDefinition.value.composition.imageFrame;
+    const imageFrame = elementFrame('image');
     return calculateCoverCrop(
         { width: image.value.naturalWidth, height: image.value.naturalHeight },
         { width: imageFrame.width, height: imageFrame.height },
@@ -191,18 +255,25 @@ const imageCrop = computed(() => {
 
 const imageConfig = computed(() => ({
     image: image.value ?? undefined,
-    ...templateDefinition.value.composition.imageFrame,
     crop: imageCrop.value,
 }));
 
 const decorationLayers = (placement: TemplateDecorationPlacement) =>
     templateDefinition.value.composition.decorations.filter((decoration) =>
         decoration.placement === placement &&
-        (decoration.visibility === 'always' || imageStatus.value !== 'loaded'),
+        decoration.id !== 'background' && decoration.id !== 'accent' &&
+        (decoration.visibility === 'always' || !imageIsVisible.value),
     );
+
+const visualConfig = (elementId: 'background' | 'accent') => ({
+    fill: layoutVisualStyles.value[props.templateId][elementId].fill,
+    stroke: layoutVisualStyles.value[props.templateId][elementId].stroke,
+    strokeWidth: layoutVisualStyles.value[props.templateId][elementId].strokeWidth,
+});
 
 const decorationConfig = (decoration: TemplateDecoration) => ({
     ...decoration.frame,
+    listening: false,
     ...(decoration.type === 'text'
         ? {
               text: decoration.text,
@@ -215,7 +286,7 @@ const decorationConfig = (decoration: TemplateDecoration) => ({
           }
         : {
               fill: decoration.fill,
-              opacity: imageStatus.value === 'loaded' && decoration.imageLoadedOpacity !== undefined
+              opacity: imageIsVisible.value && decoration.imageLoadedOpacity !== undefined
                   ? decoration.imageLoadedOpacity
                   : decoration.opacity,
           }),
@@ -228,19 +299,28 @@ const editableTextValues = computed<Record<TemplateTextBinding, string>>(() => (
     location: props.template.location,
 }));
 
+const applyListStyle = (text: string, listStyle: LayoutTextStyle['listStyle']) => {
+    if (listStyle === 'none') {
+        return text;
+    }
+    return text.split('\n').map((line, index) =>
+        line.trim() ? `${listStyle === 'bullet' ? '•' : `${index + 1}.`} ${line}` : line).join('\n');
+};
+
 const editableTextConfig = (binding: TemplateTextBinding) => {
     const definitionStyle = templateDefinition.value.elements[binding].style;
     const editableStyle = layoutTextStyles.value[props.templateId][binding];
     return {
-        text: editableTextValues.value[binding],
+        text: applyListStyle(editableTextValues.value[binding], editableStyle.listStyle),
         fill: editableStyle.color,
         fontSize: editableStyle.fontSize,
-        fontFamily: definitionStyle.fontFamily,
-        fontStyle: definitionStyle.fontStyle,
-        lineHeight: definitionStyle.lineHeight,
+        fontFamily: editableStyle.fontFamily,
+        fontStyle: editableStyle.fontStyle,
+        lineHeight: editableStyle.lineHeight,
+        letterSpacing: editableStyle.letterSpacing,
         wrap: definitionStyle.wrap,
         ellipsis: definitionStyle.ellipsis,
-        align: definitionStyle.align,
+        align: editableStyle.align,
     };
 };
 const currentLayoutChanged = computed(() => {
@@ -249,26 +329,35 @@ const currentLayoutChanged = computed(() => {
     ).some(
         ([elementId, { x, y }]) => {
             const size = layoutSizes.value[props.templateId][elementId];
-            const base = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+            const base = templateElementFrames.value[props.templateId][elementId];
             const rotation = layoutRotations.value[props.templateId][elementId];
             return x !== 0 || y !== 0 || size.width !== base.width || size.height !== base.height || rotation !== 0;
         },
     );
     const defaultOrder = createLayoutOrder();
-    const orderChanged = layoutOrder.value[props.templateId].some(
+    const orderChanged = layoutOrder.value[props.templateId].length !== defaultOrder.length ||
+        layoutOrder.value[props.templateId].some(
         (elementId, index) => elementId !== defaultOrder[index],
     );
-    const defaultStyles = createLayoutTextStyles(props.templateId);
-    const styleChanged = createLayoutOrder().some((elementId) => {
+    const defaultStyles = createPageLayoutTextStyles(props.templateId);
+    const textStyleChanged = TEXT_LAYOUT_ELEMENT_IDS.some((elementId) => {
         const style = layoutTextStyles.value[props.templateId][elementId];
-        return style.fontSize !== defaultStyles[elementId].fontSize ||
-            style.color !== defaultStyles[elementId].color;
+        return JSON.stringify(style) !== JSON.stringify(defaultStyles[elementId]);
     });
-    return geometryChanged || orderChanged || styleChanged || layoutGroups.value[props.templateId].length > 0;
+    const defaultVisualStyles = createPageLayoutVisualStyles(props.templateId);
+    const visualStyleChanged = SHAPE_LAYOUT_ELEMENT_IDS.some((elementId) => {
+        const style = layoutVisualStyles.value[props.templateId][elementId];
+        const defaultStyle = defaultVisualStyles[elementId];
+        return style.fill !== defaultStyle.fill || style.stroke !== defaultStyle.stroke ||
+            style.strokeWidth !== defaultStyle.strokeWidth;
+    });
+    return geometryChanged || orderChanged || textStyleChanged || visualStyleChanged ||
+        deletedElements.value[props.templateId].length > 0 ||
+        layoutGroups.value[props.templateId].length > 0;
 });
 
 const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
-    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+    const baseFrame = templateElementFrames.value[props.templateId][elementId];
     const offset = layoutOffsets.value[props.templateId][elementId];
     const size = layoutSizes.value[props.templateId][elementId];
     return {
@@ -280,10 +369,34 @@ const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
     };
 };
 
+const elementIsDefault = (elementId: LayoutElementId) => {
+    const frame = elementFrame(elementId);
+    const baseFrame = templateElementFrames.value[props.templateId][elementId];
+    const geometryChanged = frame.x !== baseFrame.x || frame.y !== baseFrame.y ||
+        frame.width !== baseFrame.width || frame.height !== baseFrame.height ||
+        layoutRotations.value[props.templateId][elementId] !== 0 ||
+        layoutOrder.value[props.templateId].indexOf(elementId) !== createLayoutOrder().indexOf(elementId);
+    if (TEXT_LAYOUT_ELEMENT_IDS.includes(elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number])) {
+        const textId = elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number];
+        const style = layoutTextStyles.value[props.templateId][textId];
+        const defaultStyle = createPageLayoutTextStyles(props.templateId)[textId];
+        return !geometryChanged && JSON.stringify(style) === JSON.stringify(defaultStyle);
+    }
+    if (SHAPE_LAYOUT_ELEMENT_IDS.includes(elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number])) {
+        const shapeId = elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number];
+        const style = layoutVisualStyles.value[props.templateId][shapeId];
+        const defaultStyle = createPageLayoutVisualStyles(props.templateId)[shapeId];
+        return !geometryChanged && style.fill === defaultStyle.fill && style.stroke === defaultStyle.stroke &&
+            style.strokeWidth === defaultStyle.strokeWidth;
+    }
+    return !geometryChanged;
+};
+
 const emitSelectionGeometry = () => {
     if (!selectedElement.value) {
         emit('selectionGeometryChange', null);
         emit('selectionStyleChange', null);
+        emit('selectionVisualStyleChange', null);
         emit('selectionDefaultChange', false);
         return;
     }
@@ -291,46 +404,29 @@ const emitSelectionGeometry = () => {
     const elementId = selectedElement.value;
     if (selectedElements.value.length > 1) {
         emit('selectionGeometryChange', null);
-        emit('selectionStyleChange', {
-            elementId,
-            ...layoutTextStyles.value[props.templateId][elementId],
-        });
-        emit('selectionDefaultChange', selectedElements.value.some((selectedId) => {
-            const frame = elementFrame(selectedId);
-            const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][selectedId];
-            const defaultStyle = createLayoutTextStyles(props.templateId)[selectedId];
-            const style = layoutTextStyles.value[props.templateId][selectedId];
-            return frame.x !== baseFrame.x || frame.y !== baseFrame.y ||
-                frame.width !== baseFrame.width || frame.height !== baseFrame.height ||
-                layoutRotations.value[props.templateId][selectedId] !== 0 ||
-                layoutOrder.value[props.templateId].indexOf(selectedId) !== createLayoutOrder().indexOf(selectedId) ||
-                style.fontSize !== defaultStyle.fontSize || style.color !== defaultStyle.color;
-        }));
+        const textId = TEXT_LAYOUT_ELEMENT_IDS.includes(elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number])
+            ? elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number] : null;
+        const shapeId = SHAPE_LAYOUT_ELEMENT_IDS.includes(elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number])
+            ? elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number] : null;
+        emit('selectionStyleChange', textId ? { elementId, ...layoutTextStyles.value[props.templateId][textId] } : null);
+        emit('selectionVisualStyleChange', shapeId ? { elementId, ...layoutVisualStyles.value[props.templateId][shapeId] } : null);
+        emit('selectionDefaultChange', selectedElements.value.some((selectedId) => !elementIsDefault(selectedId)));
         return;
     }
 
     const frame = elementFrame(elementId);
-    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
     emit('selectionGeometryChange', {
         elementId,
         ...frame,
         rotation: layoutRotations.value[props.templateId][elementId],
     });
-    emit('selectionStyleChange', {
-        elementId,
-        ...layoutTextStyles.value[props.templateId][elementId],
-    });
-    emit(
-        'selectionDefaultChange',
-        frame.x !== baseFrame.x || frame.y !== baseFrame.y ||
-            frame.width !== baseFrame.width || frame.height !== baseFrame.height ||
-            layoutRotations.value[props.templateId][elementId] !== 0 ||
-            layoutOrder.value[props.templateId].indexOf(elementId) !== createLayoutOrder().indexOf(elementId) ||
-            layoutTextStyles.value[props.templateId][elementId].fontSize !==
-                createLayoutTextStyles(props.templateId)[elementId].fontSize ||
-            layoutTextStyles.value[props.templateId][elementId].color !==
-                createLayoutTextStyles(props.templateId)[elementId].color,
-    );
+    const textId = TEXT_LAYOUT_ELEMENT_IDS.includes(elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number])
+        ? elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number] : null;
+    const shapeId = SHAPE_LAYOUT_ELEMENT_IDS.includes(elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number])
+        ? elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number] : null;
+    emit('selectionStyleChange', textId ? { elementId, ...layoutTextStyles.value[props.templateId][textId] } : null);
+    emit('selectionVisualStyleChange', shapeId ? { elementId, ...layoutVisualStyles.value[props.templateId][shapeId] } : null);
+    emit('selectionDefaultChange', !elementIsDefault(elementId));
 };
 
 const captureLayoutState = (): SerializableLayoutState =>
@@ -340,8 +436,12 @@ const captureLayoutState = (): SerializableLayoutState =>
         rotations: layoutRotations.value[props.templateId],
         order: layoutOrder.value[props.templateId],
         styles: layoutTextStyles.value[props.templateId],
+        visualStyles: layoutVisualStyles.value[props.templateId],
         groups: layoutGroups.value[props.templateId],
+        deleted: deletedElements.value[props.templateId],
     });
+
+const getLayoutState = () => captureLayoutState();
 
 const emitHistoryState = () => {
     const history = layoutHistories.value[props.templateId];
@@ -366,7 +466,10 @@ const restoreLayoutState = (state: SerializableLayoutState) => {
     layoutRotations.value[props.templateId] = restored.rotations;
     layoutOrder.value[props.templateId] = restored.order;
     layoutTextStyles.value[props.templateId] = restored.styles;
+    layoutVisualStyles.value[props.templateId] = restored.visualStyles;
     layoutGroups.value[props.templateId] = restored.groups;
+    deletedElements.value[props.templateId] = restored.deleted;
+    emit('availableElementsChange', availableElements.value);
     emit('layoutStateChange', props.templateId, captureLayoutState());
     emit('layoutChange', currentLayoutChanged.value);
     const restoredGroupId = flattenLayoutGroups(restored.groups)
@@ -490,6 +593,27 @@ const drillIntoElement = (elementId: LayoutElementId) => {
         true,
     );
     updateSelection(target.elementIds, target.groupId);
+};
+
+const selectGroup = (groupId: string, additive = false) => {
+    const group = flattenLayoutGroups(layoutGroups.value[props.templateId])
+        .find((candidate) => candidate.id === groupId);
+    if (!group) {
+        return;
+    }
+    const elementIds = layoutGroupElementIds(group).filter((elementId) =>
+        !deletedElements.value[props.templateId].includes(elementId));
+    if (!additive) {
+        updateSelection(elementIds, groupId);
+        return;
+    }
+    const fullySelected = elementIds.every((elementId) => selectedElements.value.includes(elementId));
+    updateSelection(
+        fullySelected
+            ? selectedElements.value.filter((elementId) => !elementIds.includes(elementId))
+            : [...selectedElements.value, ...elementIds],
+        fullySelected ? null : groupId,
+    );
 };
 
 const clearSelection = () => {
@@ -620,7 +744,7 @@ const alignElementWhileDragging = (_elementId: LayoutElementId, event: Konva.Kon
         .map((candidate) => candidate.getClientRect({ relativeTo: parent, skipStroke: true }));
     node.position(snapLayoutPoint(node.position(), props.snapEnabled));
     const frame = node.getClientRect({ relativeTo: parent, skipStroke: true });
-    const alignment = calculateAlignmentSnap(frame, targetFrames);
+    const alignment = calculateAlignmentSnap(frame, targetFrames, 10, documentSize.value);
 
     node.position({
         x: node.x() + alignment.offset.x,
@@ -636,7 +760,7 @@ const alignElementWhileDragging = (_elementId: LayoutElementId, event: Konva.Kon
         y: node.y() - activeDrag.startPosition.y,
     };
     const bounds = Object.values(activeDrag.nodeBounds).filter((value): value is LayoutFrame => Boolean(value));
-    const delta = constrainLayoutDelta(bounds, requestedDelta);
+    const delta = constrainLayoutDelta(bounds, requestedDelta, documentSize.value);
     for (const selectedId of selectedElements.value) {
         const selectedNode = stage.findOne(`#editable-${selectedId}`);
         const startPosition = activeDrag.nodePositions[selectedId];
@@ -656,7 +780,7 @@ const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<D
         if (!node) {
             continue;
         }
-        const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][movedId];
+        const baseFrame = templateElementFrames.value[props.templateId][movedId];
         layoutOffsets.value[props.templateId][movedId] = {
             x: node.x() - baseFrame.x,
             y: node.y() - baseFrame.y,
@@ -670,7 +794,7 @@ const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<D
 
 const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<Event>) => {
     const node = event.target;
-    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+    const baseFrame = templateElementFrames.value[props.templateId][elementId];
     const currentFrame = elementFrame(elementId);
     const snappedPosition = snapLayoutPoint({ x: node.x(), y: node.y() }, props.snapEnabled);
     const resizedFrame = resizeLayoutFrame(
@@ -682,10 +806,12 @@ const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject
             },
             props.snapEnabled,
         ),
+        documentSize.value,
     );
     const rotatedLayout = keepRotatedFrameInDocument(
         resizedFrame,
         snapRotation(node.rotation(), props.snapEnabled),
+        documentSize.value,
     );
 
     if (!rotatedLayout) {
@@ -721,7 +847,7 @@ const nudgeSelectedElement = (deltaX: number, deltaY: number) => {
 
     const previousState = captureLayoutState();
     const frames = selectedElements.value.map(elementFrame);
-    const appliedDelta = constrainLayoutDelta(frames, { x: deltaX, y: deltaY });
+    const appliedDelta = constrainLayoutDelta(frames, { x: deltaX, y: deltaY }, documentSize.value);
     for (const elementId of selectedElements.value) {
         const offset = layoutOffsets.value[props.templateId][elementId];
         layoutOffsets.value[props.templateId][elementId] = {
@@ -745,7 +871,7 @@ const resizeSelectedElement = (deltaWidth: number, deltaHeight: number) => {
         const resizedFrame = resizeLayoutFrame(frame, {
             width: frame.width + deltaWidth,
             height: frame.height + deltaHeight,
-        });
+        }, documentSize.value);
         layoutSizes.value[props.templateId][elementId] = {
             width: resizedFrame.width,
             height: resizedFrame.height,
@@ -766,6 +892,7 @@ const rotateSelectedElement = (deltaRotation: number) => {
         layout: keepRotatedFrameInDocument(
             elementFrame(elementId),
             layoutRotations.value[props.templateId][elementId] + deltaRotation,
+            documentSize.value,
         ),
     }));
     if (rotations.some(({ layout }) => !layout)) {
@@ -775,7 +902,7 @@ const rotateSelectedElement = (deltaRotation: number) => {
     const previousState = captureLayoutState();
     for (const { elementId, layout } of rotations) {
         if (!layout) continue;
-        const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+        const baseFrame = templateElementFrames.value[props.templateId][elementId];
         layoutOffsets.value[props.templateId][elementId] = {
             x: layout.frame.x - baseFrame.x,
             y: layout.frame.y - baseFrame.y,
@@ -793,7 +920,7 @@ const commitSelectedGeometry = (geometry: LayoutGeometry) => {
     }
     const elementId = selectedElement.value;
     const previousState = captureLayoutState();
-    const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+    const baseFrame = templateElementFrames.value[props.templateId][elementId];
     layoutOffsets.value[props.templateId][elementId] = {
         x: geometry.x - baseFrame.x,
         y: geometry.y - baseFrame.y,
@@ -821,7 +948,7 @@ const setSelectedElementGeometry = (
         ...elementFrame(elementId),
         rotation: layoutRotations.value[props.templateId][elementId],
         [field]: value,
-    });
+    }, documentSize.value);
     if (!geometry) {
         emitSelectionGeometry();
         return;
@@ -834,24 +961,61 @@ const setSelectedElementTextStyle = (
     field: keyof LayoutTextStyle,
     value: number | string,
 ) => {
-    if (selectedElements.value.length === 0 || !selectedElement.value) {
+    if (selectedElements.value.length === 0 || !selectedElement.value ||
+        !TEXT_LAYOUT_ELEMENT_IDS.includes(selectedElement.value as typeof TEXT_LAYOUT_ELEMENT_IDS[number])) {
         return;
     }
 
-    const currentStyle = layoutTextStyles.value[props.templateId][selectedElement.value];
-    const nextStyle = field === 'fontSize'
-        ? { ...currentStyle, fontSize: constrainFontSize(Number(value)) }
-        : { ...currentStyle, color: String(value).toLowerCase() };
-    if (!Number.isFinite(nextStyle.fontSize) || !isHexColor(nextStyle.color)) {
+    const selectedTextId = selectedElement.value as typeof TEXT_LAYOUT_ELEMENT_IDS[number];
+    const currentStyle = layoutTextStyles.value[props.templateId][selectedTextId];
+    const nextValue = field === 'fontSize'
+        ? constrainFontSize(Number(value))
+        : field === 'lineHeight'
+            ? constrainLineHeight(Number(value))
+            : field === 'letterSpacing'
+                ? constrainLetterSpacing(Number(value))
+                : field === 'color' ? String(value).toLowerCase() : String(value);
+    const nextStyle = { ...currentStyle, [field]: nextValue } as LayoutTextStyle;
+    if (!Number.isFinite(nextStyle.fontSize) || !isHexColor(nextStyle.color) ||
+        !nextStyle.fontFamily.trim() || !['normal', 'bold', 'italic', 'bold italic'].includes(nextStyle.fontStyle) ||
+        !Number.isFinite(nextStyle.lineHeight) || !Number.isFinite(nextStyle.letterSpacing) ||
+        !['left', 'center', 'right'].includes(nextStyle.align) ||
+        !['none', 'bullet', 'numbered'].includes(nextStyle.listStyle)) {
         emitSelectionGeometry();
         return;
     }
 
     const previousState = captureLayoutState();
     layoutTextStyles.value[props.templateId] = selectedElements.value.reduce(
-        (styles, elementId) => ({ ...styles, [elementId]: { ...styles[elementId], [field]: nextStyle[field] } }),
+        (styles, elementId) => TEXT_LAYOUT_ELEMENT_IDS.includes(elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number])
+            ? { ...styles, [elementId]: { ...styles[elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number]], [field]: nextStyle[field] } }
+            : styles,
         layoutTextStyles.value[props.templateId],
     );
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
+const setSelectedElementVisualStyle = (
+    field: keyof LayoutVisualStyle,
+    value: number | string,
+) => {
+    if (!selectedElement.value ||
+        !SHAPE_LAYOUT_ELEMENT_IDS.includes(selectedElement.value as typeof SHAPE_LAYOUT_ELEMENT_IDS[number])) {
+        return;
+    }
+    const shapeId = selectedElement.value as typeof SHAPE_LAYOUT_ELEMENT_IDS[number];
+    const nextValue = field === 'strokeWidth' ? Number(value) : String(value).toLowerCase();
+    if ((field === 'strokeWidth' && (!Number.isFinite(nextValue) || Number(nextValue) < 0 || Number(nextValue) > 100)) ||
+        (field !== 'strokeWidth' && !isHexColor(String(nextValue)))) {
+        emitSelectionGeometry();
+        return;
+    }
+    const previousState = captureLayoutState();
+    layoutVisualStyles.value[props.templateId][shapeId] = {
+        ...layoutVisualStyles.value[props.templateId][shapeId],
+        [field]: nextValue,
+    };
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
 };
@@ -916,6 +1080,7 @@ const alignSelectedElement = (alignment: LayoutAlignment) => {
                 rotation: layoutRotations.value[props.templateId][elementId],
             },
             alignment,
+            documentSize.value,
         ),
     }));
     if (aligned.some(({ geometry }) => !geometry)) {
@@ -924,7 +1089,7 @@ const alignSelectedElement = (alignment: LayoutAlignment) => {
     const previousState = captureLayoutState();
     for (const { elementId, geometry } of aligned) {
         if (!geometry) continue;
-        const baseFrame = TEMPLATE_ELEMENT_FRAMES[props.templateId][elementId];
+        const baseFrame = templateElementFrames.value[props.templateId][elementId];
         layoutOffsets.value[props.templateId][elementId] = {
             x: geometry.x - baseFrame.x,
             y: geometry.y - baseFrame.y,
@@ -954,14 +1119,46 @@ const changeSelectedLayer = (direction: -1 | 1) => {
     void syncTransformer();
 };
 
+const pruneDeletedElementsFromGroups = (groups: LayoutGroups, deleted: Set<LayoutElementId>): LayoutGroups =>
+    groups.flatMap((group) => {
+        const children: (LayoutElementId | LayoutGroup)[] = group.children.flatMap((child): (LayoutElementId | LayoutGroup)[] => {
+            if (typeof child === 'string') {
+                return deleted.has(child) ? [] : [child];
+            }
+            return pruneDeletedElementsFromGroups([child], deleted);
+        });
+        return children.length >= 2 ? [{ ...group, children }] : [];
+    });
+
+const deleteElements = (elementIds: LayoutElementId[]) => {
+    const existingIds = elementIds.filter((elementId) =>
+        layoutOrder.value[props.templateId].includes(elementId));
+    if (existingIds.length === 0) {
+        return;
+    }
+    const previousState = captureLayoutState();
+    const deleted = new Set([...deletedElements.value[props.templateId], ...existingIds]);
+    deletedElements.value[props.templateId] = createLayoutOrder().filter((elementId) => deleted.has(elementId));
+    layoutOrder.value[props.templateId] = layoutOrder.value[props.templateId].filter((elementId) => !deleted.has(elementId));
+    layoutGroups.value[props.templateId] = pruneDeletedElementsFromGroups(layoutGroups.value[props.templateId], deleted);
+    commitCurrentLayout(previousState);
+    updateSelection([]);
+    emit('availableElementsChange', availableElements.value);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
+const deleteSelectedElements = () => deleteElements(selectedElements.value);
+
 const resetLayout = () => {
     const previousState = captureLayoutState();
     layoutOffsets.value[props.templateId] = createLayoutOffsets();
-    layoutSizes.value[props.templateId] = createLayoutSizes(props.templateId);
+    layoutSizes.value[props.templateId] = createPageLayoutSizes(props.templateId);
     layoutRotations.value[props.templateId] = createLayoutRotations();
     layoutOrder.value[props.templateId] = createLayoutOrder();
-    layoutTextStyles.value[props.templateId] = createLayoutTextStyles(props.templateId);
+    layoutTextStyles.value[props.templateId] = createPageLayoutTextStyles(props.templateId);
+    layoutVisualStyles.value[props.templateId] = createPageLayoutVisualStyles(props.templateId);
     layoutGroups.value[props.templateId] = createLayoutGroups();
+    deletedElements.value[props.templateId] = [];
     commitCurrentLayout(previousState);
     selectedElements.value = [];
     selectedGroupId.value = null;
@@ -971,6 +1168,7 @@ const resetLayout = () => {
     emit('selectionGroupChange', false, false, 0);
     emitLayerPosition();
     emitSelectionGeometry();
+    emit('availableElementsChange', availableElements.value);
     emit('layoutChange', false);
 };
 
@@ -981,10 +1179,31 @@ const resetSelectedElement = () => {
 
     const previousState = captureLayoutState();
     const reset = selectedElements.value.reduce<SerializableLayoutState>(
-        (state, elementId) => ({
-            ...resetLayoutElementState(props.templateId, elementId, state),
-            groups: state.groups,
-        }),
+        (state, elementId) => {
+            const defaultOrder = createLayoutOrder();
+            const order = state.order.filter((candidate) => candidate !== elementId);
+            order.splice(defaultOrder.indexOf(elementId), 0, elementId);
+            return {
+                ...state,
+                offsets: { ...state.offsets, [elementId]: { x: 0, y: 0 } },
+                sizes: { ...state.sizes, [elementId]: { ...createPageLayoutSizes(props.templateId)[elementId] } },
+                rotations: { ...state.rotations, [elementId]: 0 },
+                order,
+                styles: {
+                    ...state.styles,
+                    ...(TEXT_LAYOUT_ELEMENT_IDS.includes(elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number])
+                        ? { [elementId]: { ...createPageLayoutTextStyles(props.templateId)[elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number]] } }
+                        : {}),
+                },
+                visualStyles: {
+                    ...state.visualStyles,
+                    ...(SHAPE_LAYOUT_ELEMENT_IDS.includes(elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number])
+                        ? { [elementId]: { ...createPageLayoutVisualStyles(props.templateId)[elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number]] } }
+                        : {}),
+                },
+                groups: state.groups,
+            };
+        },
         previousState,
     );
     layoutOffsets.value[props.templateId] = reset.offsets;
@@ -992,6 +1211,7 @@ const resetSelectedElement = () => {
     layoutRotations.value[props.templateId] = reset.rotations;
     layoutOrder.value[props.templateId] = reset.order;
     layoutTextStyles.value[props.templateId] = reset.styles;
+    layoutVisualStyles.value[props.templateId] = reset.visualStyles;
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     emitLayerPosition();
@@ -1027,18 +1247,22 @@ const restoreDraftLayouts = () => {
             ? cloneLayoutState(savedState)
             : {
                   offsets: createLayoutOffsets(),
-                  sizes: createLayoutSizes(templateId),
+                  sizes: createPageLayoutSizes(templateId),
                   rotations: createLayoutRotations(),
                   order: createLayoutOrder(),
-                  styles: createLayoutTextStyles(templateId),
+                  styles: createPageLayoutTextStyles(templateId),
+                  visualStyles: createPageLayoutVisualStyles(templateId),
                   groups: createLayoutGroups(),
+                  deleted: [],
               };
         layoutOffsets.value[templateId] = restored.offsets;
         layoutSizes.value[templateId] = restored.sizes;
         layoutRotations.value[templateId] = restored.rotations;
         layoutOrder.value[templateId] = restored.order;
         layoutTextStyles.value[templateId] = restored.styles;
+        layoutVisualStyles.value[templateId] = restored.visualStyles;
         layoutGroups.value[templateId] = restored.groups;
+        deletedElements.value[templateId] = restored.deleted;
         layoutHistories.value[templateId] = createLayoutHistory();
     }
     selectedElements.value = [];
@@ -1050,6 +1274,7 @@ const restoreDraftLayouts = () => {
     emitLayerPosition();
     emitSelectionGeometry();
     emitHistoryState();
+    emit('availableElementsChange', availableElements.value);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
 };
@@ -1099,26 +1324,11 @@ watch(
         emitLayerPosition();
         emitSelectionGeometry();
         emitHistoryState();
+        emit('availableElementsChange', availableElements.value);
         emit('layoutChange', currentLayoutChanged.value);
         void syncTransformer();
     },
 );
-
-onMounted(() => {
-    emitHistoryState();
-    if (!containerRef.value) {
-        return;
-    }
-
-    resizeObserver = new ResizeObserver(([entry]) => {
-        if (entry) {
-            containerWidth.value = entry.contentRect.width;
-        }
-    });
-    resizeObserver.observe(containerRef.value);
-});
-
-onBeforeUnmount(() => resizeObserver?.disconnect());
 
 const exportPng = async () => {
     await document.fonts.ready;
@@ -1142,7 +1352,7 @@ const exportPng = async () => {
     try {
         isExporting.value = true;
         await syncTransformer();
-        stage.size({ width: DOCUMENT_WIDTH, height: DOCUMENT_HEIGHT });
+        stage.size({ width: props.documentWidth, height: props.documentHeight });
         stage.scale({ x: 1, y: 1 });
         stage.draw();
         return stage.toDataURL({ pixelRatio: 1, mimeType: 'image/png' });
@@ -1160,8 +1370,11 @@ defineExpose({
     changeSelectedLayer,
     clearSelection,
     drillIntoElement,
+    deleteElements,
+    deleteSelectedElements,
     exportPng,
     groupSelectedElements,
+    getLayoutState,
     nudgeSelectedElement,
     redoLayout,
     resetLayout,
@@ -1170,14 +1383,16 @@ defineExpose({
     rotateSelectedElement,
     setSelectedElementGeometry,
     setSelectedElementTextStyle,
+    setSelectedElementVisualStyle,
     selectElement,
+    selectGroup,
     undoLayout,
     ungroupSelectedElements,
 });
 </script>
 
 <template>
-    <div ref="containerRef" class="template-preview">
+    <div class="template-preview">
         <v-stage
             ref="stageRef"
             :config="stageConfig"
@@ -1193,20 +1408,66 @@ defineExpose({
             @touchcancel="finishSelectionRectangle"
         >
             <v-layer>
+                <EditableVisualElement
+                    v-if="!deletedElements[templateId].includes('background')"
+                    element-id="background"
+                    :frame="elementFrame('background')"
+                    :editor-scale="previewScale"
+                    :rotation="layoutRotations[templateId].background"
+                    :selected="selectedElements.includes('background') && !isExporting"
+                    :visual-config="visualConfig('background')"
+                    :z-index="layoutOrder[templateId].indexOf('background')"
+                    @drag-start="startElementDrag"
+                    @dragging="alignElementWhileDragging"
+                    @move="moveElement"
+                    @resize="resizeElement"
+                />
                 <template v-for="decoration in decorationLayers('behindImage')" :key="decoration.id">
                     <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration)" />
                     <v-text v-else :config="decorationConfig(decoration)" />
                 </template>
-                <v-image v-if="imageStatus === 'loaded'" :config="imageConfig" />
+            </v-layer>
+            <v-layer>
+                <EditableVisualElement
+                    v-if="!deletedElements[templateId].includes('image')"
+                    element-id="image"
+                    :frame="elementFrame('image')"
+                    :editor-scale="previewScale"
+                    :image-config="imageIsVisible ? imageConfig : null"
+                    :rotation="layoutRotations[templateId].image"
+                    :selected="selectedElements.includes('image') && !isExporting"
+                    :z-index="layoutOrder[templateId].indexOf('image')"
+                    @drag-start="startElementDrag"
+                    @dragging="alignElementWhileDragging"
+                    @move="moveElement"
+                    @resize="resizeElement"
+                />
+            </v-layer>
+            <v-layer>
                 <template v-for="decoration in decorationLayers('overImage')" :key="decoration.id">
                     <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration)" />
                     <v-text v-else :config="decorationConfig(decoration)" />
                 </template>
+                <EditableVisualElement
+                    v-if="!deletedElements[templateId].includes('accent')"
+                    element-id="accent"
+                    :frame="elementFrame('accent')"
+                    :editor-scale="previewScale"
+                    :rotation="layoutRotations[templateId].accent"
+                    :selected="selectedElements.includes('accent') && !isExporting"
+                    :visual-config="visualConfig('accent')"
+                    :z-index="layoutOrder[templateId].indexOf('accent')"
+                    @drag-start="startElementDrag"
+                    @dragging="alignElementWhileDragging"
+                    @move="moveElement"
+                    @resize="resizeElement"
+                />
                 <v-group>
                     <template v-for="binding in TEMPLATE_TEXT_BINDINGS" :key="binding">
                         <EditableTextElement
-                            v-if="binding !== 'location' || template.location"
+                            v-if="!deletedElements[templateId].includes(binding) && (binding !== 'location' || template.location)"
                             :element-id="binding"
+                            :editor-scale="previewScale"
                             :frame="elementFrame(binding)"
                             :rotation="layoutRotations[templateId][binding]"
                             :selected="selectedElements.includes(binding) && !isExporting"
@@ -1227,8 +1488,8 @@ defineExpose({
                         ...selectionRectangle,
                         fill: 'rgba(36, 121, 197, 0.14)',
                         stroke: '#2479c5',
-                        strokeWidth: 3,
-                        dash: [12, 8],
+                        strokeWidth: 1.25 / previewScale,
+                        dash: [6 / previewScale, 4 / previewScale],
                     }"
                 />
                 <v-line
@@ -1236,11 +1497,11 @@ defineExpose({
                     :key="`${guide.orientation}-${guide.position}`"
                     :config="{
                         points: guide.orientation === 'vertical'
-                            ? [guide.position, 0, guide.position, DOCUMENT_HEIGHT]
-                            : [0, guide.position, DOCUMENT_WIDTH, guide.position],
+                            ? [guide.position, 0, guide.position, documentHeight]
+                            : [0, guide.position, documentWidth, guide.position],
                         stroke: '#ee3d8f',
-                        strokeWidth: 4,
-                        dash: [18, 12],
+                        strokeWidth: 1 / previewScale,
+                        dash: [8 / previewScale, 5 / previewScale],
                     }"
                 />
             </v-layer>

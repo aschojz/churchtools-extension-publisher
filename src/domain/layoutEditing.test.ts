@@ -7,12 +7,16 @@ import {
     constrainLayoutGeometry,
     constrainLayoutDelta,
     constrainFontSize,
+    createLayoutLayerTree,
     createLayoutOrder,
     expandLayoutSelection,
     findLayoutGroupDepth,
     groupLayoutElements,
     createLayoutOffsets,
+    createLayoutRotations,
+    createLayoutSizes,
     createLayoutTextStyles,
+    createLayoutVisualStyles,
     isHexColor,
     keepRotatedFrameInDocument,
     layoutFramesIntersect,
@@ -33,6 +37,9 @@ describe('layout editing', () => {
         const offsets = createLayoutOffsets();
 
         expect(offsets).toEqual({
+            background: { x: 0, y: 0 },
+            image: { x: 0, y: 0 },
+            accent: { x: 0, y: 0 },
             title: { x: 0, y: 0 },
             dateTime: { x: 0, y: 0 },
             location: { x: 0, y: 0 },
@@ -132,9 +139,9 @@ describe('layout editing', () => {
         const initialOrder = createLayoutOrder();
         const movedOrder = moveLayoutElementInOrder(initialOrder, 'title', 1);
 
-        expect(movedOrder).toEqual(['dateTime', 'title', 'location']);
-        expect(initialOrder).toEqual(['title', 'dateTime', 'location']);
-        expect(moveLayoutElementInOrder(initialOrder, 'title', -1)).toBe(initialOrder);
+        expect(movedOrder).toEqual(['background', 'image', 'accent', 'dateTime', 'title', 'location']);
+        expect(initialOrder).toEqual(['background', 'image', 'accent', 'title', 'dateTime', 'location']);
+        expect(moveLayoutElementInOrder(initialOrder, 'background', -1)).toBe(initialOrder);
     });
 
     it('creates nested groups and removes only their outermost level', () => {
@@ -168,24 +175,57 @@ describe('layout editing', () => {
         }]);
     });
 
+    it('builds a top-first recursive layer tree for nested groups', () => {
+        const groups = groupLayoutElements(
+            groupLayoutElements([], ['title', 'dateTime'], 'inner'),
+            ['title', 'dateTime', 'location'],
+            'outer',
+        );
+
+        expect(createLayoutLayerTree(createLayoutOrder(), groups, ['accent'])).toEqual([
+            {
+                kind: 'group',
+                id: 'outer',
+                elementIds: ['location', 'dateTime', 'title'],
+                children: [
+                    { kind: 'element', id: 'location', elementId: 'location' },
+                    {
+                        kind: 'group',
+                        id: 'inner',
+                        elementIds: ['dateTime', 'title'],
+                        children: [
+                            { kind: 'element', id: 'dateTime', elementId: 'dateTime' },
+                            { kind: 'element', id: 'title', elementId: 'title' },
+                        ],
+                    },
+                ],
+            },
+            { kind: 'element', id: 'image', elementId: 'image' },
+            { kind: 'element', id: 'background', elementId: 'background' },
+        ]);
+    });
+
     it('resets only the selected element geometry and default layer position', () => {
         const state = {
             offsets: {
+                ...createLayoutOffsets(),
                 title: { x: 40, y: 20 },
                 dateTime: { x: 15, y: 10 },
                 location: { x: 0, y: 0 },
             },
             sizes: {
+                ...createLayoutSizes('split'),
                 title: { width: 500, height: 200 },
                 dateTime: { width: 400, height: 60 },
                 location: { width: 760, height: 170 },
             },
-            rotations: { title: 30, dateTime: 15, location: 0 },
-            order: ['dateTime', 'location', 'title'] as const,
+            rotations: { ...createLayoutRotations(), title: 30, dateTime: 15, location: 0 },
+            order: ['background', 'image', 'accent', 'dateTime', 'location', 'title'] as const,
             styles: {
                 ...createLayoutTextStyles('split'),
-                title: { fontSize: 120, color: '#123456' },
+                title: { ...createLayoutTextStyles('split').title, fontSize: 120, color: '#123456' },
             },
+            visualStyles: createLayoutVisualStyles('split'),
         };
 
         const reset = resetLayoutElementState('split', 'title', {
@@ -196,8 +236,8 @@ describe('layout editing', () => {
         expect(reset.offsets.title).toEqual({ x: 0, y: 0 });
         expect(reset.sizes.title).toEqual({ width: 760, height: 310 });
         expect(reset.rotations.title).toBe(0);
-        expect(reset.order).toEqual(['title', 'dateTime', 'location']);
-        expect(reset.styles.title).toEqual({ fontSize: 88, color: '#ffffff' });
+        expect(reset.order).toEqual(['background', 'image', 'accent', 'title', 'dateTime', 'location']);
+        expect(reset.styles.title).toEqual(createLayoutTextStyles('split').title);
         expect(reset.offsets.dateTime).toEqual(state.offsets.dateTime);
         expect(reset.sizes.dateTime).toEqual(state.sizes.dateTime);
         expect(reset.rotations.dateTime).toBe(15);

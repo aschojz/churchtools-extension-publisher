@@ -171,6 +171,46 @@ export const BUILT_IN_TEMPLATE_DEFINITIONS: Record<BuiltInTemplateId, PublisherT
     },
 };
 
+export const scaleTemplateDefinition = (
+    definition: PublisherTemplateDefinition,
+    width: number,
+    height: number,
+): PublisherTemplateDefinition => {
+    const scaleX = width / definition.document.width;
+    const scaleY = height / definition.document.height;
+    const fontScale = Math.min(scaleX, scaleY);
+    const scaleFrame = (frame: TemplateFrame): TemplateFrame => ({
+        x: frame.x * scaleX,
+        y: frame.y * scaleY,
+        width: frame.width * scaleX,
+        height: frame.height * scaleY,
+    });
+
+    return {
+        ...definition,
+        document: { width, height },
+        composition: {
+            ...definition.composition,
+            imageFrame: scaleFrame(definition.composition.imageFrame),
+            decorations: definition.composition.decorations.map((decoration) => ({
+                ...decoration,
+                frame: scaleFrame(decoration.frame),
+                ...(decoration.type === 'text' ? { fontSize: decoration.fontSize * fontScale } : {}),
+            })),
+        },
+        elements: Object.fromEntries(
+            TEMPLATE_TEXT_BINDINGS.map((binding) => {
+                const element = definition.elements[binding];
+                return [binding, {
+                    ...element,
+                    frame: scaleFrame(element.frame),
+                    style: { ...element.style, fontSize: element.style.fontSize * fontScale },
+                }];
+            }),
+        ) as PublisherTemplateDefinition['elements'],
+    };
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null && !Array.isArray(value);
 

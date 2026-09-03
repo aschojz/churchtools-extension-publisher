@@ -7,9 +7,10 @@ const props = defineProps<{
     elementId: LayoutElementId;
     editorScale: number;
     frame: LayoutFrame;
+    imageConfig?: Konva.ImageConfig | null;
     rotation: number;
     selected: boolean;
-    textConfig: Konva.TextConfig;
+    visualConfig?: Konva.RectConfig | null;
     zIndex: number;
 }>();
 
@@ -19,22 +20,6 @@ const emit = defineEmits<{
     move: [elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>];
     resize: [elementId: LayoutElementId, event: Konva.KonvaEventObject<Event>];
 }>();
-
-const startDrag = (event: Konva.KonvaEventObject<DragEvent>) => {
-    emit('dragStart', props.elementId, event);
-};
-
-const handleDrag = (event: Konva.KonvaEventObject<DragEvent>) => {
-    emit('dragging', props.elementId, event);
-};
-
-const finishDrag = (event: Konva.KonvaEventObject<DragEvent>) => {
-    emit('move', props.elementId, event);
-};
-
-const finishTransform = (event: Konva.KonvaEventObject<Event>) => {
-    emit('resize', props.elementId, event);
-};
 </script>
 
 <template>
@@ -49,23 +34,30 @@ const finishTransform = (event: Konva.KonvaEventObject<Event>) => {
             rotation,
             zIndex,
         }"
-        @dragstart="startDrag"
-        @dragmove="handleDrag"
-        @dragend="finishDrag"
-        @transformend="finishTransform"
+        @dragstart="emit('dragStart', elementId, $event)"
+        @dragmove="emit('dragging', elementId, $event)"
+        @dragend="emit('move', elementId, $event)"
+        @transformend="emit('resize', elementId, $event)"
     >
+        <v-image
+            v-if="imageConfig"
+            :config="{ ...imageConfig, x: 0, y: 0, width: frame.width, height: frame.height, listening: false }"
+        />
+        <v-rect
+            v-else-if="visualConfig"
+            :config="{ ...visualConfig, x: 0, y: 0, width: frame.width, height: frame.height, listening: false }"
+        />
         <v-rect
             :config="{
                 x: 0,
                 y: 0,
                 width: frame.width,
                 height: frame.height,
-                fill: 'rgba(0, 0, 0, 0.01)',
+                fill: 'rgba(0, 0, 0, 0.001)',
                 stroke: selected ? '#4da3ff' : undefined,
                 strokeWidth: 1.5 / editorScale,
                 dash: [6 / editorScale, 4 / editorScale],
             }"
         />
-        <v-text :config="{ ...textConfig, x: 0, y: 0, width: frame.width, height: frame.height, listening: false }" />
     </v-group>
 </template>

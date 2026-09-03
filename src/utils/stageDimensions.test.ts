@@ -24,6 +24,11 @@ describe('stage dimensions', () => {
         expect(DOCUMENT_WIDTH * calculatePreviewScale(960, 1.5)).toBe(1440);
     });
 
+    it('uses the same pixel scale for differently sized pages', () => {
+        expect(calculatePreviewScale(600, 0.32, 600)).toBe(0.32);
+        expect(calculatePreviewScale(1920, 0.32, 1920)).toBe(0.32);
+    });
+
     it('keeps fixed document dimensions independent from the preview', () => {
         expect(DOCUMENT_WIDTH).toBe(1920);
         expect(DOCUMENT_HEIGHT).toBe(1080);
