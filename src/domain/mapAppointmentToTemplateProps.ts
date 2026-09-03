@@ -21,6 +21,25 @@ export interface AppointmentMappingOptions {
     timeZone?: string;
 }
 
+const PUBLISHER_IMAGE_WIDTH = 1920;
+const PUBLISHER_IMAGE_HEIGHT = 1080;
+const PUBLISHER_IMAGE_QUALITY = 100;
+
+export const createPublisherImageUrl = (imageUrl: string) => {
+    const hashIndex = imageUrl.indexOf('#');
+    const hash = hashIndex >= 0 ? imageUrl.slice(hashIndex) : '';
+    const urlWithoutHash = hashIndex >= 0 ? imageUrl.slice(0, hashIndex) : imageUrl;
+    const queryIndex = urlWithoutHash.indexOf('?');
+    const baseUrl = queryIndex >= 0 ? urlWithoutHash.slice(0, queryIndex) : urlWithoutHash;
+    const searchParams = new URLSearchParams(queryIndex >= 0 ? urlWithoutHash.slice(queryIndex + 1) : '');
+
+    searchParams.set('w', String(PUBLISHER_IMAGE_WIDTH));
+    searchParams.set('h', String(PUBLISHER_IMAGE_HEIGHT));
+    searchParams.set('q', String(PUBLISHER_IMAGE_QUALITY));
+
+    return `${baseUrl}?${searchParams.toString()}${hash}`;
+};
+
 const formatWithOptionalTimeZone = (
     date: Date,
     locale: string,
@@ -61,6 +80,6 @@ export const mapAppointmentToTemplateProps = (
             ? ''
             : formatWithOptionalTimeZone(startDate, locale, { timeStyle: 'short' }, timeZone),
         location: formatLocation(appointment.base.address),
-        imageUrl: appointment.base.image?.imageUrl ?? null,
+        imageUrl: appointment.base.image ? createPublisherImageUrl(appointment.base.image.imageUrl) : null,
     };
 };

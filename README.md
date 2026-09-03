@@ -90,9 +90,9 @@ mit dem Antworttyp `AppointmentCalculated`. Dieser enthält `appointment: Appoin
 - Zeitraum: berechnetes `startDate` und `endDate`
 - Ganztägig: `allDay`
 - Ort: `address`, insbesondere `meetingAt`, Straße, PLZ und Ort
-- Bild: `image?.imageUrl`
+- Bild: `image?.imageUrl`, ergänzt um `w=1920`, `h=1080` und `q=100`
 
-Das Bildmodell `Image` stellt zusätzlich `fileUrl`, `relativeUrl`, Crop-/Focus-Optionen und Metadaten bereit. Für das Testtemplate ist zunächst `imageUrl` vorgesehen.
+Das Bildmodell `Image` stellt zusätzlich `fileUrl`, `relativeUrl`, Crop-/Focus-Optionen und Metadaten bereit. Der Publisher verwendet `imageUrl` als Basis der ChurchTools-Bildtransformation und fordert statt des Standard-Thumbnails eine Variante in Exportgröße (1920 × 1080 Pixel) mit voller Qualität an.
 
 ### Sprache und Zeitzone
 
