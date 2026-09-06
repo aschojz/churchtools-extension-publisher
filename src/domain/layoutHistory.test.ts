@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
     createLayoutOffsets,
+    createLayoutElementEffects,
     createLayoutOrder,
     createLayoutRotations,
     createLayoutSizes,
@@ -80,6 +81,7 @@ describe('layout history', () => {
         const grouped = createState();
         grouped.groups = [{
             id: 'outer',
+            rotation: 30,
             children: [{ id: 'inner', children: ['title', 'dateTime'] }, 'location'],
         }];
         const history = commitLayoutHistory(createLayoutHistory(), initial, grouped);
@@ -88,6 +90,7 @@ describe('layout history', () => {
 
         grouped.groups[0]!.children.splice(0, 1);
         expect(redone?.state.groups[0]?.children).toHaveLength(2);
+        expect(redone?.state.groups[0]?.rotation).toBe(30);
     });
 
     it('includes deleted layers in undo snapshots', () => {
@@ -98,5 +101,19 @@ describe('layout history', () => {
         const history = commitLayoutHistory(createLayoutHistory(), initial, deleted);
 
         expect(undoLayoutHistory(history, deleted)?.state.deleted).toEqual([]);
+    });
+
+    it('deep-clones layer effects in history snapshots', () => {
+        const initial = createState();
+        const styled = createState();
+        const effects = createLayoutElementEffects();
+        effects.shadow.enabled = true;
+        styled.effects = { title: effects };
+        const history = commitLayoutHistory(createLayoutHistory(), initial, styled);
+        const undone = undoLayoutHistory(history, styled);
+        const redone = undone && redoLayoutHistory(undone.history, undone.state);
+
+        effects.shadow.blur = 99;
+        expect(redone?.state.effects?.title?.shadow.blur).toBe(16);
     });
 });

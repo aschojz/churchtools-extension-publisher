@@ -1,5 +1,7 @@
 import type {
     LayoutElementId,
+    LayoutEffects,
+    LayoutCustomElement,
     LayoutOffsets,
     LayoutGroups,
     LayoutGroup,
@@ -19,6 +21,10 @@ export interface SerializableLayoutState {
     visualStyles: LayoutVisualStyles;
     groups: LayoutGroups;
     deleted: LayoutElementId[];
+    hidden?: LayoutElementId[];
+    locked?: LayoutElementId[];
+    customElements?: LayoutCustomElement[];
+    effects?: LayoutEffects;
 }
 
 export interface LayoutHistory {
@@ -33,38 +39,41 @@ export const createLayoutHistory = (): LayoutHistory => ({ past: [], future: [] 
 const cloneLayoutGroup = (group: LayoutGroup): LayoutGroup => ({
     id: group.id,
     children: group.children.map((child) => typeof child === 'string' ? child : cloneLayoutGroup(child)),
+    ...(group.autoLayout ? { autoLayout: { ...group.autoLayout, anchor: { ...group.autoLayout.anchor } } } : {}),
+    ...(group.rotation !== undefined ? { rotation: group.rotation } : {}),
 });
 
 export const cloneLayoutState = (state: SerializableLayoutState): SerializableLayoutState => ({
-    offsets: {
-        background: { ...state.offsets.background },
-        image: { ...state.offsets.image },
-        accent: { ...state.offsets.accent },
-        title: { ...state.offsets.title },
-        dateTime: { ...state.offsets.dateTime },
-        location: { ...state.offsets.location },
-    },
-    sizes: {
-        background: { ...state.sizes.background },
-        image: { ...state.sizes.image },
-        accent: { ...state.sizes.accent },
-        title: { ...state.sizes.title },
-        dateTime: { ...state.sizes.dateTime },
-        location: { ...state.sizes.location },
-    },
+    offsets: Object.fromEntries(Object.entries(state.offsets).map(([id, offset]) => [id, { ...offset }])),
+    sizes: Object.fromEntries(Object.entries(state.sizes).map(([id, size]) => [id, { ...size }])),
     rotations: { ...state.rotations },
     order: [...state.order],
-    styles: {
-        title: { ...state.styles.title },
-        dateTime: { ...state.styles.dateTime },
-        location: { ...state.styles.location },
-    },
-    visualStyles: {
-        background: { ...state.visualStyles.background },
-        accent: { ...state.visualStyles.accent },
-    },
+    styles: Object.fromEntries(Object.entries(state.styles).map(([id, style]) => [id, {
+        ...style,
+        ...(style.colorGradient ? { colorGradient: { ...style.colorGradient, stops: style.colorGradient.stops.map((stop) => ({ ...stop })) } } : {}),
+        ...(style.colorBinding ? { colorBinding: { ...style.colorBinding } } : {}),
+        ...(style.strokeBinding ? { strokeBinding: { ...style.strokeBinding } } : {}),
+    }])),
+    visualStyles: Object.fromEntries(Object.entries(state.visualStyles).map(([id, style]) => [id, {
+        ...style,
+        ...(style.fillGradient ? { fillGradient: { ...style.fillGradient, stops: style.fillGradient.stops.map((stop) => ({ ...stop })) } } : {}),
+        ...(style.fillBinding ? { fillBinding: { ...style.fillBinding } } : {}),
+        ...(style.strokeBinding ? { strokeBinding: { ...style.strokeBinding } } : {}),
+    }])),
     groups: state.groups.map(cloneLayoutGroup),
     deleted: [...state.deleted],
+    ...(state.hidden ? { hidden: [...state.hidden] } : {}),
+    ...(state.locked ? { locked: [...state.locked] } : {}),
+    ...(state.customElements
+        ? { customElements: state.customElements.map((element) => ({ ...element, frame: { ...element.frame } })) }
+        : {}),
+    ...(state.effects
+        ? { effects: Object.fromEntries(Object.entries(state.effects).map(([id, effects]) => [id, {
+            ...effects,
+            shadow: { ...effects.shadow },
+            blur: { ...effects.blur },
+        }])) }
+        : {}),
 });
 
 const layoutStatesEqual = (left: SerializableLayoutState, right: SerializableLayoutState) =>

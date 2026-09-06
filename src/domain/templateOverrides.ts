@@ -1,7 +1,7 @@
 import type { EventTemplateProps } from './EventTemplateProps';
 
-export type EditableTemplateField = 'title' | 'date' | 'time' | 'location';
-export type EventTemplateOverrides = Partial<Pick<EventTemplateProps, EditableTemplateField>>;
+export type EditableTemplateField = string;
+export type EventTemplateOverrides = Record<string, string>;
 
 export const applyTemplateOverrides = (
     template: EventTemplateProps,
@@ -12,14 +12,14 @@ export const applyTemplateOverrides = (
 });
 
 export const withTemplateOverride = (
-    template: EventTemplateProps,
+    template: object,
     overrides: EventTemplateOverrides,
-    field: EditableTemplateField,
+    field: string,
     value: string,
 ): EventTemplateOverrides => {
     const nextOverrides = { ...overrides };
 
-    if (value === template[field]) {
+    if (value === (template as Record<string, string | null>)[field]) {
         delete nextOverrides[field];
     } else {
         nextOverrides[field] = value;

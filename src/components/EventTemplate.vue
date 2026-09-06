@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type Konva from 'konva';
+import { Text as KonvaText } from 'konva/lib/shapes/Text';
+import QRCode from 'qrcode';
 import type { Box } from 'konva/lib/shapes/Transformer';
 import type { VueKonvaRef } from 'vue-konva';
 import { computed, nextTick, ref, shallowRef, watch } from 'vue';
@@ -7,15 +9,32 @@ import { computed, nextTick, ref, shallowRef, watch } from 'vue';
 import EditableTextElement from './EditableTextElement.vue';
 import EditableVisualElement from './EditableVisualElement.vue';
 import type { EventTemplateProps } from '../domain/EventTemplateProps';
+import {
+    PUBLISHER_DATA_TRANSFER_TYPE,
+    parsePublisherDataTransfer,
+    publisherDataValue,
+    resolvePublisherPlaceholders,
+    type PublisherDataValues,
+} from '../domain/appointmentDataFields';
 import { calculateCoverCrop, type ImageFocus } from '../domain/imageFocus';
+import type { LayoutColorBinding } from '../domain/imagePalette';
+import { layoutGradientFillConfig, normalizeLayoutGradient, type LayoutGradient } from '../domain/layoutGradient';
+import { publisherIcon, type PublisherIconName } from '../domain/publisherIcons';
+import { usePublisherImagePalettesStore } from '../stores/publisherImagePalettes';
 import {
     alignLayoutGeometry,
-    calculateAlignmentSnap,
+    applyLayoutGroupAutoLayout,
+    calculateSelectionDragSnap,
     constrainLayoutGeometry,
     constrainLayoutDelta,
+    constrainTransformerFrame,
     constrainFontSize,
     constrainLetterSpacing,
     constrainLineHeight,
+    createCustomTextStyle,
+    createCustomVisualStyle,
+    createCanvasStackOrder,
+    createLayoutCustomElement,
     createLayoutGroups,
     createLayoutOrder,
     createLayoutOffsets,
@@ -24,31 +43,59 @@ import {
     expandLayoutSelection,
     flattenLayoutGroups,
     findLayoutGroupDepth,
+    findLayoutGroupPath,
     groupLayoutElements,
     isHexColor,
+    isBuiltInLayoutElement,
+    isFixedAspectRatioLayoutElement,
+    isShapeLayoutElement,
+    isTextLayoutElement,
     keepRotatedFrameInDocument,
     layoutGroupElementIds,
+    layoutGroupAnchor,
+    layoutGroupBounds,
     layoutFramesIntersect,
     type AlignmentGuide,
     type LayoutElementId,
+    type LayoutEffects,
+    type LayoutElementEffects,
+    type LayoutCustomElement,
+    type LayoutCustomElementKind,
     type LayoutFrame,
     type LayoutGeometry,
+    type LayoutSelectionGeometry,
     type LayoutGroup,
+    type LayoutGroupAutoLayout,
+    type LayoutDistributionAxis,
+    type LayoutHorizontalOrigin,
+    type LayoutLayerDragNode,
+    type LayoutLayerDropPlacement,
+    type LayoutVerticalOrigin,
     type LayoutGroups,
+    type LayoutSizes,
     type LayoutAlignment,
     type LayoutTextStyle,
+    type LayoutTextMode,
     type LayoutTextStyles,
     type LayoutVisualStyle,
     type LayoutVisualStyles,
+    layoutElementHasEffects,
+    normalizeLayoutElementEffects,
     LAYOUT_ELEMENT_IDS,
     SHAPE_LAYOUT_ELEMENT_IDS,
     TEXT_LAYOUT_ELEMENT_IDS,
     moveLayoutElementInOrder,
+    moveLayoutOrderBlock,
+    nestLayoutNodeInGroup,
+    normalizeRotation,
+    distributeLayoutFrames,
     resizeLayoutFrame,
+    resizeLayoutFrameProportionally,
     resolveLayoutSelectionTarget,
     snapLayoutPoint,
     snapLayoutSize,
     snapRotation,
+    sortLayoutGroupChildren,
     ungroupLayoutElements,
 } from '../domain/layoutEditing';
 import {
@@ -76,13 +123,16 @@ const props = defineProps<{
     draftId: string;
     documentHeight: number;
     documentWidth: number;
+    dataValues: PublisherDataValues;
     initialLayouts: Partial<Record<TemplateId, SerializableLayoutState>>;
     imageFocus: ImageFocus;
     previewZoom: number;
     template: EventTemplateProps;
     templateId: TemplateId;
     snapEnabled: boolean;
+    showTemplateDecorations: boolean;
 }>();
+const imagePaletteStore = usePublisherImagePalettesStore();
 
 const emit = defineEmits<{
     imageStatus: [status: ImageStatus];
@@ -94,11 +144,18 @@ const emit = defineEmits<{
     selectionChange: [elementId: LayoutElementId | null];
     selectionIdsChange: [elementIds: LayoutElementId[]];
     selectionGroupChange: [canGroup: boolean, canUngroup: boolean, groupDepth: number];
+    selectionGroupPathChange: [groupIds: string[]];
     selectionDefaultChange: [changed: boolean];
-    selectionGeometryChange: [geometry: (LayoutGeometry & { elementId: LayoutElementId }) | null];
+    selectionGeometryChange: [geometry: LayoutSelectionGeometry | null];
     selectionStyleChange: [style: (LayoutTextStyle & { elementId: LayoutElementId }) | null];
+    selectionTextContentChange: [content: string | null];
+    selectionTextModeChange: [mode: LayoutTextMode | null];
     selectionVisualStyleChange: [style: (LayoutVisualStyle & { elementId: LayoutElementId }) | null];
 }>();
+
+const customElements = ref<Record<TemplateId, LayoutCustomElement[]>>({ split: [], poster: [] });
+const customImageNodes = shallowRef<Record<string, HTMLImageElement>>({});
+const customQrNodes = shallowRef<Record<string, HTMLImageElement>>({});
 
 const scaledTemplateDefinitions = computed(() => ({
     split: scaleTemplateDefinition(BUILT_IN_TEMPLATE_DEFINITIONS.split, props.documentWidth, props.documentHeight),
@@ -120,31 +177,48 @@ function createPageElementFrames(templateId: TemplateId): Record<LayoutElementId
         title: { ...definition.elements.title.frame },
         dateTime: { ...definition.elements.dateTime.frame },
         location: { ...definition.elements.location.frame },
+        ...Object.fromEntries(customElements.value[templateId].map((element) => [element.id, { ...element.frame }])),
     };
 }
+const allElementIds = (templateId: TemplateId) => [
+    ...LAYOUT_ELEMENT_IDS,
+    ...customElements.value[templateId].map(({ id }) => id),
+];
 const createPageLayoutSizes = (templateId: TemplateId) => Object.fromEntries(
-    LAYOUT_ELEMENT_IDS.map((elementId) => [elementId, {
+    allElementIds(templateId).map((elementId) => [elementId, {
         width: templateElementFrames.value[templateId][elementId].width,
         height: templateElementFrames.value[templateId][elementId].height,
     }]),
-) as Record<LayoutElementId, { width: number; height: number }>;
+) as LayoutSizes;
 const createPageLayoutTextStyles = (templateId: TemplateId) => Object.fromEntries(
-    TEMPLATE_TEXT_BINDINGS.map((binding) => [binding, {
+    [
+        ...TEMPLATE_TEXT_BINDINGS.map((binding) => [binding, {
         fontSize: scaledTemplateDefinitions.value[templateId].elements[binding].style.fontSize,
         color: scaledTemplateDefinitions.value[templateId].elements[binding].style.color,
+        stroke: '#000000',
+        strokeWidth: 0,
         fontFamily: scaledTemplateDefinitions.value[templateId].elements[binding].style.fontFamily,
         fontStyle: scaledTemplateDefinitions.value[templateId].elements[binding].style.fontStyle,
         lineHeight: scaledTemplateDefinitions.value[templateId].elements[binding].style.lineHeight,
         letterSpacing: 0,
         align: scaledTemplateDefinitions.value[templateId].elements[binding].style.align,
         listStyle: 'none',
-    }]),
+        textTransform: 'none',
+        underlineStyle: 'none',
+        strikethroughStyle: 'none',
+        }] as const),
+        ...customElements.value[templateId].filter(({ kind }) => kind === 'text')
+            .map(({ id }) => [id, createCustomTextStyle()] as const),
+    ],
 ) as LayoutTextStyles;
 const createPageLayoutVisualStyles = (templateId: TemplateId): LayoutVisualStyles => {
     const defaults = createLayoutVisualStyles(templateId);
     return {
         background: { ...defaults.background },
         accent: { ...defaults.accent },
+        ...Object.fromEntries(customElements.value[templateId]
+            .filter(({ kind }) => ['rectangle', 'circle', 'triangle', 'line', 'icon', 'qr'].includes(kind))
+            .map(({ id }) => [id, createCustomVisualStyle()])),
     };
 };
 
@@ -154,6 +228,19 @@ const image = shallowRef<HTMLImageElement | null>(null);
 const imageStatus = ref<ImageStatus>('idle');
 const selectedElements = ref<LayoutElementId[]>([]);
 const selectedElement = computed(() => selectedElements.value.at(-1) ?? null);
+const selectedGraphicText = computed(() => {
+    if (selectedElements.value.length !== 1 || !selectedElement.value) return false;
+    return customElements.value[props.templateId]
+        .some(({ id, kind, textMode }) => id === selectedElement.value && kind === 'text' && textMode === 'graphic');
+});
+const selectedLine = computed(() => selectedElements.value.length === 1 && Boolean(
+    selectedElement.value && customElementById(selectedElement.value)?.kind === 'line',
+));
+const selectedKeepsAspectRatio = computed(() =>
+    selectedGraphicText.value || (
+        selectedElements.value.length === 1 && Boolean(selectedElement.value) &&
+        isFixedAspectRatioLayoutElement(selectedElement.value!)
+    ));
 const selectedGroupId = ref<string | null>(null);
 const isExporting = ref(false);
 const activeAlignmentGuides = ref<AlignmentGuide[]>([]);
@@ -186,9 +273,19 @@ const layoutGroups = ref<Record<TemplateId, ReturnType<typeof createLayoutGroups
     split: createLayoutGroups(),
     poster: createLayoutGroups(),
 });
+const layoutEffects = ref<Record<TemplateId, LayoutEffects>>({ split: {}, poster: {} });
 const deletedElements = ref<Record<TemplateId, LayoutElementId[]>>({ split: [], poster: [] });
+const hiddenElements = ref<Record<TemplateId, LayoutElementId[]>>({ split: [], poster: [] });
+const lockedElements = ref<Record<TemplateId, LayoutElementId[]>>({ split: [], poster: [] });
+const elementIsLocked = (elementId: LayoutElementId) => lockedElements.value[props.templateId].includes(elementId);
+const selectionContainsLockedElement = () => selectedElements.value.some(elementIsLocked);
 const availableElements = computed(() =>
     layoutOrder.value[props.templateId].filter((elementId) => !deletedElements.value[props.templateId].includes(elementId)));
+const canvasStackOrder = computed(() => createCanvasStackOrder(
+    layoutOrder.value[props.templateId],
+    deletedElements.value[props.templateId],
+    Boolean(props.template.location),
+));
 const layoutHistories = ref<Record<TemplateId, ReturnType<typeof createLayoutHistory>>>({
     split: createLayoutHistory(),
     poster: createLayoutHistory(),
@@ -216,27 +313,44 @@ const imageIsVisible = computed(() =>
 const transformerConfig = computed(() => ({
     rotateEnabled: selectedElements.value.length === 1,
     flipEnabled: false,
-    keepRatio: false,
+    keepRatio: selectedKeepsAspectRatio.value,
     enabledAnchors: selectedElements.value.length === 1
-        ? ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right']
+        ? selectedLine.value
+            ? ['middle-left', 'middle-right']
+            : selectedKeepsAspectRatio.value
+            ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+            : ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right']
         : [],
     anchorFill: '#ffffff',
     anchorStroke: '#2479c5',
     anchorSize: 7,
     borderStroke: '#2479c5',
     borderStrokeWidth: 1,
+    anchorStyleFunc: (anchor: Konva.Rect) => {
+        anchor.hitStrokeWidth(18);
+        anchor.off('.publisher-autofit');
+        anchor.on('mousedown.publisher-autofit', (event) => {
+            if ('detail' in event.evt && event.evt.detail >= 2) {
+                transformerRef.value?.getNode()?.stopTransform();
+                handleTransformerDoubleClick(event);
+            }
+        });
+        anchor.on('mouseup.publisher-autofit', (event) => {
+            if ('detail' in event.evt && event.evt.detail >= 2) handleTransformerDoubleClick(event);
+        });
+        anchor.on('dblclick.publisher-autofit dbltap.publisher-autofit', handleTransformerDoubleClick);
+    },
     rotateAnchorOffset: 18,
     rotationSnaps: props.snapEnabled
         ? [-180, -165, -150, -135, -120, -105, -90, -75, -60, -45, -30, -15, 0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180]
         : [],
     rotationSnapTolerance: 5,
     boundBoxFunc: (oldBox: Box, newBox: Box) => {
-        const insideDocument =
-            newBox.x >= 0 &&
-            newBox.y >= 0 &&
-            newBox.x + newBox.width <= props.documentWidth &&
-            newBox.y + newBox.height <= props.documentHeight;
-        return newBox.width >= 120 && newBox.height >= 50 && insideDocument ? newBox : oldBox;
+        const minimumSize = selectedGraphicText.value ? 12 : 1;
+        return {
+            ...newBox,
+            ...constrainTransformerFrame(oldBox, newBox, minimumSize, documentSize.value),
+        };
     },
 }));
 
@@ -259,17 +373,32 @@ const imageConfig = computed(() => ({
 }));
 
 const decorationLayers = (placement: TemplateDecorationPlacement) =>
-    templateDefinition.value.composition.decorations.filter((decoration) =>
+    props.showTemplateDecorations ? templateDefinition.value.composition.decorations.filter((decoration) =>
         decoration.placement === placement &&
         decoration.id !== 'background' && decoration.id !== 'accent' &&
         (decoration.visibility === 'always' || !imageIsVisible.value),
-    );
+    ) : [];
 
-const visualConfig = (elementId: 'background' | 'accent') => ({
-    fill: layoutVisualStyles.value[props.templateId][elementId].fill,
-    stroke: layoutVisualStyles.value[props.templateId][elementId].stroke,
-    strokeWidth: layoutVisualStyles.value[props.templateId][elementId].strokeWidth,
+const resolvedTextColor = (style: LayoutTextStyle) =>
+    imagePaletteStore.resolveColor(style.colorBinding, style.color);
+const resolvedTextStrokeColor = (style: LayoutTextStyle) =>
+    imagePaletteStore.resolveColor(style.strokeBinding, style.stroke);
+const resolvedVisualStyle = (style: LayoutVisualStyle): LayoutVisualStyle => ({
+    ...style,
+    fill: imagePaletteStore.resolveColor(style.fillBinding, style.fill),
+    stroke: imagePaletteStore.resolveColor(style.strokeBinding, style.stroke),
 });
+const visualConfig = (elementId: 'background' | 'accent') =>
+    visualPaintConfig(elementId, layoutVisualStyles.value[props.templateId][elementId]);
+const visualPaintConfig = (elementId: LayoutElementId, style: LayoutVisualStyle) => {
+    const resolved = resolvedVisualStyle(style);
+    const { fillGradient: _, ...config } = resolved;
+    return style.fillGradient
+        ? { ...config, ...layoutGradientFillConfig(style.fillGradient, elementFrame(elementId)) }
+        : config;
+};
+const elementEffects = (elementId: LayoutElementId) =>
+    normalizeLayoutElementEffects(layoutEffects.value[props.templateId][elementId]);
 
 const decorationConfig = (decoration: TemplateDecoration) => ({
     ...decoration.frame,
@@ -307,12 +436,27 @@ const applyListStyle = (text: string, listStyle: LayoutTextStyle['listStyle']) =
         line.trim() ? `${listStyle === 'bullet' ? '•' : `${index + 1}.`} ${line}` : line).join('\n');
 };
 
+const applyTextTransform = (text: string, textTransform: LayoutTextStyle['textTransform']) =>
+    textTransform === 'uppercase' ? text.toLocaleUpperCase() : text;
+
+const textDecoration = (style: LayoutTextStyle) => [
+    style.underlineStyle !== 'none' ? 'underline' : '',
+    style.strikethroughStyle !== 'none' ? 'line-through' : '',
+].filter(Boolean).join(' ');
+
 const editableTextConfig = (binding: TemplateTextBinding) => {
     const definitionStyle = templateDefinition.value.elements[binding].style;
     const editableStyle = layoutTextStyles.value[props.templateId][binding];
     return {
-        text: applyListStyle(editableTextValues.value[binding], editableStyle.listStyle),
-        fill: editableStyle.color,
+        text: applyTextTransform(
+            applyListStyle(editableTextValues.value[binding], editableStyle.listStyle),
+            editableStyle.textTransform,
+        ),
+        ...(editableStyle.colorGradient
+            ? layoutGradientFillConfig(editableStyle.colorGradient, elementFrame(binding))
+            : { fill: resolvedTextColor(editableStyle) }),
+        stroke: editableStyle.strokeWidth > 0 ? resolvedTextStrokeColor(editableStyle) : undefined,
+        strokeWidth: editableStyle.strokeWidth,
         fontSize: editableStyle.fontSize,
         fontFamily: editableStyle.fontFamily,
         fontStyle: editableStyle.fontStyle,
@@ -321,8 +465,267 @@ const editableTextConfig = (binding: TemplateTextBinding) => {
         wrap: definitionStyle.wrap,
         ellipsis: definitionStyle.ellipsis,
         align: editableStyle.align,
+        fontVariant: editableStyle.textTransform === 'smallCaps' ? 'small-caps' : 'normal',
+        textDecoration: textDecoration(editableStyle),
     };
 };
+
+const customElementById = (elementId: LayoutElementId) =>
+    customElements.value[props.templateId].find(({ id }) => id === elementId);
+
+type CanvasRenderItem =
+    | { role: 'background'; id: 'background' }
+    | { role: 'image'; id: 'image' }
+    | { role: 'accent'; id: 'accent' }
+    | { role: 'decorationBehind'; id: 'decoration-behind' }
+    | { role: 'decorationOver'; id: 'decoration-over' }
+    | { role: 'templateText'; id: TemplateTextBinding }
+    | { role: 'custom'; id: LayoutElementId; element: LayoutCustomElement };
+
+const canvasRenderItems = computed<CanvasRenderItem[]>(() => canvasStackOrder.value.flatMap((stackItem): CanvasRenderItem[] => {
+    if (hiddenElements.value[props.templateId].includes(stackItem as LayoutElementId)) return [];
+    if (stackItem === 'background') return [{ role: 'background', id: stackItem }];
+    if (stackItem === 'image') return [{ role: 'image', id: stackItem }];
+    if (stackItem === 'accent') return [{ role: 'accent', id: stackItem }];
+    if (stackItem === 'decoration-behind') {
+        return [{ role: 'decorationBehind', id: stackItem }];
+    }
+    if (stackItem === 'decoration-over') {
+        return [{ role: 'decorationOver', id: stackItem }];
+    }
+    if (TEMPLATE_TEXT_BINDINGS.includes(stackItem as TemplateTextBinding)) {
+        return [{ role: 'templateText', id: stackItem as TemplateTextBinding }];
+    }
+    const element = customElementById(stackItem);
+    return element ? [{ role: 'custom', id: element.id, element }] : [];
+}));
+
+const customTextMode = (element: LayoutCustomElement): LayoutTextMode => element.textMode ?? 'frame';
+
+const resolvedCustomText = (element: LayoutCustomElement, style: LayoutTextStyle) =>
+    applyTextTransform(
+        applyListStyle(resolvePublisherPlaceholders(element.text ?? 'Neuer Text', props.dataValues), style.listStyle),
+        style.textTransform,
+    );
+
+const measureCustomText = (element: LayoutCustomElement, style: LayoutTextStyle) => {
+    const mode = customTextMode(element);
+    const textNode = new KonvaText({
+        text: resolvedCustomText(element, style) || ' ',
+        fontSize: style.fontSize,
+        fontFamily: style.fontFamily,
+        fontStyle: style.fontStyle,
+        fontVariant: style.textTransform === 'smallCaps' ? 'small-caps' : 'normal',
+        lineHeight: style.lineHeight,
+        letterSpacing: style.letterSpacing,
+        wrap: mode === 'graphic' ? 'none' : 'word',
+        ...(mode === 'frame' ? { width: elementFrame(element.id).width } : {}),
+    });
+    const size = {
+        width: mode === 'graphic' ? Math.ceil(textNode.width()) : elementFrame(element.id).width,
+        height: Math.ceil(textNode.height()),
+    };
+    textNode.destroy();
+    return {
+        width: Math.max(12, Math.min(props.documentWidth, size.width)),
+        height: Math.max(12, Math.min(props.documentHeight, size.height)),
+    };
+};
+
+const syncGraphicTextSize = (elementId: LayoutElementId) => {
+    const element = customElementById(elementId);
+    if (!element || element.kind !== 'text' || customTextMode(element) !== 'graphic') return;
+    const style = layoutTextStyles.value[props.templateId][elementId] ?? createCustomTextStyle();
+    layoutSizes.value[props.templateId][elementId] = measureCustomText(element, style);
+};
+
+const syncAllGraphicTextSizes = () => {
+    customElements.value[props.templateId].forEach(({ id }) => syncGraphicTextSize(id));
+};
+
+const customTextConfig = (element: LayoutCustomElement) => {
+    const style = layoutTextStyles.value[props.templateId][element.id] ?? createCustomTextStyle();
+    return {
+        text: resolvedCustomText(element, style),
+        ...(style.colorGradient
+            ? layoutGradientFillConfig(style.colorGradient, elementFrame(element.id))
+            : { fill: resolvedTextColor(style) }),
+        stroke: style.strokeWidth > 0 ? resolvedTextStrokeColor(style) : undefined,
+        strokeWidth: style.strokeWidth,
+        fontSize: style.fontSize,
+        fontFamily: style.fontFamily,
+        fontStyle: style.fontStyle,
+        fontVariant: style.textTransform === 'smallCaps' ? 'small-caps' : 'normal',
+        lineHeight: style.lineHeight,
+        letterSpacing: style.letterSpacing,
+        align: style.align,
+        textDecoration: textDecoration(style),
+        wrap: customTextMode(element) === 'graphic' ? 'none' : 'word',
+        ellipsis: customTextMode(element) === 'frame',
+    };
+};
+
+const additionalTextDecorationLines = (
+    elementId: LayoutElementId,
+    config: Konva.TextConfig,
+    style: LayoutTextStyle,
+    graphicText: boolean,
+): Konva.LineConfig[] => {
+    if (style.underlineStyle !== 'double' && style.strikethroughStyle !== 'double') return [];
+    const frame = elementFrame(elementId);
+    const textNode = new KonvaText({
+        ...config,
+        ...(graphicText ? {} : { width: frame.width, height: frame.height }),
+    });
+    const fontSize = style.fontSize;
+    const lineHeight = fontSize * style.lineHeight;
+    const metrics = textNode.measureSize('M');
+    const ascent = metrics.fontBoundingBoxAscent || metrics.actualBoundingBoxAscent;
+    const descent = metrics.fontBoundingBoxDescent || metrics.actualBoundingBoxDescent;
+    const baseline = (ascent - descent) / 2 + lineHeight / 2;
+    const lines: Konva.LineConfig[] = [];
+    for (let index = 0; index < textNode.textArr.length; index += 1) {
+        const textLine = textNode.textArr[index];
+        const x = style.align === 'right'
+            ? textNode.width() - textLine.width
+            : style.align === 'center' ? (textNode.width() - textLine.width) / 2 : 0;
+        const baseY = baseline + index * lineHeight;
+        if (style.underlineStyle === 'double') {
+            const y = baseY + Math.round(fontSize / 4) - Math.max(2, fontSize / 9);
+            lines.push({ points: [x, y, x + textLine.width, y], stroke: resolvedTextColor(style), strokeWidth: fontSize / 15 });
+        }
+        if (style.strikethroughStyle === 'double') {
+            const y = baseY - Math.round(fontSize / 4) + Math.max(2, fontSize / 9);
+            lines.push({ points: [x, y, x + textLine.width, y], stroke: resolvedTextColor(style), strokeWidth: fontSize / 15 });
+        }
+    }
+    textNode.destroy();
+    return lines;
+};
+
+const editableTextDecorationLines = (binding: TemplateTextBinding) => {
+    const style = layoutTextStyles.value[props.templateId][binding];
+    return additionalTextDecorationLines(binding, editableTextConfig(binding), style, false);
+};
+
+const customTextDecorationLines = (element: LayoutCustomElement) => {
+    const style = layoutTextStyles.value[props.templateId][element.id] ?? createCustomTextStyle();
+    return additionalTextDecorationLines(
+        element.id,
+        customTextConfig(element),
+        style,
+        customTextMode(element) === 'graphic',
+    );
+};
+
+const customVisualConfig = (elementId: LayoutElementId) => visualPaintConfig(
+    elementId,
+    layoutVisualStyles.value[props.templateId][elementId] ?? createCustomVisualStyle(),
+);
+
+const customShapeType = (element: LayoutCustomElement): 'rectangle' | 'circle' | 'triangle' | 'line' =>
+    element.kind === 'circle' || element.kind === 'triangle' || element.kind === 'line' ? element.kind : 'rectangle';
+
+const customIconPathConfig = (element: LayoutCustomElement): Konva.PathConfig | null => {
+    if (element.kind !== 'icon' || !element.iconName) return null;
+    const definition = publisherIcon(element.iconName).icon;
+    const path = Array.isArray(definition.icon[4]) ? definition.icon[4][0] : definition.icon[4];
+    const sourceWidth = definition.icon[0];
+    const sourceHeight = definition.icon[1];
+    const frame = elementFrame(element.id);
+    const scale = Math.min(frame.width / sourceWidth, frame.height / sourceHeight);
+    const style = resolvedVisualStyle(layoutVisualStyles.value[props.templateId][element.id] ?? createCustomVisualStyle());
+    const fillConfig = style.fillGradient
+        ? layoutGradientFillConfig(style.fillGradient, { x: 0, y: 0, width: sourceWidth, height: sourceHeight })
+        : { fill: style.fill };
+    return {
+        data: path,
+        x: (frame.width - sourceWidth * scale) / 2,
+        y: (frame.height - sourceHeight * scale) / 2,
+        scaleX: scale,
+        scaleY: scale,
+        ...fillConfig,
+        stroke: style.strokeWidth > 0 ? style.stroke : undefined,
+        strokeWidth: style.strokeWidth / Math.max(scale, 0.001),
+    };
+};
+
+const customImageConfig = (element: LayoutCustomElement) => {
+    const imageNode = customImageNodes.value[element.id];
+    if (!imageNode) return null;
+    const frame = elementFrame(element.id);
+    const crop = calculateCoverCrop(
+        { width: imageNode.naturalWidth, height: imageNode.naturalHeight },
+        { width: frame.width, height: frame.height },
+        { x: 50, y: 50, zoom: 100 },
+    );
+    return { image: imageNode, crop: crop ?? undefined };
+};
+
+const resolvedCustomImageSource = (element: LayoutCustomElement) =>
+    element.dataBinding ? publisherDataValue(props.dataValues, element.dataBinding) : element.imageSource;
+
+const loadCustomImage = (element: LayoutCustomElement) => {
+    const source = resolvedCustomImageSource(element);
+    if (element.kind !== 'image' || !source) return;
+    const nextImage = new Image();
+    if (/^https?:\/\//i.test(source)) nextImage.crossOrigin = 'anonymous';
+    nextImage.onload = () => {
+        customImageNodes.value = { ...customImageNodes.value, [element.id]: nextImage };
+    };
+    nextImage.src = source;
+};
+
+const loadCustomImages = (elements: LayoutCustomElement[]) => {
+    customImageNodes.value = {};
+    elements.forEach(loadCustomImage);
+};
+const reloadAllCustomImages = () => loadCustomImages([
+    ...customElements.value.split,
+    ...customElements.value.poster,
+]);
+
+const qrRenderRevisions = new Map<LayoutElementId, number>();
+const resolvedCustomQrValue = (element: LayoutCustomElement) =>
+    element.dataBinding ? publisherDataValue(props.dataValues, element.dataBinding) : element.qrValue ?? '';
+
+const loadCustomQr = async (element: LayoutCustomElement) => {
+    if (element.kind !== 'qr') return;
+    const value = resolvedCustomQrValue(element);
+    const revision = (qrRenderRevisions.get(element.id) ?? 0) + 1;
+    qrRenderRevisions.set(element.id, revision);
+    if (!value) {
+        const { [element.id]: _, ...remaining } = customQrNodes.value;
+        customQrNodes.value = remaining;
+        return;
+    }
+    const style = resolvedVisualStyle(layoutVisualStyles.value[props.templateId][element.id] ?? createCustomVisualStyle());
+    try {
+        const source = await QRCode.toDataURL(value, {
+            errorCorrectionLevel: element.qrErrorCorrection ?? 'M',
+            margin: element.qrMargin ?? 2,
+            width: 1024,
+            color: { dark: style.fill, light: element.qrBackground ?? '#ffffff' },
+        });
+        if (qrRenderRevisions.get(element.id) !== revision) return;
+        const imageNode = new Image();
+        imageNode.onload = () => {
+            if (qrRenderRevisions.get(element.id) === revision) {
+                customQrNodes.value = { ...customQrNodes.value, [element.id]: imageNode };
+            }
+        };
+        imageNode.src = source;
+    } catch {
+        const { [element.id]: _, ...remaining } = customQrNodes.value;
+        customQrNodes.value = remaining;
+    }
+};
+
+const reloadCurrentCustomQrs = () => {
+    customQrNodes.value = {};
+    customElements.value[props.templateId].forEach((element) => void loadCustomQr(element));
+};
+
 const currentLayoutChanged = computed(() => {
     const geometryChanged = (
         Object.entries(layoutOffsets.value[props.templateId]) as [LayoutElementId, { x: number; y: number }][]
@@ -348,11 +751,14 @@ const currentLayoutChanged = computed(() => {
     const visualStyleChanged = SHAPE_LAYOUT_ELEMENT_IDS.some((elementId) => {
         const style = layoutVisualStyles.value[props.templateId][elementId];
         const defaultStyle = defaultVisualStyles[elementId];
-        return style.fill !== defaultStyle.fill || style.stroke !== defaultStyle.stroke ||
-            style.strokeWidth !== defaultStyle.strokeWidth;
+        return JSON.stringify(style) !== JSON.stringify(defaultStyle);
     });
     return geometryChanged || orderChanged || textStyleChanged || visualStyleChanged ||
+        Object.values(layoutEffects.value[props.templateId]).some(layoutElementHasEffects) ||
+        customElements.value[props.templateId].length > 0 ||
         deletedElements.value[props.templateId].length > 0 ||
+        hiddenElements.value[props.templateId].length > 0 ||
+        lockedElements.value[props.templateId].length > 0 ||
         layoutGroups.value[props.templateId].length > 0;
 });
 
@@ -369,25 +775,236 @@ const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
     };
 };
 
+const currentElementFrames = () => Object.fromEntries(
+    layoutOrder.value[props.templateId]
+        .filter((elementId) => !deletedElements.value[props.templateId].includes(elementId))
+        .map((elementId) => [elementId, elementFrame(elementId)]),
+) as Partial<Record<LayoutElementId, LayoutFrame>>;
+
+const selectedGroupVisualBounds = (group: LayoutGroup): LayoutFrame | null => {
+    const frames = layoutGroupElementIds(group)
+        .map((elementId) => {
+            const frame = elementFrame(elementId);
+            const radians = layoutRotations.value[props.templateId][elementId] * Math.PI / 180;
+            const cosine = Math.cos(radians);
+            const sine = Math.sin(radians);
+            const corners = [
+                { x: 0, y: 0 },
+                { x: frame.width, y: 0 },
+                { x: 0, y: frame.height },
+                { x: frame.width, y: frame.height },
+            ].map((point) => ({
+                x: frame.x + point.x * cosine - point.y * sine,
+                y: frame.y + point.x * sine + point.y * cosine,
+            }));
+            const x = Math.min(...corners.map((point) => point.x));
+            const y = Math.min(...corners.map((point) => point.y));
+            return {
+                x,
+                y,
+                width: Math.max(...corners.map((point) => point.x)) - x,
+                height: Math.max(...corners.map((point) => point.y)) - y,
+            };
+        });
+    if (frames.length === 0) return null;
+    const x = Math.min(...frames.map((frame) => frame.x));
+    const y = Math.min(...frames.map((frame) => frame.y));
+    const right = Math.max(...frames.map((frame) => frame.x + frame.width));
+    const bottom = Math.max(...frames.map((frame) => frame.y + frame.height));
+    return { x, y, width: right - x, height: bottom - y };
+};
+
+const textMeasurementConfig = (elementId: LayoutElementId) => {
+    if (!isTextLayoutElement(elementId)) return null;
+    const customElement = customElementById(elementId);
+    if (customElement?.kind === 'text' && customTextMode(customElement) === 'graphic') return null;
+    return customElement?.kind === 'text'
+        ? customTextConfig(customElement)
+        : editableTextConfig(elementId as (typeof TEXT_LAYOUT_ELEMENT_IDS)[number]);
+};
+
+const measuredTextHeight = (elementId: LayoutElementId, width: number) => {
+    const config = textMeasurementConfig(elementId);
+    if (!config) return null;
+    const textNode = new KonvaText({ ...config, width, height: undefined });
+    const height = Math.ceil(textNode.height());
+    textNode.destroy();
+    return height;
+};
+
+const autoLayoutTextHeight = (elementId: LayoutElementId) => {
+    const frame = elementFrame(elementId);
+    const height = measuredTextHeight(elementId, frame.width);
+    return height === null ? null : Math.max(12, Math.min(props.documentHeight, height));
+};
+
+const autoLayoutTextWidth = (elementId: LayoutElementId) => {
+    if (!textMeasurementConfig(elementId)) return null;
+    const frame = elementFrame(elementId);
+    const minimumWidth = 12;
+    const maximumWidth = Math.max(minimumWidth, props.documentWidth - frame.x);
+    const targetHeight = Math.max(12, frame.height);
+    const maximumWidthHeight = measuredTextHeight(elementId, maximumWidth);
+    if (maximumWidthHeight === null) return null;
+    if (maximumWidthHeight > targetHeight + 0.5) return maximumWidth;
+
+    let lowerBound = minimumWidth;
+    let upperBound = maximumWidth;
+    for (let index = 0; index < 18; index += 1) {
+        const candidate = (lowerBound + upperBound) / 2;
+        const height = measuredTextHeight(elementId, candidate) ?? Number.POSITIVE_INFINITY;
+        if (height <= targetHeight + 0.5) upperBound = candidate;
+        else lowerBound = candidate;
+    }
+    return Math.ceil(upperBound);
+};
+
+const autoFitSelectedTextFrame = (axis: 'height' | 'width') => {
+    if (selectedElements.value.length !== 1 || !selectedElement.value) return;
+    const elementId = selectedElement.value;
+    const frame = elementFrame(elementId);
+    const fittedValue = axis === 'height' ? autoLayoutTextHeight(elementId) : autoLayoutTextWidth(elementId);
+    if (fittedValue === null || Math.abs(frame[axis] - fittedValue) < 0.5) return;
+    const resizedFrame = resizeLayoutFrame(
+        frame,
+        axis === 'height' ? { width: frame.width, height: fittedValue } : { width: fittedValue, height: frame.height },
+        documentSize.value,
+    );
+    const previousState = captureLayoutState();
+    layoutSizes.value[props.templateId][elementId] = { width: resizedFrame.width, height: resizedFrame.height };
+    reflowAutoLayoutGroups();
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
+};
+
+const reflowAutoLayoutGroups = () => {
+    const groups = layoutGroups.value[props.templateId];
+    const verticalTextIds = new Set(groups.flatMap((group) => flattenLayoutGroups([group]))
+        .filter(({ autoLayout }) => autoLayout?.axis === 'vertical')
+        .flatMap(layoutGroupElementIds)
+        .filter(isTextLayoutElement));
+    for (const elementId of verticalTextIds) {
+        const height = autoLayoutTextHeight(elementId);
+        if (height !== null) layoutSizes.value[props.templateId][elementId].height = height;
+    }
+
+    const reflowGroup = (
+        group: LayoutGroup,
+        frames: Partial<Record<LayoutElementId, LayoutFrame>>,
+    ): Partial<Record<LayoutElementId, LayoutFrame>> => {
+        let nextFrames = frames;
+        for (const child of group.children) {
+            if (typeof child !== 'string') nextFrames = reflowGroup(child, nextFrames);
+        }
+        return applyLayoutGroupAutoLayout(group, nextFrames);
+    };
+    let frames = currentElementFrames();
+    for (const group of groups) frames = reflowGroup(group, frames);
+    for (const [elementId, frame] of Object.entries(frames) as [LayoutElementId, LayoutFrame][]) {
+        const baseFrame = templateElementFrames.value[props.templateId][elementId];
+        layoutOffsets.value[props.templateId][elementId] = { x: frame.x - baseFrame.x, y: frame.y - baseFrame.y };
+        layoutSizes.value[props.templateId][elementId] = { width: frame.width, height: frame.height };
+    }
+};
+
+const updateLayoutGroup = (
+    groups: LayoutGroups,
+    groupId: string,
+    update: (group: LayoutGroup) => LayoutGroup,
+): LayoutGroups => groups.map((group) => group.id === groupId
+    ? update(group)
+    : { ...group, children: group.children.map((child) => typeof child === 'string'
+        ? child
+        : updateLayoutGroup([child], groupId, update)[0]!) });
+
+const syncSelectedAutoLayoutAnchor = () => {
+    if (!selectedGroupId.value) return;
+    const groups = layoutGroups.value[props.templateId];
+    const group = flattenLayoutGroups(groups).find(({ id }) => id === selectedGroupId.value);
+    if (!group) return;
+    const frames = currentElementFrames();
+    const syncAnchors = (candidate: LayoutGroup): LayoutGroup => {
+        const next = {
+            ...candidate,
+            children: candidate.children.map((child) => typeof child === 'string' ? child : syncAnchors(child)),
+        };
+        if (!next.autoLayout) return next;
+        const bounds = layoutGroupBounds(next, frames);
+        if (!bounds) return next;
+        return {
+            ...next,
+            autoLayout: {
+                ...next.autoLayout,
+                anchor: layoutGroupAnchor(bounds, next.autoLayout.horizontalOrigin, next.autoLayout.verticalOrigin),
+            },
+        };
+    };
+    layoutGroups.value[props.templateId] = updateLayoutGroup(groups, group.id, (candidate) => ({
+        ...syncAnchors(candidate),
+    }));
+};
+
+const setSelectedGroupAutoLayout = (settings: {
+    axis: LayoutDistributionAxis;
+    gap: number;
+    horizontalOrigin: LayoutHorizontalOrigin;
+    verticalOrigin: LayoutVerticalOrigin;
+} | null) => {
+    if (!selectedGroupId.value) return;
+    const groups = layoutGroups.value[props.templateId];
+    const selectedGroup = flattenLayoutGroups(groups).find(({ id }) => id === selectedGroupId.value);
+    if (!selectedGroup) return;
+    const previousState = captureLayoutState();
+    if (!settings) {
+        layoutGroups.value[props.templateId] = updateLayoutGroup(groups, selectedGroup.id, ({ autoLayout: _, ...group }) => group);
+    } else {
+        const requestedGap = Number(settings.gap);
+        const gap = Number.isFinite(requestedGap)
+            ? Math.min(4096, Math.max(0, requestedGap))
+            : selectedGroup.autoLayout?.gap ?? 8;
+        const frames = currentElementFrames();
+        const bounds = layoutGroupBounds(selectedGroup, frames);
+        if (!bounds) return;
+        const originChanged = selectedGroup.autoLayout && (
+            selectedGroup.autoLayout.horizontalOrigin !== settings.horizontalOrigin ||
+            selectedGroup.autoLayout.verticalOrigin !== settings.verticalOrigin ||
+            selectedGroup.autoLayout.axis !== settings.axis
+        );
+        const anchor = !selectedGroup.autoLayout || originChanged
+            ? layoutGroupAnchor(bounds, settings.horizontalOrigin, settings.verticalOrigin)
+            : selectedGroup.autoLayout.anchor;
+        const autoLayout: LayoutGroupAutoLayout = { ...settings, gap, anchor };
+        layoutGroups.value[props.templateId] = updateLayoutGroup(groups, selectedGroup.id, (group) => ({
+            ...sortLayoutGroupChildren(group, frames, settings.axis),
+            autoLayout,
+        }));
+        reflowAutoLayoutGroups();
+    }
+    commitCurrentLayout(previousState);
+    updateSelection(selectedElements.value, selectedGroup.id);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
 const elementIsDefault = (elementId: LayoutElementId) => {
+    if (!isBuiltInLayoutElement(elementId)) return false;
     const frame = elementFrame(elementId);
     const baseFrame = templateElementFrames.value[props.templateId][elementId];
     const geometryChanged = frame.x !== baseFrame.x || frame.y !== baseFrame.y ||
         frame.width !== baseFrame.width || frame.height !== baseFrame.height ||
         layoutRotations.value[props.templateId][elementId] !== 0 ||
         layoutOrder.value[props.templateId].indexOf(elementId) !== createLayoutOrder().indexOf(elementId);
-    if (TEXT_LAYOUT_ELEMENT_IDS.includes(elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number])) {
+    if (isTextLayoutElement(elementId)) {
         const textId = elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number];
         const style = layoutTextStyles.value[props.templateId][textId];
         const defaultStyle = createPageLayoutTextStyles(props.templateId)[textId];
         return !geometryChanged && JSON.stringify(style) === JSON.stringify(defaultStyle);
     }
-    if (SHAPE_LAYOUT_ELEMENT_IDS.includes(elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number])) {
+    if (isShapeLayoutElement(elementId)) {
         const shapeId = elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number];
         const style = layoutVisualStyles.value[props.templateId][shapeId];
         const defaultStyle = createPageLayoutVisualStyles(props.templateId)[shapeId];
-        return !geometryChanged && style.fill === defaultStyle.fill && style.stroke === defaultStyle.stroke &&
-            style.strokeWidth === defaultStyle.strokeWidth;
+        return !geometryChanged && JSON.stringify(style) === JSON.stringify(defaultStyle);
     }
     return !geometryChanged;
 };
@@ -397,19 +1014,38 @@ const emitSelectionGeometry = () => {
         emit('selectionGeometryChange', null);
         emit('selectionStyleChange', null);
         emit('selectionVisualStyleChange', null);
+        emit('selectionTextContentChange', null);
+        emit('selectionTextModeChange', null);
         emit('selectionDefaultChange', false);
         return;
     }
 
     const elementId = selectedElement.value;
+    if (selectedGroupId.value) {
+        const group = flattenLayoutGroups(layoutGroups.value[props.templateId])
+            .find(({ id }) => id === selectedGroupId.value);
+        const bounds = group ? selectedGroupVisualBounds(group) : null;
+        emit('selectionGeometryChange', group && bounds ? {
+            elementId: null,
+            groupId: group.id,
+            ...bounds,
+            rotation: group.rotation ?? 0,
+        } : null);
+        emit('selectionStyleChange', null);
+        emit('selectionVisualStyleChange', null);
+        emit('selectionTextContentChange', null);
+        emit('selectionTextModeChange', null);
+        emit('selectionDefaultChange', true);
+        return;
+    }
     if (selectedElements.value.length > 1) {
         emit('selectionGeometryChange', null);
-        const textId = TEXT_LAYOUT_ELEMENT_IDS.includes(elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number])
-            ? elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number] : null;
-        const shapeId = SHAPE_LAYOUT_ELEMENT_IDS.includes(elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number])
-            ? elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number] : null;
+        const textId = isTextLayoutElement(elementId) ? elementId : null;
+        const shapeId = isShapeLayoutElement(elementId) ? elementId : null;
         emit('selectionStyleChange', textId ? { elementId, ...layoutTextStyles.value[props.templateId][textId] } : null);
         emit('selectionVisualStyleChange', shapeId ? { elementId, ...layoutVisualStyles.value[props.templateId][shapeId] } : null);
+        emit('selectionTextContentChange', null);
+        emit('selectionTextModeChange', null);
         emit('selectionDefaultChange', selectedElements.value.some((selectedId) => !elementIsDefault(selectedId)));
         return;
     }
@@ -420,12 +1056,13 @@ const emitSelectionGeometry = () => {
         ...frame,
         rotation: layoutRotations.value[props.templateId][elementId],
     });
-    const textId = TEXT_LAYOUT_ELEMENT_IDS.includes(elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number])
-        ? elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number] : null;
-    const shapeId = SHAPE_LAYOUT_ELEMENT_IDS.includes(elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number])
-        ? elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number] : null;
+    const textId = isTextLayoutElement(elementId) ? elementId : null;
+    const shapeId = isShapeLayoutElement(elementId) ? elementId : null;
     emit('selectionStyleChange', textId ? { elementId, ...layoutTextStyles.value[props.templateId][textId] } : null);
     emit('selectionVisualStyleChange', shapeId ? { elementId, ...layoutVisualStyles.value[props.templateId][shapeId] } : null);
+    emit('selectionTextContentChange', elementId.startsWith('text-') ? customElementById(elementId)?.text ?? '' : null);
+    const customText = elementId.startsWith('text-') ? customElementById(elementId) : null;
+    emit('selectionTextModeChange', customText?.kind === 'text' ? customTextMode(customText) : null);
     emit('selectionDefaultChange', !elementIsDefault(elementId));
 };
 
@@ -439,6 +1076,10 @@ const captureLayoutState = (): SerializableLayoutState =>
         visualStyles: layoutVisualStyles.value[props.templateId],
         groups: layoutGroups.value[props.templateId],
         deleted: deletedElements.value[props.templateId],
+        hidden: hiddenElements.value[props.templateId],
+        locked: lockedElements.value[props.templateId],
+        customElements: customElements.value[props.templateId],
+        effects: layoutEffects.value[props.templateId],
     });
 
 const getLayoutState = () => captureLayoutState();
@@ -461,6 +1102,8 @@ const commitCurrentLayout = (previousState: SerializableLayoutState) => {
 
 const restoreLayoutState = (state: SerializableLayoutState) => {
     const restored = cloneLayoutState(state);
+    customElements.value[props.templateId] = restored.customElements ?? [];
+    reloadAllCustomImages();
     layoutOffsets.value[props.templateId] = restored.offsets;
     layoutSizes.value[props.templateId] = restored.sizes;
     layoutRotations.value[props.templateId] = restored.rotations;
@@ -468,7 +1111,11 @@ const restoreLayoutState = (state: SerializableLayoutState) => {
     layoutTextStyles.value[props.templateId] = restored.styles;
     layoutVisualStyles.value[props.templateId] = restored.visualStyles;
     layoutGroups.value[props.templateId] = restored.groups;
+    layoutEffects.value[props.templateId] = restored.effects ?? {};
     deletedElements.value[props.templateId] = restored.deleted;
+    hiddenElements.value[props.templateId] = restored.hidden ?? [];
+    lockedElements.value[props.templateId] = restored.locked ?? [];
+    reloadCurrentCustomQrs();
     emit('availableElementsChange', availableElements.value);
     emit('layoutStateChange', props.templateId, captureLayoutState());
     emit('layoutChange', currentLayoutChanged.value);
@@ -488,6 +1135,7 @@ const syncTransformer = async () => {
     }
 
     const selectedNodes = selectedElements.value
+        .filter((elementId) => !elementIsLocked(elementId))
         .map((elementId) => stage.findOne(`#editable-${elementId}`))
         .filter((node): node is Konva.Node => Boolean(node));
     transformer.nodes(!isExporting.value ? selectedNodes : []);
@@ -506,11 +1154,17 @@ const emitLayerPosition = () => {
 
 const updateSelection = (elementIds: LayoutElementId[], groupId: string | null = null) => {
     selectedElements.value = elementIds.filter(
-        (elementId, index) => createLayoutOrder().includes(elementId) && elementIds.indexOf(elementId) === index,
+        (elementId, index) => layoutOrder.value[props.templateId].includes(elementId) && elementIds.indexOf(elementId) === index,
     );
     selectedGroupId.value = groupId;
     emit('selectionIdsChange', [...selectedElements.value]);
     emit('selectionChange', selectedElement.value);
+    emit(
+        'selectionGroupPathChange',
+        selectedElements.value[0]
+            ? findLayoutGroupPath(layoutGroups.value[props.templateId], selectedElements.value[0]).map(({ id }) => id)
+            : [],
+    );
     const groups = flattenLayoutGroups(layoutGroups.value[props.templateId]);
     const selectionIsOneGroup = groups.some((group) =>
         layoutGroupElementIds(group).length === selectedElements.value.length &&
@@ -540,7 +1194,12 @@ const groupSelectedElements = () => {
     const previousState = captureLayoutState();
     const currentGroups = layoutGroups.value[props.templateId];
     const groupId = createLayoutGroupId();
-    const nextGroups = groupLayoutElements(currentGroups, selectedElements.value, groupId);
+    const nextGroups = groupLayoutElements(
+        currentGroups,
+        selectedElements.value,
+        groupId,
+        layoutOrder.value[props.templateId],
+    );
     if (nextGroups === currentGroups) {
         return;
     }
@@ -579,7 +1238,11 @@ const selectElement = (elementId: LayoutElementId, additive = false) => {
         return;
     }
 
-    const groupSelection = expandLayoutSelection(layoutGroups.value[props.templateId], [elementId]);
+    const groupSelection = expandLayoutSelection(
+        layoutGroups.value[props.templateId],
+        [elementId],
+        layoutOrder.value[props.templateId],
+    );
     updateSelection(selectedElements.value.includes(elementId)
         ? selectedElements.value.filter((candidate) => !groupSelection.includes(candidate))
         : [...selectedElements.value, ...groupSelection]);
@@ -632,14 +1295,32 @@ const stagePointerPosition = () => {
     return stage.getAbsoluteTransform().copy().invert().point(pointer);
 };
 
+const cancelSelectionRectangle = () => {
+    selectionStart = null;
+    selectionRectangle.value = null;
+};
+
+const eventTargetsTransformer = (target: Konva.Node) => {
+    const transformer = transformerRef.value?.getNode();
+    return Boolean(transformer && (target === transformer || transformer.isAncestorOf(target)));
+};
+
 const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (eventTargetsTransformer(event.target)) {
+        cancelSelectionRectangle();
+        return;
+    }
+
     const editableGroup = event.target.findAncestor('.editable-element', true);
     const elementId = editableGroup?.getAttr('layoutElementId') as LayoutElementId | undefined;
 
     if (elementId) {
+        if (elementIsLocked(elementId)) {
+            cancelSelectionRectangle();
+            return;
+        }
         selectElement(elementId, eventIsAdditive(event));
-        selectionStart = null;
-        selectionRectangle.value = null;
+        cancelSelectionRectangle();
         return;
     }
 
@@ -654,8 +1335,19 @@ const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEven
 const handleStageDoubleClick = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     const editableGroup = event.target.findAncestor('.editable-element', true);
     const elementId = editableGroup?.getAttr('layoutElementId') as LayoutElementId | undefined;
-    if (elementId) {
+    if (elementId && !elementIsLocked(elementId)) {
         drillIntoElement(elementId);
+    }
+};
+
+const handleTransformerDoubleClick = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    const anchorNames = event.target.name().split(/\s+/);
+    if (anchorNames.includes('bottom-center')) {
+        event.cancelBubble = true;
+        autoFitSelectedTextFrame('height');
+    } else if (anchorNames.includes('middle-right')) {
+        event.cancelBubble = true;
+        autoFitSelectedTextFrame('width');
     }
 };
 
@@ -691,7 +1383,8 @@ const finishSelectionRectangle = () => {
     if (!stage) {
         return;
     }
-    const matches = createLayoutOrder().filter((elementId) => {
+    const matches = layoutOrder.value[props.templateId].filter((elementId) => {
+        if (elementIsLocked(elementId)) return false;
         const node = stage.findOne(`#editable-${elementId}`);
         if (!node) {
             return false;
@@ -699,7 +1392,11 @@ const finishSelectionRectangle = () => {
         const bounds = node.getClientRect({ relativeTo: stage });
         return layoutFramesIntersect(rectangle, bounds);
     });
-    const expandedMatches = expandLayoutSelection(layoutGroups.value[props.templateId], matches);
+    const expandedMatches = expandLayoutSelection(
+        layoutGroups.value[props.templateId],
+        matches,
+        layoutOrder.value[props.templateId],
+    );
     updateSelection(start.additive ? [...new Set([...selectedElements.value, ...expandedMatches])] : expandedMatches);
 };
 
@@ -718,7 +1415,7 @@ const startElementDrag = (elementId: LayoutElementId, event: Konva.KonvaEventObj
         const node = stage.findOne(`#editable-${selectedId}`);
         if (node) {
             nodePositions[selectedId] = { ...node.position() };
-            nodeBounds[selectedId] = node.getClientRect({ relativeTo: parent, skipStroke: true });
+            nodeBounds[selectedId] = node.getClientRect({ relativeTo: parent, skipStroke: true, skipShadow: true });
         }
     }
     activeDrag = {
@@ -737,30 +1434,28 @@ const alignElementWhileDragging = (_elementId: LayoutElementId, event: Konva.Kon
         return;
     }
 
-    const targetFrames = createLayoutOrder()
+    const targetFrames = layoutOrder.value[props.templateId]
         .filter((candidateId) => !selectedElements.value.includes(candidateId))
         .map((candidateId) => stage.findOne(`#editable-${candidateId}`))
         .filter((candidate): candidate is Konva.Node => Boolean(candidate))
-        .map((candidate) => candidate.getClientRect({ relativeTo: parent, skipStroke: true }));
-    node.position(snapLayoutPoint(node.position(), props.snapEnabled));
-    const frame = node.getClientRect({ relativeTo: parent, skipStroke: true });
-    const alignment = calculateAlignmentSnap(frame, targetFrames, 10, documentSize.value);
+        .map((candidate) => candidate.getClientRect({ relativeTo: parent, skipStroke: true, skipShadow: true }));
+    if (!activeDrag) return;
 
-    node.position({
-        x: node.x() + alignment.offset.x,
-        y: node.y() + alignment.offset.y,
-    });
-    activeAlignmentGuides.value = alignment.guides;
-
-    if (!activeDrag) {
-        return;
-    }
-    const requestedDelta = {
+    const rawDelta = {
         x: node.x() - activeDrag.startPosition.x,
         y: node.y() - activeDrag.startPosition.y,
     };
     const bounds = Object.values(activeDrag.nodeBounds).filter((value): value is LayoutFrame => Boolean(value));
-    const delta = constrainLayoutDelta(bounds, requestedDelta, documentSize.value);
+    const selectionSnap = calculateSelectionDragSnap(
+        bounds,
+        rawDelta,
+        targetFrames,
+        props.snapEnabled,
+        10,
+        documentSize.value,
+    );
+    const delta = selectionSnap.offset;
+    activeAlignmentGuides.value = selectionSnap.guides;
     for (const selectedId of selectedElements.value) {
         const selectedNode = stage.findOne(`#editable-${selectedId}`);
         const startPosition = activeDrag.nodePositions[selectedId];
@@ -787,6 +1482,7 @@ const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<D
         };
     }
     activeDrag = null;
+    syncSelectedAutoLayoutAnchor();
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
@@ -797,17 +1493,68 @@ const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject
     const baseFrame = templateElementFrames.value[props.templateId][elementId];
     const currentFrame = elementFrame(elementId);
     const snappedPosition = snapLayoutPoint({ x: node.x(), y: node.y() }, props.snapEnabled);
-    const resizedFrame = resizeLayoutFrame(
-        { ...currentFrame, ...snappedPosition },
-        snapLayoutSize(
-            {
-                width: currentFrame.width * Math.abs(node.scaleX()),
-                height: currentFrame.height * Math.abs(node.scaleY()),
-            },
-            props.snapEnabled,
-        ),
-        documentSize.value,
+    const customElement = customElementById(elementId);
+
+    if (customElement?.kind === 'text' && customTextMode(customElement) === 'graphic') {
+        const previousState = captureLayoutState();
+        const currentStyle = layoutTextStyles.value[props.templateId][elementId];
+        const requestedScale = Math.max(Math.abs(node.scaleX()), Math.abs(node.scaleY()));
+        const nextFontSize = constrainFontSize(currentStyle.fontSize * requestedScale);
+        layoutTextStyles.value[props.templateId][elementId] = { ...currentStyle, fontSize: nextFontSize };
+        syncGraphicTextSize(elementId);
+        const measuredSize = layoutSizes.value[props.templateId][elementId];
+        const resizedFrame = {
+            x: snappedPosition.x,
+            y: snappedPosition.y,
+            ...measuredSize,
+        };
+        const rotatedLayout = keepRotatedFrameInDocument(
+            resizedFrame,
+            snapRotation(node.rotation(), props.snapEnabled),
+            documentSize.value,
+        );
+        if (!rotatedLayout) {
+            layoutTextStyles.value[props.templateId][elementId] = currentStyle;
+            layoutSizes.value[props.templateId][elementId] = { width: currentFrame.width, height: currentFrame.height };
+            node.scale({ x: 1, y: 1 });
+            node.position({ x: currentFrame.x, y: currentFrame.y });
+            node.rotation(layoutRotations.value[props.templateId][elementId]);
+            void syncTransformer();
+            return;
+        }
+        node.scale({ x: 1, y: 1 });
+        node.position({ x: rotatedLayout.frame.x, y: rotatedLayout.frame.y });
+        node.rotation(rotatedLayout.rotation);
+        layoutOffsets.value[props.templateId][elementId] = {
+            x: rotatedLayout.frame.x - baseFrame.x,
+            y: rotatedLayout.frame.y - baseFrame.y,
+        };
+        layoutSizes.value[props.templateId][elementId] = {
+            width: rotatedLayout.frame.width,
+            height: rotatedLayout.frame.height,
+        };
+        layoutRotations.value[props.templateId][elementId] = rotatedLayout.rotation;
+        reflowAutoLayoutGroups();
+        commitCurrentLayout(previousState);
+        emit('layoutChange', currentLayoutChanged.value);
+        void syncTransformer();
+        return;
+    }
+
+    const frameAtRequestedPosition = { ...currentFrame, ...snappedPosition };
+    const snappedSize = snapLayoutSize(
+        {
+            width: currentFrame.width * Math.abs(node.scaleX()),
+            height: currentFrame.height * Math.abs(node.scaleY()),
+        },
+        props.snapEnabled,
     );
+    const requestedSize = customElement?.kind === 'line'
+        ? { width: snappedSize.width, height: currentFrame.height }
+        : snappedSize;
+    const resizedFrame = isFixedAspectRatioLayoutElement(elementId)
+        ? resizeLayoutFrameProportionally(frameAtRequestedPosition, requestedSize, documentSize.value)
+        : resizeLayoutFrame(frameAtRequestedPosition, requestedSize, documentSize.value);
     const rotatedLayout = keepRotatedFrameInDocument(
         resizedFrame,
         snapRotation(node.rotation(), props.snapEnabled),
@@ -835,13 +1582,14 @@ const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject
         height: rotatedLayout.frame.height,
     };
     layoutRotations.value[props.templateId][elementId] = rotatedLayout.rotation;
+    reflowAutoLayoutGroups();
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
 };
 
 const nudgeSelectedElement = (deltaX: number, deltaY: number) => {
-    if (selectedElements.value.length === 0) {
+    if (selectedElements.value.length === 0 || selectionContainsLockedElement()) {
         return;
     }
 
@@ -855,35 +1603,40 @@ const nudgeSelectedElement = (deltaX: number, deltaY: number) => {
             y: offset.y + appliedDelta.y,
         };
     }
+    syncSelectedAutoLayoutAnchor();
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
 };
 
 const resizeSelectedElement = (deltaWidth: number, deltaHeight: number) => {
-    if (selectedElements.value.length === 0) {
+    if (selectedElements.value.length === 0 || selectionContainsLockedElement()) {
         return;
     }
 
     const previousState = captureLayoutState();
     for (const elementId of selectedElements.value) {
         const frame = elementFrame(elementId);
-        const resizedFrame = resizeLayoutFrame(frame, {
+        const requestedSize = {
             width: frame.width + deltaWidth,
-            height: frame.height + deltaHeight,
-        }, documentSize.value);
+            height: customElementById(elementId)?.kind === 'line' ? frame.height : frame.height + deltaHeight,
+        };
+        const resizedFrame = isFixedAspectRatioLayoutElement(elementId)
+            ? resizeLayoutFrameProportionally(frame, requestedSize, documentSize.value)
+            : resizeLayoutFrame(frame, requestedSize, documentSize.value);
         layoutSizes.value[props.templateId][elementId] = {
             width: resizedFrame.width,
             height: resizedFrame.height,
         };
     }
+    reflowAutoLayoutGroups();
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
 };
 
 const rotateSelectedElement = (deltaRotation: number) => {
-    if (selectedElements.value.length === 0) {
+    if (selectedElements.value.length === 0 || selectionContainsLockedElement()) {
         return;
     }
 
@@ -930,6 +1683,88 @@ const commitSelectedGeometry = (geometry: LayoutGeometry) => {
         height: geometry.height,
     };
     layoutRotations.value[props.templateId][elementId] = geometry.rotation;
+    reflowAutoLayoutGroups();
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
+};
+
+const setSelectedGroupGeometry = (field: keyof LayoutGeometry, value: number) => {
+    if (!selectedGroupId.value || !Number.isFinite(value)) return;
+    const group = flattenLayoutGroups(layoutGroups.value[props.templateId])
+        .find(({ id }) => id === selectedGroupId.value);
+    const bounds = group ? selectedGroupVisualBounds(group) : null;
+    if (!group || !bounds || field === 'width' || field === 'height') {
+        emitSelectionGeometry();
+        return;
+    }
+
+    const elementIds = layoutGroupElementIds(group);
+    const previousState = captureLayoutState();
+    if (field === 'x' || field === 'y') {
+        const requestedDelta = {
+            x: field === 'x' ? value - bounds.x : 0,
+            y: field === 'y' ? value - bounds.y : 0,
+        };
+        const delta = constrainLayoutDelta([bounds], requestedDelta, documentSize.value);
+        for (const elementId of elementIds) {
+            const frame = elementFrame(elementId);
+            const baseFrame = templateElementFrames.value[props.templateId][elementId];
+            layoutOffsets.value[props.templateId][elementId] = {
+                x: frame.x + delta.x - baseFrame.x,
+                y: frame.y + delta.y - baseFrame.y,
+            };
+        }
+        syncSelectedAutoLayoutAnchor();
+    } else {
+        const currentRotation = group.rotation ?? 0;
+        const deltaRotation = normalizeRotation(value - currentRotation);
+        const radians = deltaRotation * Math.PI / 180;
+        const cosine = Math.cos(radians);
+        const sine = Math.sin(radians);
+        const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+        const updates = elementIds.map((elementId) => {
+            const frame = elementFrame(elementId);
+            const relative = { x: frame.x - center.x, y: frame.y - center.y };
+            const requestedFrame = {
+                ...frame,
+                x: center.x + relative.x * cosine - relative.y * sine,
+                y: center.y + relative.x * sine + relative.y * cosine,
+            };
+            const rotation = normalizeRotation(layoutRotations.value[props.templateId][elementId] + deltaRotation);
+            const constrained = keepRotatedFrameInDocument(requestedFrame, rotation, documentSize.value);
+            const remainsRigid = constrained &&
+                Math.abs(constrained.frame.x - requestedFrame.x) < 0.01 &&
+                Math.abs(constrained.frame.y - requestedFrame.y) < 0.01;
+            return remainsRigid ? { elementId, frame: requestedFrame, rotation } : null;
+        });
+        if (updates.some((update) => !update)) {
+            emitSelectionGeometry();
+            return;
+        }
+        for (const update of updates) {
+            if (!update) continue;
+            const baseFrame = templateElementFrames.value[props.templateId][update.elementId];
+            layoutOffsets.value[props.templateId][update.elementId] = {
+                x: update.frame.x - baseFrame.x,
+                y: update.frame.y - baseFrame.y,
+            };
+            layoutRotations.value[props.templateId][update.elementId] = update.rotation;
+        }
+        const rotateGroupMetadata = (candidate: LayoutGroup): LayoutGroup => ({
+            ...candidate,
+            rotation: normalizeRotation((candidate.rotation ?? 0) + deltaRotation),
+            children: candidate.children.map((child) =>
+                typeof child === 'string' ? child : rotateGroupMetadata(child)),
+        });
+        layoutGroups.value[props.templateId] = updateLayoutGroup(
+            layoutGroups.value[props.templateId],
+            group.id,
+            rotateGroupMetadata,
+        );
+        syncSelectedAutoLayoutAnchor();
+    }
+
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     void syncTransformer();
@@ -939,15 +1774,34 @@ const setSelectedElementGeometry = (
     field: keyof LayoutGeometry,
     value: number,
 ) => {
+    if (selectionContainsLockedElement()) return;
+    if (selectedGroupId.value) {
+        setSelectedGroupGeometry(field, value);
+        return;
+    }
     if (!selectedElement.value || !Number.isFinite(value)) {
         return;
     }
 
     const elementId = selectedElement.value;
+    if (customElementById(elementId)?.kind === 'line' && field === 'height') {
+        emitSelectionGeometry();
+        return;
+    }
+    const currentFrame = elementFrame(elementId);
+    const requestedFrame = isFixedAspectRatioLayoutElement(elementId) && (field === 'width' || field === 'height')
+        ? resizeLayoutFrameProportionally(
+            currentFrame,
+            field === 'width'
+                ? { width: value, height: value / (currentFrame.width / currentFrame.height) }
+                : { width: value * (currentFrame.width / currentFrame.height), height: value },
+            documentSize.value,
+        )
+        : { ...currentFrame, [field]: value };
     const geometry = constrainLayoutGeometry({
-        ...elementFrame(elementId),
+        ...requestedFrame,
         rotation: layoutRotations.value[props.templateId][elementId],
-        [field]: value,
+        ...(field === 'rotation' ? { rotation: value } : {}),
     }, documentSize.value);
     if (!geometry) {
         emitSelectionGeometry();
@@ -961,12 +1815,12 @@ const setSelectedElementTextStyle = (
     field: keyof LayoutTextStyle,
     value: number | string,
 ) => {
-    if (selectedElements.value.length === 0 || !selectedElement.value ||
-        !TEXT_LAYOUT_ELEMENT_IDS.includes(selectedElement.value as typeof TEXT_LAYOUT_ELEMENT_IDS[number])) {
+    if (selectedElements.value.length === 0 || selectionContainsLockedElement() || !selectedElement.value ||
+        !isTextLayoutElement(selectedElement.value)) {
         return;
     }
 
-    const selectedTextId = selectedElement.value as typeof TEXT_LAYOUT_ELEMENT_IDS[number];
+    const selectedTextId = selectedElement.value;
     const currentStyle = layoutTextStyles.value[props.templateId][selectedTextId];
     const nextValue = field === 'fontSize'
         ? constrainFontSize(Number(value))
@@ -974,24 +1828,37 @@ const setSelectedElementTextStyle = (
             ? constrainLineHeight(Number(value))
             : field === 'letterSpacing'
                 ? constrainLetterSpacing(Number(value))
-                : field === 'color' ? String(value).toLowerCase() : String(value);
+                : field === 'strokeWidth'
+                    ? Number(value)
+                    : field === 'color' || field === 'stroke' ? String(value).toLowerCase() : String(value);
     const nextStyle = { ...currentStyle, [field]: nextValue } as LayoutTextStyle;
-    if (!Number.isFinite(nextStyle.fontSize) || !isHexColor(nextStyle.color) ||
+    if (!Number.isFinite(nextStyle.fontSize) || !isHexColor(nextStyle.color) || !isHexColor(nextStyle.stroke) ||
+        !Number.isFinite(nextStyle.strokeWidth) || nextStyle.strokeWidth < 0 || nextStyle.strokeWidth > 100 ||
         !nextStyle.fontFamily.trim() || !['normal', 'bold', 'italic', 'bold italic'].includes(nextStyle.fontStyle) ||
         !Number.isFinite(nextStyle.lineHeight) || !Number.isFinite(nextStyle.letterSpacing) ||
         !['left', 'center', 'right'].includes(nextStyle.align) ||
-        !['none', 'bullet', 'numbered'].includes(nextStyle.listStyle)) {
+        !['none', 'bullet', 'numbered'].includes(nextStyle.listStyle) ||
+        !['none', 'uppercase', 'smallCaps'].includes(nextStyle.textTransform) ||
+        !['none', 'single', 'double'].includes(nextStyle.underlineStyle) ||
+        !['none', 'single', 'double'].includes(nextStyle.strikethroughStyle)) {
         emitSelectionGeometry();
         return;
     }
 
     const previousState = captureLayoutState();
     layoutTextStyles.value[props.templateId] = selectedElements.value.reduce(
-        (styles, elementId) => TEXT_LAYOUT_ELEMENT_IDS.includes(elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number])
-            ? { ...styles, [elementId]: { ...styles[elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number]], [field]: nextStyle[field] } }
+        (styles, elementId) => isTextLayoutElement(elementId)
+            ? { ...styles, [elementId]: { ...styles[elementId], [field]: nextStyle[field] } }
             : styles,
         layoutTextStyles.value[props.templateId],
     );
+    if (field === 'color') {
+        selectedElements.value.filter(isTextLayoutElement).forEach((elementId) => {
+            delete layoutTextStyles.value[props.templateId][elementId].colorGradient;
+        });
+    }
+    selectedElements.value.forEach(syncGraphicTextSize);
+    reflowAutoLayoutGroups();
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
 };
@@ -1000,11 +1867,10 @@ const setSelectedElementVisualStyle = (
     field: keyof LayoutVisualStyle,
     value: number | string,
 ) => {
-    if (!selectedElement.value ||
-        !SHAPE_LAYOUT_ELEMENT_IDS.includes(selectedElement.value as typeof SHAPE_LAYOUT_ELEMENT_IDS[number])) {
+    if (selectionContainsLockedElement() || !selectedElement.value || !isShapeLayoutElement(selectedElement.value)) {
         return;
     }
-    const shapeId = selectedElement.value as typeof SHAPE_LAYOUT_ELEMENT_IDS[number];
+    const shapeId = selectedElement.value;
     const nextValue = field === 'strokeWidth' ? Number(value) : String(value).toLowerCase();
     if ((field === 'strokeWidth' && (!Number.isFinite(nextValue) || Number(nextValue) < 0 || Number(nextValue) > 100)) ||
         (field !== 'strokeWidth' && !isHexColor(String(nextValue)))) {
@@ -1016,6 +1882,102 @@ const setSelectedElementVisualStyle = (
         ...layoutVisualStyles.value[props.templateId][shapeId],
         [field]: nextValue,
     };
+    if (field === 'fill') delete layoutVisualStyles.value[props.templateId][shapeId].fillGradient;
+    const customElement = customElementById(shapeId);
+    if (customElement?.kind === 'line' && field === 'strokeWidth') {
+        layoutSizes.value[props.templateId][shapeId].height = Math.max(1, Number(nextValue));
+    }
+    if (customElement?.kind === 'qr') void loadCustomQr(customElement);
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
+type LayoutColorField = 'color' | 'fill' | 'stroke';
+const setSelectedElementColorBinding = (field: LayoutColorField, binding: LayoutColorBinding | null) => {
+    if (selectedElements.value.length === 0 || selectionContainsLockedElement()) return;
+    const previousState = captureLayoutState();
+    if (field === 'color' || (field === 'stroke' && selectedElements.value.some(isTextLayoutElement))) {
+        const bindingField = field === 'color' ? 'colorBinding' : 'strokeBinding';
+        for (const elementId of selectedElements.value.filter(isTextLayoutElement)) {
+            const style = layoutTextStyles.value[props.templateId][elementId];
+            if (!style) continue;
+            if (binding) style[bindingField] = { ...binding };
+            else delete style[bindingField];
+            if (binding && field === 'color') delete style.colorGradient;
+        }
+    } else {
+        const bindingField = field === 'fill' ? 'fillBinding' : 'strokeBinding';
+        for (const elementId of selectedElements.value.filter(isShapeLayoutElement)) {
+            const style = layoutVisualStyles.value[props.templateId][elementId];
+            if (!style) continue;
+            if (binding) style[bindingField] = { ...binding };
+            else delete style[bindingField];
+            if (binding && field === 'fill') delete style.fillGradient;
+            const element = customElementById(elementId);
+            if (element?.kind === 'qr') void loadCustomQr(element);
+        }
+    }
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
+const setSelectedElementStaticColor = (field: LayoutColorField, color: string) => {
+    const normalized = color.toLowerCase();
+    if (!isHexColor(normalized) || selectedElements.value.length === 0 || selectionContainsLockedElement()) return;
+    const previousState = captureLayoutState();
+    if (field === 'color' || (field === 'stroke' && selectedElements.value.some(isTextLayoutElement))) {
+        const bindingField = field === 'color' ? 'colorBinding' : 'strokeBinding';
+        for (const elementId of selectedElements.value.filter(isTextLayoutElement)) {
+            const style = layoutTextStyles.value[props.templateId][elementId];
+            if (!style) continue;
+            style[field] = normalized;
+            delete style[bindingField];
+            if (field === 'color') delete style.colorGradient;
+        }
+    } else {
+        const bindingField = field === 'fill' ? 'fillBinding' : 'strokeBinding';
+        for (const elementId of selectedElements.value.filter(isShapeLayoutElement)) {
+            const style = layoutVisualStyles.value[props.templateId][elementId];
+            if (!style) continue;
+            style[field] = normalized;
+            delete style[bindingField];
+            if (field === 'fill') delete style.fillGradient;
+            const element = customElementById(elementId);
+            if (element?.kind === 'qr') void loadCustomQr(element);
+        }
+    }
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
+const setSelectedElementGradient = (field: 'color' | 'fill', gradient: LayoutGradient | null) => {
+    if (selectedElements.value.length === 0 || selectionContainsLockedElement()) return;
+    const previousState = captureLayoutState();
+    if (field === 'color') {
+        for (const elementId of selectedElements.value.filter(isTextLayoutElement)) {
+            const style = layoutTextStyles.value[props.templateId][elementId];
+            if (!style) continue;
+            if (gradient) {
+                style.colorGradient = normalizeLayoutGradient(gradient);
+                delete style.colorBinding;
+            } else {
+                delete style.colorGradient;
+            }
+        }
+    } else {
+        for (const elementId of selectedElements.value.filter(isShapeLayoutElement)) {
+            const element = customElementById(elementId);
+            if (element?.kind === 'qr' || element?.kind === 'line') continue;
+            const style = layoutVisualStyles.value[props.templateId][elementId];
+            if (!style) continue;
+            if (gradient) {
+                style.fillGradient = normalizeLayoutGradient(gradient);
+                delete style.fillBinding;
+            } else {
+                delete style.fillGradient;
+            }
+        }
+    }
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
 };
@@ -1066,6 +2028,7 @@ const alignSelectedElement = (alignment: LayoutAlignment) => {
                 y: offset.y + shift.y,
             };
         }
+        syncSelectedAutoLayoutAnchor();
         commitCurrentLayout(previousState);
         emit('layoutChange', currentLayoutChanged.value);
         void syncTransformer();
@@ -1100,6 +2063,20 @@ const alignSelectedElement = (alignment: LayoutAlignment) => {
     void syncTransformer();
 };
 
+const distributeSelectedElements = (axis: LayoutDistributionAxis) => {
+    if (selectedElements.value.length < 3) return;
+    const selectedFrames = Object.fromEntries(selectedElements.value.map((elementId) => [elementId, elementFrame(elementId)]));
+    const distributed = distributeLayoutFrames(selectedFrames, axis);
+    const previousState = captureLayoutState();
+    for (const [elementId, frame] of Object.entries(distributed) as [LayoutElementId, LayoutFrame][]) {
+        const baseFrame = templateElementFrames.value[props.templateId][elementId];
+        layoutOffsets.value[props.templateId][elementId] = { x: frame.x - baseFrame.x, y: frame.y - baseFrame.y };
+    }
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
+};
+
 const changeSelectedLayer = (direction: -1 | 1) => {
     if (!selectedElement.value || selectedElements.value.length !== 1) {
         return;
@@ -1119,6 +2096,38 @@ const changeSelectedLayer = (direction: -1 | 1) => {
     void syncTransformer();
 };
 
+const moveLayerNode = (
+    source: LayoutLayerDragNode,
+    target: LayoutLayerDragNode,
+    placement: LayoutLayerDropPlacement,
+) => {
+    if (source.kind === target.kind && source.id === target.id) return;
+    const groups = layoutGroups.value[props.templateId];
+    const sourceGroup = source.kind === 'group' ? flattenLayoutGroups(groups).find(({ id }) => id === source.id) : null;
+    const targetGroup = target.kind === 'group' ? flattenLayoutGroups(groups).find(({ id }) => id === target.id) : null;
+    const movingElementIds = sourceGroup ? layoutGroupElementIds(sourceGroup) : [source.id as LayoutElementId];
+    const targetElementIds = targetGroup ? layoutGroupElementIds(targetGroup) : [target.id as LayoutElementId];
+    if (movingElementIds.some((elementId) => targetElementIds.includes(elementId)) || movingElementIds.some(elementIsLocked)) return;
+
+    const previousState = captureLayoutState();
+    layoutOrder.value[props.templateId] = moveLayoutOrderBlock(
+        layoutOrder.value[props.templateId], movingElementIds, targetElementIds, placement,
+    );
+    if (placement === 'inside' && target.kind === 'group') {
+        layoutGroups.value[props.templateId] = nestLayoutNodeInGroup(groups, source, target.id);
+        reflowAutoLayoutGroups();
+    }
+    commitCurrentLayout(previousState);
+    const updatedTargetGroup = placement === 'inside' && target.kind === 'group'
+        ? flattenLayoutGroups(layoutGroups.value[props.templateId]).find(({ id }) => id === target.id)
+        : null;
+    updateSelection(
+        updatedTargetGroup ? layoutGroupElementIds(updatedTargetGroup) : movingElementIds,
+        updatedTargetGroup?.id ?? sourceGroup?.id ?? null,
+    );
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
 const pruneDeletedElementsFromGroups = (groups: LayoutGroups, deleted: Set<LayoutElementId>): LayoutGroups =>
     groups.flatMap((group) => {
         const children: (LayoutElementId | LayoutGroup)[] = group.children.flatMap((child): (LayoutElementId | LayoutGroup)[] => {
@@ -1130,15 +2139,186 @@ const pruneDeletedElementsFromGroups = (groups: LayoutGroups, deleted: Set<Layou
         return children.length >= 2 ? [{ ...group, children }] : [];
     });
 
+const addElement = (
+    kind: LayoutCustomElementKind,
+    options: {
+        imageSource?: string;
+        name?: string;
+        text?: string;
+        textMode?: LayoutTextMode;
+        iconName?: PublisherIconName;
+        qrValue?: string;
+        dataBinding?: string;
+        position?: { x: number; y: number };
+    } = {},
+) => {
+    if (kind === 'image' && !options.imageSource) return;
+    if (kind === 'icon' && !options.iconName) return;
+    const previousState = captureLayoutState();
+    const element = createLayoutCustomElement(kind, documentSize.value, options);
+    customElements.value[props.templateId] = [...customElements.value[props.templateId], element];
+    layoutOffsets.value[props.templateId][element.id] = { x: 0, y: 0 };
+    layoutSizes.value[props.templateId][element.id] = {
+        width: element.frame.width,
+        height: element.frame.height,
+    };
+    layoutRotations.value[props.templateId][element.id] = 0;
+    layoutOrder.value[props.templateId] = [...layoutOrder.value[props.templateId], element.id];
+    if (kind === 'text') {
+        const style = createCustomTextStyle();
+        layoutTextStyles.value[props.templateId][element.id] = style;
+        if (customTextMode(element) === 'graphic') {
+            syncGraphicTextSize(element.id);
+        } else {
+            const measured = measureCustomText(element, style);
+            layoutSizes.value[props.templateId][element.id] = {
+                width: element.frame.width,
+                height: Math.max(element.frame.height, measured.height),
+            };
+        }
+        if (!options.position) {
+            const size = layoutSizes.value[props.templateId][element.id];
+            layoutOffsets.value[props.templateId][element.id] = {
+                x: (element.frame.width - size.width) / 2,
+                y: (element.frame.height - size.height) / 2,
+            };
+        }
+    }
+    if (['rectangle', 'circle', 'triangle', 'line', 'icon', 'qr'].includes(kind)) {
+        layoutVisualStyles.value[props.templateId][element.id] = kind === 'qr'
+            ? { fill: '#000000', stroke: '#000000', strokeWidth: 0 }
+            : kind === 'line'
+                ? { fill: '#69a7e8', stroke: '#69a7e8', strokeWidth: 4 }
+                : createCustomVisualStyle();
+    }
+    loadCustomImage(element);
+    void loadCustomQr(element);
+    commitCurrentLayout(previousState);
+    updateSelection([element.id]);
+    emit('availableElementsChange', availableElements.value);
+    emit('layoutChange', true);
+};
+
+const handleDataFieldDrop = (event: DragEvent) => {
+    const transferred = parsePublisherDataTransfer(event.dataTransfer?.getData(PUBLISHER_DATA_TRANSFER_TYPE) ?? '');
+    if (!transferred || (transferred.type === 'image' && !transferred.value)) return;
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const preferredOffset = transferred.type === 'image' ? { x: 240, y: 160 } : { x: 260, y: 70 };
+    const position = {
+        x: (event.clientX - bounds.left) / previewScale.value - preferredOffset.x,
+        y: (event.clientY - bounds.top) / previewScale.value - preferredOffset.y,
+    };
+    addElement(transferred.type, {
+        name: transferred.label,
+        imageSource: transferred.type === 'image' ? transferred.value : undefined,
+        text: transferred.type === 'text' ? `{{${transferred.id}}}` : undefined,
+        textMode: transferred.type === 'text' ? 'frame' : undefined,
+        dataBinding: transferred.id,
+        position,
+    });
+};
+
+const setSelectedElementTextContent = (value: string) => {
+    const elementId = selectedElement.value;
+    if (!elementId || elementIsLocked(elementId) || !elementId.startsWith('text-')) return;
+    const previousState = captureLayoutState();
+    customElements.value[props.templateId] = customElements.value[props.templateId].map((element) =>
+        element.id === elementId
+            ? { ...element, text: value, name: element.dataBinding ? element.name : value.trim() || 'Text' }
+            : element);
+    syncGraphicTextSize(elementId);
+    reflowAutoLayoutGroups();
+    commitCurrentLayout(previousState);
+    emit('layoutChange', true);
+};
+
+const setSelectedCustomTextMode = (mode: LayoutTextMode) => {
+    if ((mode !== 'graphic' && mode !== 'frame') || selectedElements.value.length === 0 || selectionContainsLockedElement()) return;
+    const customTextIds = selectedElements.value.filter((elementId) => {
+        const element = customElementById(elementId);
+        return element?.kind === 'text';
+    });
+    if (customTextIds.length === 0) return;
+    const previousState = captureLayoutState();
+    const ids = new Set(customTextIds);
+    customElements.value[props.templateId] = customElements.value[props.templateId].map((element) =>
+        ids.has(element.id) ? { ...element, textMode: mode } : element);
+    if (mode === 'graphic') customTextIds.forEach(syncGraphicTextSize);
+    reflowAutoLayoutGroups();
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+    emitSelectionGeometry();
+    void syncTransformer();
+};
+
+const setSelectedQrOptions = (
+    field: 'qrValue' | 'qrBackground' | 'qrMargin' | 'qrErrorCorrection',
+    value: string | number,
+) => {
+    const elementId = selectedElement.value;
+    const element = elementId ? customElementById(elementId) : null;
+    if (!element || element.kind !== 'qr') return;
+    const nextValue = field === 'qrMargin' ? Number(value) : String(value);
+    if ((field === 'qrMargin' && (!Number.isFinite(nextValue) || Number(nextValue) < 0 || Number(nextValue) > 10)) ||
+        (field === 'qrBackground' && !isHexColor(String(nextValue))) ||
+        (field === 'qrErrorCorrection' && !['L', 'M', 'Q', 'H'].includes(String(nextValue))) ||
+        (field === 'qrValue' && String(nextValue).length > 10_000)) return;
+    const previousState = captureLayoutState();
+    let updated: LayoutCustomElement | null = null;
+    customElements.value[props.templateId] = customElements.value[props.templateId].map((candidate) => {
+        if (candidate.id !== elementId) return candidate;
+        if (field === 'qrValue') {
+            const { dataBinding: _, ...unboundCandidate } = candidate;
+            updated = { ...unboundCandidate, qrValue: String(nextValue) };
+        } else {
+            updated = { ...candidate, [field]: nextValue };
+        }
+        return updated;
+    });
+    if (updated) void loadCustomQr(updated);
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
+const setElementEffects = (elementIds: LayoutElementId[], effects: LayoutElementEffects) => {
+    const existingIds = elementIds.filter((elementId) =>
+        layoutOrder.value[props.templateId].includes(elementId) && !elementIsLocked(elementId));
+    if (existingIds.length === 0) return;
+    const previousState = captureLayoutState();
+    const nextEffects = { ...layoutEffects.value[props.templateId] };
+    const normalized = normalizeLayoutElementEffects(effects);
+    for (const elementId of existingIds) {
+        if (layoutElementHasEffects(normalized)) {
+            nextEffects[elementId] = {
+                ...normalized,
+                shadow: { ...normalized.shadow },
+                blur: { ...normalized.blur },
+            };
+        } else {
+            delete nextEffects[elementId];
+        }
+    }
+    layoutEffects.value[props.templateId] = nextEffects;
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
 const deleteElements = (elementIds: LayoutElementId[]) => {
     const existingIds = elementIds.filter((elementId) =>
-        layoutOrder.value[props.templateId].includes(elementId));
+        layoutOrder.value[props.templateId].includes(elementId) && !elementIsLocked(elementId));
     if (existingIds.length === 0) {
         return;
     }
     const previousState = captureLayoutState();
     const deleted = new Set([...deletedElements.value[props.templateId], ...existingIds]);
-    deletedElements.value[props.templateId] = createLayoutOrder().filter((elementId) => deleted.has(elementId));
+    deletedElements.value[props.templateId] = allElementIds(props.templateId).filter((elementId) => deleted.has(elementId));
+    hiddenElements.value[props.templateId] = hiddenElements.value[props.templateId]
+        .filter((elementId) => !deleted.has(elementId));
+    lockedElements.value[props.templateId] = lockedElements.value[props.templateId]
+        .filter((elementId) => !deleted.has(elementId));
+    layoutEffects.value[props.templateId] = Object.fromEntries(
+        Object.entries(layoutEffects.value[props.templateId]).filter(([elementId]) => !deleted.has(elementId as LayoutElementId)),
+    );
     layoutOrder.value[props.templateId] = layoutOrder.value[props.templateId].filter((elementId) => !deleted.has(elementId));
     layoutGroups.value[props.templateId] = pruneDeletedElementsFromGroups(layoutGroups.value[props.templateId], deleted);
     commitCurrentLayout(previousState);
@@ -1149,8 +2329,41 @@ const deleteElements = (elementIds: LayoutElementId[]) => {
 
 const deleteSelectedElements = () => deleteElements(selectedElements.value);
 
+const toggleElementsVisibility = (elementIds: LayoutElementId[]) => {
+    const existingIds = elementIds.filter((elementId) =>
+        layoutOrder.value[props.templateId].includes(elementId));
+    if (existingIds.length === 0) return;
+    const previousState = captureLayoutState();
+    const hidden = new Set(hiddenElements.value[props.templateId]);
+    const shouldShow = existingIds.every((elementId) => hidden.has(elementId));
+    existingIds.forEach((elementId) => shouldShow ? hidden.delete(elementId) : hidden.add(elementId));
+    hiddenElements.value[props.templateId] = layoutOrder.value[props.templateId]
+        .filter((elementId) => hidden.has(elementId));
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
+};
+
+const toggleElementsLock = (elementIds: LayoutElementId[]) => {
+    const existingIds = elementIds.filter((elementId) =>
+        layoutOrder.value[props.templateId].includes(elementId));
+    if (existingIds.length === 0) return;
+    const previousState = captureLayoutState();
+    const locked = new Set(lockedElements.value[props.templateId]);
+    const shouldUnlock = existingIds.every((elementId) => locked.has(elementId));
+    existingIds.forEach((elementId) => shouldUnlock ? locked.delete(elementId) : locked.add(elementId));
+    lockedElements.value[props.templateId] = layoutOrder.value[props.templateId]
+        .filter((elementId) => locked.has(elementId));
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
+};
+
 const resetLayout = () => {
     const previousState = captureLayoutState();
+    customElements.value[props.templateId] = [];
+    reloadAllCustomImages();
+    customQrNodes.value = {};
     layoutOffsets.value[props.templateId] = createLayoutOffsets();
     layoutSizes.value[props.templateId] = createPageLayoutSizes(props.templateId);
     layoutRotations.value[props.templateId] = createLayoutRotations();
@@ -1158,7 +2371,10 @@ const resetLayout = () => {
     layoutTextStyles.value[props.templateId] = createPageLayoutTextStyles(props.templateId);
     layoutVisualStyles.value[props.templateId] = createPageLayoutVisualStyles(props.templateId);
     layoutGroups.value[props.templateId] = createLayoutGroups();
+    layoutEffects.value[props.templateId] = {};
     deletedElements.value[props.templateId] = [];
+    hiddenElements.value[props.templateId] = [];
+    lockedElements.value[props.templateId] = [];
     commitCurrentLayout(previousState);
     selectedElements.value = [];
     selectedGroupId.value = null;
@@ -1180,27 +2396,42 @@ const resetSelectedElement = () => {
     const previousState = captureLayoutState();
     const reset = selectedElements.value.reduce<SerializableLayoutState>(
         (state, elementId) => {
-            const defaultOrder = createLayoutOrder();
+            const defaultOrder = isBuiltInLayoutElement(elementId)
+                ? createLayoutOrder()
+                : layoutOrder.value[props.templateId];
             const order = state.order.filter((candidate) => candidate !== elementId);
             order.splice(defaultOrder.indexOf(elementId), 0, elementId);
             return {
                 ...state,
                 offsets: { ...state.offsets, [elementId]: { x: 0, y: 0 } },
-                sizes: { ...state.sizes, [elementId]: { ...createPageLayoutSizes(props.templateId)[elementId] } },
+                sizes: {
+                    ...state.sizes,
+                    [elementId]: {
+                        width: templateElementFrames.value[props.templateId][elementId].width,
+                        height: templateElementFrames.value[props.templateId][elementId].height,
+                    },
+                },
                 rotations: { ...state.rotations, [elementId]: 0 },
                 order,
                 styles: {
                     ...state.styles,
-                    ...(TEXT_LAYOUT_ELEMENT_IDS.includes(elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number])
-                        ? { [elementId]: { ...createPageLayoutTextStyles(props.templateId)[elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number]] } }
+                    ...(isTextLayoutElement(elementId)
+                        ? { [elementId]: isBuiltInLayoutElement(elementId)
+                            ? { ...createPageLayoutTextStyles(props.templateId)[elementId] }
+                            : createCustomTextStyle() }
                         : {}),
                 },
                 visualStyles: {
                     ...state.visualStyles,
-                    ...(SHAPE_LAYOUT_ELEMENT_IDS.includes(elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number])
-                        ? { [elementId]: { ...createPageLayoutVisualStyles(props.templateId)[elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number]] } }
+                    ...(isShapeLayoutElement(elementId)
+                        ? { [elementId]: isBuiltInLayoutElement(elementId)
+                            ? { ...createPageLayoutVisualStyles(props.templateId)[elementId] }
+                            : createCustomVisualStyle() }
                         : {}),
                 },
+                effects: Object.fromEntries(
+                    Object.entries(state.effects ?? {}).filter(([id]) => id !== elementId),
+                ),
                 groups: state.groups,
             };
         },
@@ -1212,6 +2443,21 @@ const resetSelectedElement = () => {
     layoutOrder.value[props.templateId] = reset.order;
     layoutTextStyles.value[props.templateId] = reset.styles;
     layoutVisualStyles.value[props.templateId] = reset.visualStyles;
+    layoutEffects.value[props.templateId] = reset.effects ?? {};
+    if (selectedGroupId.value) {
+        const resetGroupRotation = (group: LayoutGroup): LayoutGroup => ({
+            ...group,
+            rotation: 0,
+            children: group.children.map((child) =>
+                typeof child === 'string' ? child : resetGroupRotation(child)),
+        });
+        layoutGroups.value[props.templateId] = updateLayoutGroup(
+            reset.groups,
+            selectedGroupId.value,
+            resetGroupRotation,
+        );
+    }
+    selectedElements.value.forEach(syncGraphicTextSize);
     commitCurrentLayout(previousState);
     emit('layoutChange', currentLayoutChanged.value);
     emitLayerPosition();
@@ -1243,6 +2489,13 @@ const redoLayout = () => {
 const restoreDraftLayouts = () => {
     for (const templateId of ['split', 'poster'] as const) {
         const savedState = props.initialLayouts[templateId];
+        customElements.value[templateId] = savedState?.customElements?.map(
+            (element) => ({
+                ...element,
+                frame: { ...element.frame },
+                ...(element.kind === 'text' ? { textMode: element.textMode ?? 'frame' } : {}),
+            }),
+        ) ?? [];
         const restored = savedState
             ? cloneLayoutState(savedState)
             : {
@@ -1254,6 +2507,8 @@ const restoreDraftLayouts = () => {
                   visualStyles: createPageLayoutVisualStyles(templateId),
                   groups: createLayoutGroups(),
                   deleted: [],
+                  hidden: [],
+                  locked: [],
               };
         layoutOffsets.value[templateId] = restored.offsets;
         layoutSizes.value[templateId] = restored.sizes;
@@ -1262,9 +2517,14 @@ const restoreDraftLayouts = () => {
         layoutTextStyles.value[templateId] = restored.styles;
         layoutVisualStyles.value[templateId] = restored.visualStyles;
         layoutGroups.value[templateId] = restored.groups;
+        layoutEffects.value[templateId] = restored.effects ?? {};
         deletedElements.value[templateId] = restored.deleted;
+        hiddenElements.value[templateId] = restored.hidden ?? [];
+        lockedElements.value[templateId] = restored.locked ?? [];
         layoutHistories.value[templateId] = createLayoutHistory();
     }
+    reloadAllCustomImages();
+    reloadCurrentCustomQrs();
     selectedElements.value = [];
     selectedGroupId.value = null;
     activeAlignmentGuides.value = [];
@@ -1276,6 +2536,11 @@ const restoreDraftLayouts = () => {
     emitHistoryState();
     emit('availableElementsChange', availableElements.value);
     emit('layoutChange', currentLayoutChanged.value);
+    syncAllGraphicTextSizes();
+    if (flattenLayoutGroups(layoutGroups.value[props.templateId]).some(({ autoLayout }) => autoLayout)) {
+        reflowAutoLayoutGroups();
+        emit('layoutStateChange', props.templateId, captureLayoutState());
+    }
     void syncTransformer();
 };
 
@@ -1311,10 +2576,26 @@ watch(
 );
 
 watch(imageStatus, (status) => emit('imageStatus', status), { immediate: true });
+watch(() => props.dataValues, () => {
+    reloadAllCustomImages();
+    reloadCurrentCustomQrs();
+    syncAllGraphicTextSizes();
+    if (flattenLayoutGroups(layoutGroups.value[props.templateId]).some(({ autoLayout }) => autoLayout)) {
+        reflowAutoLayoutGroups();
+        emit('layoutStateChange', props.templateId, captureLayoutState());
+    }
+    emitSelectionGeometry();
+    void syncTransformer();
+}, { deep: true });
+watch(() => imagePaletteStore.revision, () => {
+    reloadCurrentCustomQrs();
+    void syncTransformer();
+});
 watch(() => props.draftId, restoreDraftLayouts, { immediate: true });
 watch(
     () => props.templateId,
     () => {
+        reloadCurrentCustomQrs();
         selectedElements.value = [];
         selectedGroupId.value = null;
         activeAlignmentGuides.value = [];
@@ -1332,6 +2613,7 @@ watch(
 
 const exportPng = async () => {
     await document.fonts.ready;
+    reflowAutoLayoutGroups();
 
     if (imageStatus.value === 'loading') {
         throw new Error('Das Veranstaltungsbild wird noch geladen.');
@@ -1366,7 +2648,9 @@ const exportPng = async () => {
 };
 
 defineExpose({
+    addElement,
     alignSelectedElement,
+    distributeSelectedElements,
     changeSelectedLayer,
     clearSelection,
     drillIntoElement,
@@ -1375,6 +2659,7 @@ defineExpose({
     exportPng,
     groupSelectedElements,
     getLayoutState,
+    moveLayerNode,
     nudgeSelectedElement,
     redoLayout,
     resetLayout,
@@ -1382,8 +2667,18 @@ defineExpose({
     resizeSelectedElement,
     rotateSelectedElement,
     setSelectedElementGeometry,
+    setSelectedElementGradient,
+    setElementEffects,
+    setSelectedElementColorBinding,
+    setSelectedElementStaticColor,
     setSelectedElementTextStyle,
+    setSelectedElementTextContent,
+    setSelectedGroupAutoLayout,
+    setSelectedCustomTextMode,
+    setSelectedQrOptions,
     setSelectedElementVisualStyle,
+    toggleElementsLock,
+    toggleElementsVisibility,
     selectElement,
     selectGroup,
     undoLayout,
@@ -1392,7 +2687,7 @@ defineExpose({
 </script>
 
 <template>
-    <div class="template-preview">
+    <div class="template-preview" @dragover.prevent @drop.prevent="handleDataFieldDrop">
         <v-stage
             ref="stageRef"
             :config="stageConfig"
@@ -1408,78 +2703,121 @@ defineExpose({
             @touchcancel="finishSelectionRectangle"
         >
             <v-layer>
-                <EditableVisualElement
-                    v-if="!deletedElements[templateId].includes('background')"
-                    element-id="background"
-                    :frame="elementFrame('background')"
-                    :editor-scale="previewScale"
-                    :rotation="layoutRotations[templateId].background"
-                    :selected="selectedElements.includes('background') && !isExporting"
-                    :visual-config="visualConfig('background')"
-                    :z-index="layoutOrder[templateId].indexOf('background')"
-                    @drag-start="startElementDrag"
-                    @dragging="alignElementWhileDragging"
-                    @move="moveElement"
-                    @resize="resizeElement"
-                />
-                <template v-for="decoration in decorationLayers('behindImage')" :key="decoration.id">
-                    <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration)" />
-                    <v-text v-else :config="decorationConfig(decoration)" />
+                <template v-for="item in canvasRenderItems" :key="item.id">
+                    <EditableVisualElement
+                        v-if="item.role === 'background'"
+                        element-id="background"
+                        :frame="elementFrame('background')"
+                        :locked="elementIsLocked('background')"
+                        :editor-scale="previewScale"
+                        :rotation="layoutRotations[templateId].background"
+                        :selected="selectedElements.includes('background') && !isExporting"
+                        :effects="elementEffects('background')"
+                        :visual-config="visualConfig('background')"
+                        @drag-start="startElementDrag"
+                        @dragging="alignElementWhileDragging"
+                        @move="moveElement"
+                        @resize="resizeElement"
+                    />
+                    <v-group v-else-if="item.role === 'decorationBehind'" :config="{ listening: false }">
+                        <template v-for="decoration in decorationLayers('behindImage')" :key="decoration.id">
+                            <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration)" />
+                            <v-text v-else :config="decorationConfig(decoration)" />
+                        </template>
+                    </v-group>
+                    <EditableVisualElement
+                        v-else-if="item.role === 'image'"
+                        element-id="image"
+                        :frame="elementFrame('image')"
+                        :locked="elementIsLocked('image')"
+                        :editor-scale="previewScale"
+                        :image-config="imageIsVisible ? imageConfig : null"
+                        :rotation="layoutRotations[templateId].image"
+                        :selected="selectedElements.includes('image') && !isExporting"
+                        :effects="elementEffects('image')"
+                        @drag-start="startElementDrag"
+                        @dragging="alignElementWhileDragging"
+                        @move="moveElement"
+                        @resize="resizeElement"
+                    />
+                    <v-group v-else-if="item.role === 'decorationOver'" :config="{ listening: false }">
+                        <template v-for="decoration in decorationLayers('overImage')" :key="decoration.id">
+                            <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration)" />
+                            <v-text v-else :config="decorationConfig(decoration)" />
+                        </template>
+                    </v-group>
+                    <EditableVisualElement
+                        v-else-if="item.role === 'accent'"
+                        element-id="accent"
+                        :frame="elementFrame('accent')"
+                        :locked="elementIsLocked('accent')"
+                        :editor-scale="previewScale"
+                        :rotation="layoutRotations[templateId].accent"
+                        :selected="selectedElements.includes('accent') && !isExporting"
+                        :effects="elementEffects('accent')"
+                        :visual-config="visualConfig('accent')"
+                        @drag-start="startElementDrag"
+                        @dragging="alignElementWhileDragging"
+                        @move="moveElement"
+                        @resize="resizeElement"
+                    />
+                    <EditableTextElement
+                        v-else-if="item.role === 'templateText'"
+                        :element-id="item.id"
+                        :decoration-lines="editableTextDecorationLines(item.id)"
+                        :editor-scale="previewScale"
+                        :frame="elementFrame(item.id)"
+                        :graphic-text="false"
+                        :locked="elementIsLocked(item.id)"
+                        :rotation="layoutRotations[templateId][item.id]"
+                        :selected="selectedElements.includes(item.id) && !isExporting"
+                        :effects="elementEffects(item.id)"
+                        :text-config="editableTextConfig(item.id)"
+                        @drag-start="startElementDrag"
+                        @dragging="alignElementWhileDragging"
+                        @move="moveElement"
+                        @resize="resizeElement"
+                    />
+                    <EditableTextElement
+                        v-else-if="item.role === 'custom' && item.element.kind === 'text'"
+                        :element-id="item.element.id"
+                        :decoration-lines="customTextDecorationLines(item.element)"
+                        :editor-scale="previewScale"
+                        :frame="elementFrame(item.element.id)"
+                        :graphic-text="customTextMode(item.element) === 'graphic'"
+                        :locked="elementIsLocked(item.element.id)"
+                        :rotation="layoutRotations[templateId][item.element.id]"
+                        :selected="selectedElements.includes(item.element.id) && !isExporting"
+                        :effects="elementEffects(item.element.id)"
+                        :text-config="customTextConfig(item.element)"
+                        @drag-start="startElementDrag"
+                        @dragging="alignElementWhileDragging"
+                        @move="moveElement"
+                        @resize="resizeElement"
+                    />
+                    <EditableVisualElement
+                        v-else-if="item.role === 'custom'"
+                        :element-id="item.element.id"
+                        :editor-scale="previewScale"
+                        :frame="elementFrame(item.element.id)"
+                        :locked="elementIsLocked(item.element.id)"
+                        :image-config="item.element.kind === 'image'
+                            ? customImageConfig(item.element)
+                            : item.element.kind === 'qr' && customQrNodes[item.element.id]
+                                ? { image: customQrNodes[item.element.id] }
+                                : null"
+                        :path-config="item.element.kind === 'icon' ? customIconPathConfig(item.element) : null"
+                        :rotation="layoutRotations[templateId][item.element.id]"
+                        :selected="selectedElements.includes(item.element.id) && !isExporting"
+                        :effects="elementEffects(item.element.id)"
+                        :shape="customShapeType(item.element)"
+                        :visual-config="item.element.kind === 'image' || item.element.kind === 'qr' ? null : customVisualConfig(item.element.id)"
+                        @drag-start="startElementDrag"
+                        @dragging="alignElementWhileDragging"
+                        @move="moveElement"
+                        @resize="resizeElement"
+                    />
                 </template>
-            </v-layer>
-            <v-layer>
-                <EditableVisualElement
-                    v-if="!deletedElements[templateId].includes('image')"
-                    element-id="image"
-                    :frame="elementFrame('image')"
-                    :editor-scale="previewScale"
-                    :image-config="imageIsVisible ? imageConfig : null"
-                    :rotation="layoutRotations[templateId].image"
-                    :selected="selectedElements.includes('image') && !isExporting"
-                    :z-index="layoutOrder[templateId].indexOf('image')"
-                    @drag-start="startElementDrag"
-                    @dragging="alignElementWhileDragging"
-                    @move="moveElement"
-                    @resize="resizeElement"
-                />
-            </v-layer>
-            <v-layer>
-                <template v-for="decoration in decorationLayers('overImage')" :key="decoration.id">
-                    <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration)" />
-                    <v-text v-else :config="decorationConfig(decoration)" />
-                </template>
-                <EditableVisualElement
-                    v-if="!deletedElements[templateId].includes('accent')"
-                    element-id="accent"
-                    :frame="elementFrame('accent')"
-                    :editor-scale="previewScale"
-                    :rotation="layoutRotations[templateId].accent"
-                    :selected="selectedElements.includes('accent') && !isExporting"
-                    :visual-config="visualConfig('accent')"
-                    :z-index="layoutOrder[templateId].indexOf('accent')"
-                    @drag-start="startElementDrag"
-                    @dragging="alignElementWhileDragging"
-                    @move="moveElement"
-                    @resize="resizeElement"
-                />
-                <v-group>
-                    <template v-for="binding in TEMPLATE_TEXT_BINDINGS" :key="binding">
-                        <EditableTextElement
-                            v-if="!deletedElements[templateId].includes(binding) && (binding !== 'location' || template.location)"
-                            :element-id="binding"
-                            :editor-scale="previewScale"
-                            :frame="elementFrame(binding)"
-                            :rotation="layoutRotations[templateId][binding]"
-                            :selected="selectedElements.includes(binding) && !isExporting"
-                            :z-index="layoutOrder[templateId].indexOf(binding)"
-                            :text-config="editableTextConfig(binding)"
-                            @drag-start="startElementDrag"
-                            @dragging="alignElementWhileDragging"
-                            @move="moveElement"
-                            @resize="resizeElement"
-                        />
-                    </template>
-                </v-group>
             </v-layer>
             <v-layer v-if="!isExporting" :config="{ listening: false }">
                 <v-rect
@@ -1506,7 +2844,7 @@ defineExpose({
                 />
             </v-layer>
             <v-layer>
-                <v-transformer ref="transformerRef" :config="transformerConfig" />
+                <v-transformer ref="transformerRef" :config="transformerConfig" @transformstart="cancelSelectionRectangle" />
             </v-layer>
         </v-stage>
     </div>

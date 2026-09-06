@@ -8,20 +8,30 @@ import {
     createLayoutSizes,
     createLayoutVisualStyles,
     createLayoutGroups,
+    createCustomTextStyle,
+    createCustomVisualStyle,
     isHexColor,
     MAX_FONT_SIZE,
     MIN_FONT_SIZE,
     type LayoutElementId,
+    type LayoutEffects,
+    type LayoutCustomElement,
     type LayoutGroup,
     type LayoutGroups,
+    type LayoutTextStyle,
     type LayoutTextStyles,
     type LayoutVisualStyles,
+    normalizeLayoutElementEffects,
     LAYOUT_ELEMENT_IDS,
     SHAPE_LAYOUT_ELEMENT_IDS,
+    TEXT_LAYOUT_ELEMENT_IDS,
 } from './layoutEditing';
 import type { EventTemplateOverrides } from './templateOverrides';
 import type { TemplateId } from './templates';
 import { DOCUMENT_HEIGHT, DOCUMENT_WIDTH } from '../utils/stageDimensions';
+import { isPublisherIconName } from './publisherIcons';
+import { isLayoutColorBinding } from './imagePalette';
+import { normalizeLayoutGradient, type LayoutGradient } from './layoutGradient';
 
 export const PUBLISHER_DRAFT_VERSION = 1;
 export const publisherDraftStorageKey = (appointmentKey: string) =>
@@ -56,77 +66,224 @@ export const isPublisherFiniteNumber = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value);
 
 const isRecord = isPublisherRecord;
+
+const parseLayoutGradient = (value: unknown): LayoutGradient | null => {
+    if (!isRecord(value) || !['linear', 'radial'].includes(String(value.type)) ||
+        !isFiniteNumber(value.startX) || !isFiniteNumber(value.startY) ||
+        !isFiniteNumber(value.endX) || !isFiniteNumber(value.endY) ||
+        !isFiniteNumber(value.startRadius) || !isFiniteNumber(value.endRadius) ||
+        !Array.isArray(value.stops) || value.stops.length < 2 || value.stops.length > 32) return null;
+    const stops = value.stops.map((stop) => isRecord(stop) && typeof stop.id === 'string' && stop.id &&
+        isFiniteNumber(stop.offset) && stop.offset >= 0 && stop.offset <= 1 &&
+        typeof stop.color === 'string' && isHexColor(stop.color) &&
+        isFiniteNumber(stop.opacity) && stop.opacity >= 0 && stop.opacity <= 1
+        ? { id: stop.id, offset: stop.offset, color: stop.color, opacity: stop.opacity }
+        : null);
+    if (stops.some((stop) => !stop) || new Set(stops.map((stop) => stop!.id)).size !== stops.length) return null;
+    return normalizeLayoutGradient({
+        type: value.type as LayoutGradient['type'],
+        startX: value.startX,
+        startY: value.startY,
+        endX: value.endX,
+        endY: value.endY,
+        startRadius: value.startRadius,
+        endRadius: value.endRadius,
+        stops: stops as LayoutGradient['stops'],
+    });
+};
 const isFiniteNumber = isPublisherFiniteNumber;
 
-const parseLayoutStyles = (value: unknown, templateId: TemplateId): LayoutTextStyles | null => {
+const parseLayoutCustomElements = (value: unknown): LayoutCustomElement[] | null => {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.length > 100) return null;
+    const ids = new Set<string>();
+    const elements: LayoutCustomElement[] = [];
+    for (const candidate of value) {
+        if (!isRecord(candidate) || typeof candidate.id !== 'string' || ids.has(candidate.id) ||
+            typeof candidate.kind !== 'string' ||
+            !['text', 'image', 'rectangle', 'circle', 'triangle', 'line', 'icon', 'qr'].includes(candidate.kind) ||
+            typeof candidate.name !== 'string' || !candidate.name.trim() || !isRecord(candidate.frame)) {
+            return null;
+        }
+        const expectedPrefix = candidate.kind === 'text' ? 'text-' : candidate.kind === 'image'
+            ? 'image-' : candidate.kind === 'icon' ? 'icon-' : candidate.kind === 'qr' ? 'qr-' : `shape-${candidate.kind}-`;
+        const frame = candidate.frame;
+        if (!candidate.id.startsWith(expectedPrefix) ||
+            ![frame.x, frame.y, frame.width, frame.height].every(isFiniteNumber) ||
+            Number(frame.width) <= 0 || Number(frame.height) <= 0 ||
+            (candidate.kind === 'text' && typeof candidate.text !== 'string') ||
+            (candidate.textMode !== undefined && candidate.textMode !== 'graphic' && candidate.textMode !== 'frame') ||
+            (candidate.kind === 'icon' && !isPublisherIconName(candidate.iconName)) ||
+            (candidate.kind === 'qr' && (
+                typeof candidate.qrValue !== 'string' || candidate.qrValue.length > 10_000 ||
+                typeof candidate.qrBackground !== 'string' || !isHexColor(candidate.qrBackground) ||
+                !isFiniteNumber(candidate.qrMargin) || candidate.qrMargin < 0 || candidate.qrMargin > 10 ||
+                !['L', 'M', 'Q', 'H'].includes(String(candidate.qrErrorCorrection))
+            )) ||
+            (candidate.dataBinding !== undefined && (typeof candidate.dataBinding !== 'string' ||
+                !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(candidate.dataBinding))) ||
+            (candidate.kind === 'image' && (typeof candidate.imageSource !== 'string' ||
+                !/^(data:image\/(?:jpeg|png|webp);base64,|https?:\/\/)/i.test(candidate.imageSource)))) {
+            return null;
+        }
+        ids.add(candidate.id);
+        elements.push({
+            id: candidate.id as LayoutElementId,
+            kind: candidate.kind as LayoutCustomElement['kind'],
+            name: candidate.name.trim(),
+            frame: { x: Number(frame.x), y: Number(frame.y), width: Number(frame.width), height: Number(frame.height) },
+            ...(candidate.kind === 'text'
+                ? { text: candidate.text as string, textMode: candidate.textMode === 'graphic' ? 'graphic' : 'frame' }
+                : {}),
+            ...(candidate.kind === 'image' ? { imageSource: candidate.imageSource as string } : {}),
+            ...(typeof candidate.dataBinding === 'string' ? { dataBinding: candidate.dataBinding } : {}),
+            ...(candidate.kind === 'icon' && isPublisherIconName(candidate.iconName)
+                ? { iconName: candidate.iconName }
+                : {}),
+            ...(candidate.kind === 'qr' ? {
+                qrValue: candidate.qrValue as string,
+                qrBackground: String(candidate.qrBackground).toLowerCase(),
+                qrMargin: Number(candidate.qrMargin),
+                qrErrorCorrection: candidate.qrErrorCorrection as NonNullable<LayoutCustomElement['qrErrorCorrection']>,
+            } : {}),
+        });
+    }
+    return elements;
+};
+
+const parseLayoutStyles = (
+    value: unknown,
+    templateId: TemplateId,
+    customElements: LayoutCustomElement[],
+): LayoutTextStyles | null => {
     if (value === undefined) {
-        return createLayoutTextStyles(templateId);
+        return {
+            ...createLayoutTextStyles(templateId),
+            ...Object.fromEntries(customElements.filter(({ kind }) => kind === 'text')
+                .map(({ id }) => [id, createCustomTextStyle()])),
+        };
     }
     if (!isRecord(value)) {
         return null;
     }
 
     const styles = createLayoutTextStyles(templateId);
-    for (const elementId of ['title', 'dateTime', 'location'] as const) {
+    const textElementIds = [
+        ...TEXT_LAYOUT_ELEMENT_IDS,
+        ...customElements.filter(({ kind }) => kind === 'text').map(({ id }) => id),
+    ];
+    for (const elementId of textElementIds) {
         const style = value[elementId];
+        if (style === undefined && !LAYOUT_ELEMENT_IDS.includes(elementId as never)) {
+            styles[elementId] = createCustomTextStyle();
+            continue;
+        }
         if (!isRecord(style) || !isFiniteNumber(style.fontSize) ||
             style.fontSize < MIN_FONT_SIZE || style.fontSize > MAX_FONT_SIZE ||
             typeof style.color !== 'string' || !isHexColor(style.color)) {
             return null;
         }
-        const fontFamily = style.fontFamily ?? styles[elementId].fontFamily;
-        const fontStyle = style.fontStyle ?? styles[elementId].fontStyle;
-        const lineHeight = style.lineHeight ?? styles[elementId].lineHeight;
-        const letterSpacing = style.letterSpacing ?? styles[elementId].letterSpacing;
-        const align = style.align ?? styles[elementId].align;
-        const listStyle = style.listStyle ?? styles[elementId].listStyle;
+        const defaultStyle = styles[elementId] ?? createCustomTextStyle();
+        const stroke = style.stroke ?? defaultStyle.stroke;
+        const strokeWidth = style.strokeWidth ?? defaultStyle.strokeWidth;
+        const fontFamily = style.fontFamily ?? defaultStyle.fontFamily;
+        const fontStyle = style.fontStyle ?? defaultStyle.fontStyle;
+        const lineHeight = style.lineHeight ?? defaultStyle.lineHeight;
+        const letterSpacing = style.letterSpacing ?? defaultStyle.letterSpacing;
+        const align = style.align ?? defaultStyle.align;
+        const listStyle = style.listStyle ?? defaultStyle.listStyle;
+        const textTransform = style.textTransform ?? defaultStyle.textTransform;
+        const underlineStyle = style.underlineStyle ?? defaultStyle.underlineStyle;
+        const strikethroughStyle = style.strikethroughStyle ?? defaultStyle.strikethroughStyle;
+        const colorBinding = style.colorBinding;
+        const strokeBinding = style.strokeBinding;
+        const colorGradient = style.colorGradient === undefined ? null : parseLayoutGradient(style.colorGradient);
         if (typeof fontFamily !== 'string' || !fontFamily.trim() ||
+            typeof stroke !== 'string' || !isHexColor(stroke) ||
+            !isFiniteNumber(strokeWidth) || strokeWidth < 0 || strokeWidth > 100 ||
             !['normal', 'bold', 'italic', 'bold italic'].includes(String(fontStyle)) ||
             !isFiniteNumber(lineHeight) || lineHeight < 0.5 || lineHeight > 3 ||
             !isFiniteNumber(letterSpacing) || letterSpacing < -20 || letterSpacing > 100 ||
             !['left', 'center', 'right'].includes(String(align)) ||
-            !['none', 'bullet', 'numbered'].includes(String(listStyle))) {
+            !['none', 'bullet', 'numbered'].includes(String(listStyle)) ||
+            !['none', 'uppercase', 'smallCaps'].includes(String(textTransform)) ||
+            !['none', 'single', 'double'].includes(String(underlineStyle)) ||
+            !['none', 'single', 'double'].includes(String(strikethroughStyle)) ||
+            (colorBinding !== undefined && !isLayoutColorBinding(colorBinding)) ||
+            (strokeBinding !== undefined && !isLayoutColorBinding(strokeBinding)) ||
+            (style.colorGradient !== undefined && !colorGradient)) {
             return null;
         }
         styles[elementId] = {
             fontSize: style.fontSize,
             color: style.color.toLowerCase(),
+            stroke: stroke.toLowerCase(),
+            strokeWidth,
             fontFamily: fontFamily.trim(),
-            fontStyle: fontStyle as LayoutTextStyles[typeof elementId]['fontStyle'],
+            fontStyle: fontStyle as LayoutTextStyle['fontStyle'],
             lineHeight,
             letterSpacing,
-            align: align as LayoutTextStyles[typeof elementId]['align'],
-            listStyle: listStyle as LayoutTextStyles[typeof elementId]['listStyle'],
+            align: align as LayoutTextStyle['align'],
+            listStyle: listStyle as LayoutTextStyle['listStyle'],
+            textTransform: textTransform as LayoutTextStyle['textTransform'],
+            underlineStyle: underlineStyle as LayoutTextStyle['underlineStyle'],
+            strikethroughStyle: strikethroughStyle as LayoutTextStyle['strikethroughStyle'],
+            ...(isLayoutColorBinding(colorBinding) ? { colorBinding: { ...colorBinding } } : {}),
+            ...(isLayoutColorBinding(strokeBinding) ? { strokeBinding: { ...strokeBinding } } : {}),
+            ...(colorGradient ? { colorGradient } : {}),
         };
     }
     return styles;
 };
 
-const parseLayoutVisualStyles = (value: unknown, templateId: TemplateId): LayoutVisualStyles | null => {
+const parseLayoutVisualStyles = (
+    value: unknown,
+    templateId: TemplateId,
+    customElements: LayoutCustomElement[],
+): LayoutVisualStyles | null => {
     if (value === undefined) {
-        return createLayoutVisualStyles(templateId);
+        return {
+            ...createLayoutVisualStyles(templateId),
+            ...Object.fromEntries(customElements.filter(({ kind }) => ['rectangle', 'circle', 'triangle', 'line', 'icon', 'qr'].includes(kind))
+                .map(({ id }) => [id, createCustomVisualStyle()])),
+        };
     }
     if (!isRecord(value)) {
         return null;
     }
     const styles = createLayoutVisualStyles(templateId);
-    for (const elementId of SHAPE_LAYOUT_ELEMENT_IDS) {
+    const shapeElementIds = [
+        ...SHAPE_LAYOUT_ELEMENT_IDS,
+        ...customElements.filter(({ kind }) => ['rectangle', 'circle', 'triangle', 'line', 'icon', 'qr'].includes(kind)).map(({ id }) => id),
+    ];
+    for (const elementId of shapeElementIds) {
         const style = value[elementId];
+        if (style === undefined && !LAYOUT_ELEMENT_IDS.includes(elementId as never)) {
+            styles[elementId] = createCustomVisualStyle();
+            continue;
+        }
         if (!isRecord(style) || typeof style.fill !== 'string' || !isHexColor(style.fill) ||
             typeof style.stroke !== 'string' || !isHexColor(style.stroke) ||
-            !isFiniteNumber(style.strokeWidth) || style.strokeWidth < 0 || style.strokeWidth > 100) {
+            !isFiniteNumber(style.strokeWidth) || style.strokeWidth < 0 || style.strokeWidth > 100 ||
+            (style.fillBinding !== undefined && !isLayoutColorBinding(style.fillBinding)) ||
+            (style.strokeBinding !== undefined && !isLayoutColorBinding(style.strokeBinding))) {
             return null;
         }
+        const fillGradient = style.fillGradient === undefined ? null : parseLayoutGradient(style.fillGradient);
+        if (style.fillGradient !== undefined && !fillGradient) return null;
         styles[elementId] = {
             fill: style.fill.toLowerCase(),
             stroke: style.stroke.toLowerCase(),
             strokeWidth: style.strokeWidth,
+            ...(isLayoutColorBinding(style.fillBinding) ? { fillBinding: { ...style.fillBinding } } : {}),
+            ...(isLayoutColorBinding(style.strokeBinding) ? { strokeBinding: { ...style.strokeBinding } } : {}),
+            ...(fillGradient ? { fillGradient } : {}),
         };
     }
     return styles;
 };
 
-const parseLayoutGroups = (value: unknown): LayoutGroups | null => {
+const parseLayoutGroups = (value: unknown, validElementIds = new Set<LayoutElementId>(LAYOUT_ELEMENT_IDS)): LayoutGroups | null => {
     if (value === undefined) {
         return createLayoutGroups();
     }
@@ -143,7 +300,7 @@ const parseLayoutGroups = (value: unknown): LayoutGroups | null => {
         groupIds.add(candidate.id);
         const children: LayoutGroup['children'] = [];
         for (const child of candidate.children) {
-            if (typeof child === 'string' && LAYOUT_ELEMENT_IDS.includes(child as LayoutElementId)) {
+            if (typeof child === 'string' && validElementIds.has(child as LayoutElementId)) {
                 const elementId = child as LayoutElementId;
                 if (elementIds.has(elementId)) {
                     return null;
@@ -158,7 +315,25 @@ const parseLayoutGroups = (value: unknown): LayoutGroups | null => {
             }
             children.push(group);
         }
-        return { id: candidate.id, children };
+        let autoLayout: LayoutGroup['autoLayout'];
+        if (candidate.autoLayout !== undefined) {
+            const layout = candidate.autoLayout;
+            if (!isRecord(layout) || (layout.axis !== 'horizontal' && layout.axis !== 'vertical') ||
+                !isFiniteNumber(layout.gap) || layout.gap < 0 || layout.gap > 4096 ||
+                !['left', 'center', 'right'].includes(String(layout.horizontalOrigin)) ||
+                !['top', 'center', 'bottom'].includes(String(layout.verticalOrigin)) ||
+                !isRecord(layout.anchor) || !isFiniteNumber(layout.anchor.x) || !isFiniteNumber(layout.anchor.y)) {
+                return null;
+            }
+            autoLayout = {
+                axis: layout.axis,
+                gap: layout.gap,
+                horizontalOrigin: layout.horizontalOrigin as NonNullable<LayoutGroup['autoLayout']>['horizontalOrigin'],
+                verticalOrigin: layout.verticalOrigin as NonNullable<LayoutGroup['autoLayout']>['verticalOrigin'],
+                anchor: { x: layout.anchor.x, y: layout.anchor.y },
+            };
+        }
+        return { id: candidate.id, children, ...(autoLayout ? { autoLayout } : {}) };
     };
     const groups: LayoutGroups = [];
     for (const candidate of value) {
@@ -169,6 +344,21 @@ const parseLayoutGroups = (value: unknown): LayoutGroups | null => {
         groups.push(group);
     }
     return groups;
+};
+
+const parseLayoutEffects = (value: unknown, validElementIds: Set<LayoutElementId>): LayoutEffects | null => {
+    if (value === undefined) return {};
+    if (!isRecord(value)) return null;
+    const effects: LayoutEffects = {};
+    for (const [elementId, candidate] of Object.entries(value)) {
+        if (!validElementIds.has(elementId as LayoutElementId) || !isRecord(candidate) ||
+            (candidate.shadow !== undefined && !isRecord(candidate.shadow)) ||
+            (candidate.blur !== undefined && !isRecord(candidate.blur)) ||
+            (candidate.opacity !== undefined && !isFiniteNumber(candidate.opacity)) ||
+            (candidate.blendMode !== undefined && typeof candidate.blendMode !== 'string')) return null;
+        effects[elementId] = normalizeLayoutElementEffects(candidate);
+    }
+    return effects;
 };
 
 export const parsePublisherLayoutState = (
@@ -185,6 +375,10 @@ export const parsePublisherLayoutState = (
     const offsets = createLayoutOffsets();
     const sizes = createLayoutSizes(templateId);
     const rotations = createLayoutRotations();
+    const customElements = parseLayoutCustomElements(value.customElements);
+    if (!customElements) return null;
+    const allElementIds = [...LAYOUT_ELEMENT_IDS, ...customElements.map(({ id }) => id)];
+    const validElementIds = new Set<LayoutElementId>(allElementIds);
     const order = value.order;
     const storedOffsets = value.offsets;
     const storedSizes = value.sizes;
@@ -193,13 +387,33 @@ export const parsePublisherLayoutState = (
         ? []
         : Array.isArray(value.deleted)
             ? value.deleted.filter((elementId): elementId is LayoutElementId =>
-                typeof elementId === 'string' && LAYOUT_ELEMENT_IDS.includes(elementId as LayoutElementId))
+                typeof elementId === 'string' && validElementIds.has(elementId as LayoutElementId))
             : null;
     if (!deleted || (value.deleted !== undefined && deleted.length !== (value.deleted as unknown[]).length) ||
         new Set(deleted).size !== deleted.length) {
         return null;
     }
-    const storedElementIds = LAYOUT_ELEMENT_IDS.filter((elementId) => storedOffsets[elementId] !== undefined);
+    const hidden = value.hidden === undefined
+        ? []
+        : Array.isArray(value.hidden)
+            ? value.hidden.filter((elementId): elementId is LayoutElementId =>
+                typeof elementId === 'string' && validElementIds.has(elementId as LayoutElementId))
+            : null;
+    if (!hidden || (value.hidden !== undefined && hidden.length !== (value.hidden as unknown[]).length) ||
+        new Set(hidden).size !== hidden.length) {
+        return null;
+    }
+    const locked = value.locked === undefined
+        ? []
+        : Array.isArray(value.locked)
+            ? value.locked.filter((elementId): elementId is LayoutElementId =>
+                typeof elementId === 'string' && validElementIds.has(elementId as LayoutElementId))
+            : null;
+    if (!locked || (value.locked !== undefined && locked.length !== (value.locked as unknown[]).length) ||
+        new Set(locked).size !== locked.length) {
+        return null;
+    }
+    const storedElementIds = allElementIds.filter((elementId) => storedOffsets[elementId] !== undefined);
     for (const elementId of LAYOUT_ELEMENT_IDS) {
         if (!storedElementIds.includes(elementId)) {
             sizes[elementId] = {
@@ -207,6 +421,9 @@ export const parsePublisherLayoutState = (
                 height: sizes[elementId].height * documentHeight / DOCUMENT_HEIGHT,
             };
         }
+    }
+    for (const element of customElements) {
+        if (!storedElementIds.includes(element.id)) return null;
     }
     const geometryIsValid = storedElementIds.every((elementId) => {
         const offset = storedOffsets[elementId];
@@ -223,8 +440,8 @@ export const parsePublisherLayoutState = (
         rotations[elementId] = storedRotations[elementId] as number;
     }
     const parsedOrder = order.filter((elementId): elementId is LayoutElementId =>
-        typeof elementId === 'string' && LAYOUT_ELEMENT_IDS.includes(elementId as LayoutElementId));
-    const remainingElementIds = LAYOUT_ELEMENT_IDS.filter((elementId) => !deleted.includes(elementId));
+        typeof elementId === 'string' && validElementIds.has(elementId as LayoutElementId));
+    const remainingElementIds = allElementIds.filter((elementId) => !deleted.includes(elementId));
     const orderIsValid = parsedOrder.length === order.length && new Set(parsedOrder).size === parsedOrder.length &&
         (parsedOrder.length === remainingElementIds.length &&
             remainingElementIds.every((elementId) => parsedOrder.includes(elementId)) ||
@@ -233,10 +450,11 @@ export const parsePublisherLayoutState = (
     const restoredOrder = parsedOrder.length === remainingElementIds.length
         ? parsedOrder
         : [...createLayoutOrder().filter((id) => !deleted.includes(id) && !parsedOrder.includes(id)), ...parsedOrder];
-    const styles = parseLayoutStyles(value.styles, templateId);
-    const visualStyles = parseLayoutVisualStyles(value.visualStyles, templateId);
-    const groups = parseLayoutGroups(value.groups);
-    if (!geometryIsValid || !orderIsValid || !styles || !visualStyles || !groups) {
+    const styles = parseLayoutStyles(value.styles, templateId, customElements);
+    const visualStyles = parseLayoutVisualStyles(value.visualStyles, templateId, customElements);
+    const groups = parseLayoutGroups(value.groups, validElementIds);
+    const effects = parseLayoutEffects(value.effects, validElementIds);
+    if (!geometryIsValid || !orderIsValid || !styles || !visualStyles || !groups || !effects) {
         return null;
     }
 
@@ -249,6 +467,10 @@ export const parsePublisherLayoutState = (
         visualStyles,
         groups,
         deleted,
+        ...(value.hidden !== undefined ? { hidden } : {}),
+        ...(value.locked !== undefined ? { locked } : {}),
+        ...(value.customElements !== undefined ? { customElements } : {}),
+        ...(value.effects !== undefined ? { effects } : {}),
     };
 };
 
@@ -259,15 +481,14 @@ const parseTemplateOverrides = (value: unknown): EventTemplateOverrides | null =
         return null;
     }
 
+    const entries = Object.entries(value);
+    if (entries.length > 50) return null;
     const overrides: EventTemplateOverrides = {};
-    for (const field of ['title', 'date', 'time', 'location'] as const) {
-        const fieldValue = value[field];
-        if (fieldValue !== undefined && typeof fieldValue !== 'string') {
+    for (const [field, fieldValue] of entries) {
+        if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(field) || typeof fieldValue !== 'string' || fieldValue.length > 100_000) {
             return null;
         }
-        if (typeof fieldValue === 'string') {
-            overrides[field] = fieldValue;
-        }
+        overrides[field] = fieldValue;
     }
     return overrides;
 };

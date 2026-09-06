@@ -29,4 +29,13 @@ describe('template overrides', () => {
 
         expect(result).toEqual({ location: 'Kirchplatz' });
     });
+
+    it('supports appointment fields that are not part of the built-in template', () => {
+        expect(withTemplateOverride(
+            { subtitle: 'Original' },
+            {},
+            'subtitle',
+            'Bearbeitet',
+        )).toEqual({ subtitle: 'Bearbeitet' });
+    });
 });

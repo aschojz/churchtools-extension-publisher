@@ -21,11 +21,15 @@
         "@fortawesome/vue-fontawesome": "^3.3.3",
         "@tanstack/vue-query": "^5.101.4",
         "konva": "^10.3.0",
+        "node-vibrant": "^4.0.4",
+        "pinia": "^4.0.3",
+        "qrcode": "^1.5.4",
         "vue": "^3.5.40",
         "vue-konva": "^3.4.0"
     },
     "devDependencies": {
         "@types/node": "^24.3.0",
+        "@types/qrcode": "^1.5.6",
         "@vitejs/plugin-vue": "^6.0.8",
         "@vue/test-utils": "^2.4.11",
         "jsdom": "^30.0.1",

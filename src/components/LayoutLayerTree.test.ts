@@ -46,6 +46,7 @@ describe('LayoutLayerTree', () => {
         expect(wrapper.text()).toContain('Gruppe');
         expect(wrapper.text()).toContain('Untergruppe');
         expect(wrapper.text()).toContain('Titel');
+        expect(wrapper.findAll('.inspector-layer-list__drag')).toHaveLength(5);
 
         await wrapper.get('button[aria-label="Gruppe zuklappen"]').trigger('click');
         expect(wrapper.text()).not.toContain('Untergruppe');
@@ -58,7 +59,7 @@ describe('LayoutLayerTree', () => {
         expect(wrapper.text()).not.toContain('Titel');
     });
 
-    it('emits complete group selections and deletions', async () => {
+    it('emits complete group selections and non-destructive visibility changes', async () => {
         const wrapper = mount(LayoutLayerTree, {
             props: {
                 elementLabels,
@@ -68,9 +69,103 @@ describe('LayoutLayerTree', () => {
         });
 
         await wrapper.findAll('.inspector-layer-list__select--group')[0]!.trigger('click');
-        await wrapper.findAll('button[aria-label="Gruppe löschen"]')[0]!.trigger('click');
+        await wrapper.findAll('button[aria-label="Gruppe ausblenden"]')[0]!.trigger('click');
 
         expect(wrapper.emitted('selectGroup')?.[0]?.[0]).toBe('outer');
-        expect(wrapper.emitted('deleteElements')?.[0]?.[0]).toEqual(['title', 'dateTime', 'location']);
+        expect(wrapper.emitted('toggleVisibility')?.[0]?.[0]).toEqual(['title', 'dateTime', 'location']);
+    });
+
+    it('expands collapsed ancestor groups when the canvas selects a nested element', async () => {
+        const wrapper = mount(LayoutLayerTree, {
+            props: {
+                elementLabels,
+                nodes: nestedNodes,
+                selectedElementIds: [],
+                expandedGroupIds: [],
+            },
+        });
+
+        await wrapper.get('button[aria-label="Gruppe zuklappen"]').trigger('click');
+        expect(wrapper.text()).not.toContain('Titel');
+
+        await wrapper.setProps({ selectedElementIds: ['title'], expandedGroupIds: ['outer', 'inner'] });
+        expect(wrapper.text()).toContain('Titel');
+    });
+
+    it('shows the actual layer label without repeating its type', () => {
+        const customLabels = {
+            ...elementLabels,
+            'image-photo': 'Foto',
+            'shape-box': 'Rechteck',
+            'icon-church': 'Kirche',
+            'qr-link': 'Link QR',
+        } as Record<LayoutElementId, string>;
+        const nodes: LayoutLayerTreeNode[] = (['image-photo', 'shape-box', 'icon-church', 'qr-link'] as LayoutElementId[]).map((elementId) => ({
+            kind: 'element' as const,
+            id: elementId,
+            elementId,
+        }));
+        const wrapper = mount(LayoutLayerTree, {
+            props: { elementLabels: customLabels, nodes, selectedElementIds: [] },
+        });
+
+        expect(wrapper.text()).toContain('Foto');
+        expect(wrapper.text()).toContain('Rechteck');
+        expect(wrapper.text()).toContain('Kirche');
+        expect(wrapper.text()).toContain('Link QR');
+        expect(wrapper.find('small').exists()).toBe(false);
+    });
+
+    it('renders image previews and individual visibility controls', async () => {
+        const wrapper = mount(LayoutLayerTree, {
+            props: {
+                elementLabels,
+                elementPreviews: { image: { kind: 'image', imageSource: 'data:image/png;base64,preview' } },
+                hiddenElementIds: ['image'],
+                nodes: [{ kind: 'element', id: 'image', elementId: 'image' }],
+                selectedElementIds: [],
+            },
+        });
+
+        expect(wrapper.get('.inspector-layer-list__icon img').attributes('src')).toBe('data:image/png;base64,preview');
+        expect(wrapper.get('.inspector-layer-list__row').classes()).toContain('is-hidden');
+        await wrapper.get('button[aria-label="Bild einblenden"]').trigger('click');
+        expect(wrapper.emitted('toggleVisibility')).toEqual([[['image']]]);
+    });
+
+    it('marks configured effects and opens them from the layer row', async () => {
+        const wrapper = mount(LayoutLayerTree, {
+            props: {
+                effectElementIds: ['title'],
+                elementLabels,
+                nodes: [{ kind: 'element', id: 'title', elementId: 'title' }],
+                selectedElementIds: [],
+            },
+        });
+
+        await wrapper.get('[aria-label="Effekte von Titel bearbeiten"]').trigger('click');
+
+        expect(wrapper.emitted('editEffects')).toEqual([['title']]);
+    });
+
+    it('emits an inside move when a drag handle is dropped onto a group', async () => {
+        const wrapper = mount(LayoutLayerTree, {
+            props: { elementLabels, nodes: nestedNodes, selectedElementIds: [] },
+        });
+        const values = new Map<string, string>();
+        const dataTransfer = {
+            effectAllowed: '', dropEffect: '',
+            setData: (type: string, value: string) => values.set(type, value),
+            getData: (type: string) => values.get(type) ?? '',
+        };
+
+        await wrapper.get('[aria-label="Ort verschieben"]').trigger('dragstart', { dataTransfer });
+        await wrapper.findAll('.inspector-layer-list__row--group')[1]!.trigger('drop', { dataTransfer, clientY: 0 });
+
+        expect(wrapper.emitted('moveLayer')).toEqual([[
+            { kind: 'element', id: 'location' },
+            { kind: 'group', id: 'inner' },
+            'inside',
+        ]]);
     });
 });

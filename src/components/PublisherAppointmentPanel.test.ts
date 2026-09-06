@@ -1,29 +1,32 @@
 // @vitest-environment jsdom
 
 import { mount } from '@vue/test-utils';
+import { createPinia, setActivePinia } from 'pinia';
 import { describe, expect, it } from 'vitest';
 import { nextTick } from 'vue';
 
 import PublisherAppointmentPanel from './PublisherAppointmentPanel.vue';
+import { usePublisherAppointmentsStore } from '../stores/publisherAppointments';
 
 const panelProps = {
     appointments: [{ key: '1:start', label: 'Sommerfest — 12.08.2026' }],
     calendars: [{ id: '4', label: 'Gemeinde' }],
     hasError: false,
-    hasFilters: false,
     isLoading: false,
-    open: true,
     totalCount: 1,
-    search: '',
-    selectedCalendar: '',
-    selectedRange: '',
-    onlyDrafts: false,
-    selectedAppointmentKey: '',
+};
+
+const mountPanel = () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = usePublisherAppointmentsStore();
+    store.appointmentDialogOpen = true;
+    return { store, wrapper: mount(PublisherAppointmentPanel, { props: panelProps, global: { plugins: [pinia] } }) };
 };
 
 describe('PublisherAppointmentPanel', () => {
     it('renders appointment filters and options in an open dialog', async () => {
-        const wrapper = mount(PublisherAppointmentPanel, { props: panelProps });
+        const { wrapper } = mountPanel();
         await nextTick();
 
         expect(wrapper.get('dialog').attributes()).toHaveProperty('open');
@@ -33,32 +36,31 @@ describe('PublisherAppointmentPanel', () => {
         expect(wrapper.text()).toContain('1 von 1 Terminen');
     });
 
-    it('emits model changes and filter reset actions', async () => {
-        const wrapper = mount(PublisherAppointmentPanel, {
-            props: { ...panelProps, hasFilters: true },
-        });
+    it('stores filter changes and can reset them', async () => {
+        const { store, wrapper } = mountPanel();
 
         await wrapper.get('input[type="search"]').setValue('Jugend');
         await wrapper.get('.appointment-picker__reset').trigger('click');
 
-        expect(wrapper.emitted('update:search')).toEqual([['Jugend']]);
-        expect(wrapper.emitted('resetFilters')).toHaveLength(1);
+        expect(store.appointmentSearch).toBe('');
     });
 
-    it('closes after selecting an appointment', async () => {
-        const wrapper = mount(PublisherAppointmentPanel, { props: panelProps });
+    it('closes only after confirming an appointment', async () => {
+        const { store, wrapper } = mountPanel();
 
         await wrapper.get('#appointment').setValue('1:start');
+        expect(wrapper.emitted('close')).toBeUndefined();
+        await wrapper.get('.publisher-appointment-panel__footer button:last-child').trigger('click');
 
-        expect(wrapper.emitted('update:selectedAppointmentKey')).toEqual([['1:start']]);
+        expect(store.selectedAppointmentKey).toBe('1:start');
         expect(wrapper.emitted('close')).toHaveLength(1);
     });
 
-    it('synchronizes the native dialog with the open property', async () => {
-        const wrapper = mount(PublisherAppointmentPanel, { props: panelProps });
+    it('synchronizes the native dialog with the store', async () => {
+        const { store, wrapper } = mountPanel();
         await nextTick();
 
-        await wrapper.setProps({ open: false });
+        store.appointmentDialogOpen = false;
         await nextTick();
 
         expect(wrapper.get('dialog').attributes()).not.toHaveProperty('open');

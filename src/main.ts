@@ -2,8 +2,13 @@ import { churchtoolsClient } from '@churchtools/churchtools-client';
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { createApp } from 'vue';
 import VueKonva from 'vue-konva/core';
+import { createPinia } from 'pinia';
 
 import 'konva/lib/shapes/Image';
+import 'konva/lib/shapes/Line';
+import 'konva/lib/shapes/Path';
+import 'konva/lib/shapes/Ellipse';
+import 'konva/lib/shapes/RegularPolygon';
 import 'konva/lib/shapes/Rect';
 import 'konva/lib/shapes/Text';
 import 'konva/lib/shapes/Transformer';
@@ -38,4 +43,4 @@ const queryClient = new QueryClient({
     },
 });
 
-createApp(App).use(VueQueryPlugin, { queryClient }).use(VueKonva).mount('#app');
+createApp(App).use(createPinia()).use(VueQueryPlugin, { queryClient }).use(VueKonva).mount('#app');

@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import {
     alignLayoutGeometry,
+    applyLayoutGroupAutoLayout,
     calculateAlignmentSnap,
+    calculateSelectionDragSnap,
     clampLayoutPosition,
     constrainLayoutGeometry,
     constrainLayoutDelta,
+    constrainTransformerFrame,
     constrainFontSize,
+    createCanvasStackOrder,
+    createLayoutCustomElement,
     createLayoutLayerTree,
     createLayoutOrder,
     expandLayoutSelection,
@@ -17,22 +22,76 @@ import {
     createLayoutSizes,
     createLayoutTextStyles,
     createLayoutVisualStyles,
+    distributeLayoutFrames,
     isHexColor,
+    layoutElementLabel,
     keepRotatedFrameInDocument,
     layoutFramesIntersect,
     layoutGroupElementIds,
+    layoutGroupAnchor,
+    layoutGroupBounds,
     resolveLayoutSelectionTarget,
     normalizeRotation,
     moveLayoutElementInOrder,
+    moveLayoutOrderBlock,
+    nestLayoutNodeInGroup,
     resizeLayoutFrame,
+    resizeLayoutFrameProportionally,
     resetLayoutElementState,
     snapLayoutPoint,
     snapLayoutSize,
     snapRotation,
+    sortLayoutGroupChildren,
     ungroupLayoutElements,
 } from './layoutEditing';
+import type { LayoutGroup } from './layoutEditing';
 
 describe('layout editing', () => {
+    it('creates centered, uniquely identifiable custom elements', () => {
+        const text = createLayoutCustomElement('text', { width: 1920, height: 1080 });
+        const circle = createLayoutCustomElement('circle', { width: 600, height: 600 });
+        const line = createLayoutCustomElement('line', { width: 600, height: 600 });
+
+        expect(text).toMatchObject({ kind: 'text', name: 'Neuer Text', text: 'Neuer Text', textMode: 'graphic' });
+        expect(text.id).toMatch(/^text-/);
+        expect(circle).toMatchObject({ kind: 'circle', name: 'Kreis', frame: { width: 260, height: 260 } });
+        expect(circle.id).toMatch(/^shape-circle-/);
+        expect(line).toMatchObject({ kind: 'line', name: 'Strich', frame: { width: 300, height: 4 } });
+        expect(line.id).toMatch(/^shape-line-/);
+        expect(layoutElementLabel(text.id)).toBe('Text');
+        expect(layoutElementLabel(circle.id)).toBe('Kreis');
+        expect(layoutElementLabel(line.id)).toBe('Strich');
+    });
+
+    it('creates data-bound elements at a requested drop position', () => {
+        const text = createLayoutCustomElement('text', { width: 600, height: 600 }, {
+            name: 'Titel', text: '{{title}}', dataBinding: 'title', position: { x: 75, y: 90 },
+        });
+
+        expect(text).toMatchObject({
+            name: 'Titel', text: '{{title}}', textMode: 'graphic', dataBinding: 'title', frame: { x: 75, y: 90 },
+        });
+    });
+
+    it('creates explicit frame text for dynamic content', () => {
+        const text = createLayoutCustomElement('text', { width: 1920, height: 1080 }, {
+            text: '{{title}}', textMode: 'frame', dataBinding: 'title',
+        });
+
+        expect(text.textMode).toBe('frame');
+    });
+
+    it('creates persistable icon and QR-code elements', () => {
+        const icon = createLayoutCustomElement('icon', { width: 1920, height: 1080 }, { iconName: 'church' });
+        const qr = createLayoutCustomElement('qr', { width: 1920, height: 1080 }, { qrValue: '{{link}}', dataBinding: 'link' });
+
+        expect(icon).toMatchObject({ kind: 'icon', iconName: 'church', frame: { width: 180, height: 180 } });
+        expect(qr).toMatchObject({
+            kind: 'qr', qrValue: '{{link}}', dataBinding: 'link', qrBackground: '#ffffff',
+            qrMargin: 2, qrErrorCorrection: 'M', frame: { width: 260, height: 260 },
+        });
+    });
+
     it('creates independent zero offsets for all editable elements', () => {
         const offsets = createLayoutOffsets();
 
@@ -65,6 +124,22 @@ describe('layout editing', () => {
         expect(constrainLayoutDelta([], { x: 20, y: 20 })).toEqual({ x: 0, y: 0 });
     });
 
+    it('snaps a grouped selection from its shared bounds instead of the dragged child', () => {
+        const frames = [
+            { x: 103, y: 95, width: 100, height: 80 },
+            { x: 228, y: 95, width: 100, height: 80 },
+        ];
+
+        expect(calculateSelectionDragSnap(
+            frames,
+            { x: 14, y: 7 },
+            [],
+            true,
+            0,
+            { width: 1000, height: 1000 },
+        )).toEqual({ offset: { x: 17, y: 5 }, guides: [] });
+    });
+
     it('detects elements touched by a selection rectangle', () => {
         const selection = { x: 100, y: 100, width: 200, height: 150 };
 
@@ -73,13 +148,13 @@ describe('layout editing', () => {
         expect(layoutFramesIntersect(selection, { x: 301, y: 251, width: 50, height: 50 })).toBe(false);
     });
 
-    it('limits resized elements to minimum dimensions and the document bounds', () => {
+    it('allows small resized elements while retaining document bounds', () => {
         const frame = { x: 1500, y: 900, width: 300, height: 100 };
 
         expect(resizeLayoutFrame(frame, { width: 10, height: 10 })).toEqual({
             ...frame,
-            width: 120,
-            height: 50,
+            width: 10,
+            height: 10,
         });
         expect(resizeLayoutFrame(frame, { width: 900, height: 500 })).toEqual({
             ...frame,
@@ -88,13 +163,38 @@ describe('layout editing', () => {
         });
     });
 
+    it('keeps icons and QR-code frames proportional while respecting document bounds', () => {
+        expect(resizeLayoutFrameProportionally(
+            { x: 100, y: 50, width: 200, height: 200 },
+            { width: 400, height: 260 },
+            { width: 600, height: 500 },
+        )).toEqual({ x: 100, y: 50, width: 400, height: 400 });
+
+        expect(resizeLayoutFrameProportionally(
+            { x: 400, y: 300, width: 200, height: 200 },
+            { width: 500, height: 500 },
+            { width: 600, height: 500 },
+        )).toEqual({ x: 400, y: 300, width: 200, height: 200 });
+    });
+
+    it('keeps transformer handles responsive at document edges', () => {
+        const oldFrame = { x: 0, y: 0, width: 400, height: 200 };
+
+        expect(constrainTransformerFrame(oldFrame, { x: -30, y: 0, width: 430, height: 200 }, 50, { width: 600, height: 400 }))
+            .toEqual({ x: 0, y: 0, width: 400, height: 200 });
+        expect(constrainTransformerFrame(oldFrame, { x: 40, y: 0, width: 360, height: 200 }, 50, { width: 600, height: 400 }))
+            .toEqual({ x: 40, y: 0, width: 360, height: 200 });
+        expect(constrainTransformerFrame(oldFrame, { x: 0, y: 0, width: 650, height: 200 }, 50, { width: 600, height: 400 }))
+            .toEqual({ x: 0, y: 0, width: 600, height: 200 });
+    });
+
     it('constrains exact geometry values to a valid document frame', () => {
         expect(
             constrainLayoutGeometry({ x: 1100, y: 130, width: 760, height: 310, rotation: 0 }),
         ).toEqual({ x: 1100, y: 130, width: 760, height: 310, rotation: 0 });
         expect(
             constrainLayoutGeometry({ x: -20, y: 1040, width: 2500, height: 10, rotation: 360 }),
-        ).toEqual({ x: 0, y: 1030, width: 1920, height: 50, rotation: 0 });
+        ).toEqual({ x: 0, y: 1040, width: 1920, height: 10, rotation: 0 });
     });
 
     it('rejects non-finite or impossible rotated geometry', () => {
@@ -144,6 +244,43 @@ describe('layout editing', () => {
         expect(moveLayoutElementInOrder(initialOrder, 'background', -1)).toBe(initialOrder);
     });
 
+    it('uses the inspector hierarchy as the global editable canvas stack', () => {
+        const order = ['background', 'title', 'image', 'accent', 'dateTime', 'location'] as const;
+
+        expect(createCanvasStackOrder([...order], [], true)).toEqual([
+            'background', 'title', 'decoration-behind', 'image', 'decoration-over', 'accent', 'dateTime', 'location',
+        ]);
+        expect(createCanvasStackOrder([...order], ['title'], false)).toEqual([
+            'background', 'decoration-behind', 'image', 'decoration-over', 'accent', 'dateTime',
+        ]);
+    });
+
+    it('reorders layer blocks in the top-first inspector direction', () => {
+        const order = createLayoutOrder();
+
+        expect(moveLayoutOrderBlock(order, ['background'], ['title'], 'before')).toEqual([
+            'image', 'accent', 'title', 'background', 'dateTime', 'location',
+        ]);
+        expect(moveLayoutOrderBlock(order, ['location'], ['title'], 'after')).toEqual([
+            'background', 'image', 'accent', 'location', 'title', 'dateTime',
+        ]);
+    });
+
+    it('nests an element or existing group by dropping it into another group', () => {
+        const groups: LayoutGroup[] = [
+            { id: 'heading', children: ['title', 'accent'] },
+            { id: 'details', children: ['dateTime', 'location'] },
+        ];
+
+        expect(nestLayoutNodeInGroup(groups, { kind: 'element', id: 'image' }, 'heading')).toEqual([
+            { id: 'heading', children: ['title', 'accent', 'image'] },
+            { id: 'details', children: ['dateTime', 'location'] },
+        ]);
+        expect(nestLayoutNodeInGroup(groups, { kind: 'group', id: 'details' }, 'heading')).toEqual([
+            { id: 'heading', children: ['title', 'accent', { id: 'details', children: ['dateTime', 'location'] }] },
+        ]);
+    });
+
     it('creates nested groups and removes only their outermost level', () => {
         const inner = groupLayoutElements([], ['title', 'dateTime'], 'inner');
         const nested = groupLayoutElements(inner, ['title', 'dateTime', 'location'], 'outer');
@@ -173,6 +310,55 @@ describe('layout editing', () => {
         expect(ungroupLayoutElements(nested, ['title', 'dateTime'])).toEqual([{
             id: 'outer', children: ['title', 'dateTime', 'location'],
         }]);
+    });
+
+    it('reflows group children with a fixed gap around the configured origin', () => {
+        const frames = {
+            title: { x: 100, y: 100, width: 300, height: 60 },
+            accent: { x: 100, y: 180, width: 300, height: 4 },
+            dateTime: { x: 100, y: 200, width: 200, height: 30 },
+        };
+        const group: LayoutGroup = {
+            id: 'flow',
+            children: ['dateTime', 'title', 'accent'],
+            autoLayout: {
+                axis: 'vertical' as const,
+                gap: 8,
+                horizontalOrigin: 'center' as const,
+                verticalOrigin: 'top' as const,
+                anchor: { x: 250, y: 100 },
+            },
+        };
+        const sorted = sortLayoutGroupChildren(group, frames, 'vertical');
+        const result = applyLayoutGroupAutoLayout(sorted, frames);
+
+        expect(sorted.children).toEqual(['title', 'accent', 'dateTime']);
+        expect(result.title).toEqual({ x: 100, y: 100, width: 300, height: 60 });
+        expect(result.accent).toEqual({ x: 100, y: 168, width: 300, height: 4 });
+        expect(result.dateTime).toEqual({ x: 150, y: 180, width: 200, height: 30 });
+        const bounds = layoutGroupBounds(sorted, result)!;
+        expect(layoutGroupAnchor(bounds, 'center', 'top')).toEqual({ x: 250, y: 100 });
+
+        const afterTitleWraps = applyLayoutGroupAutoLayout(sorted, {
+            ...result,
+            title: { ...result.title!, height: 120 },
+        });
+        expect(afterTitleWraps.accent?.y).toBe(228);
+        expect(afterTitleWraps.dateTime?.y).toBe(240);
+        expect(layoutGroupAnchor(layoutGroupBounds(sorted, afterTitleWraps)!, 'center', 'top'))
+            .toEqual({ x: 250, y: 100 });
+    });
+
+    it('distributes three or more elements with equal visual gaps', () => {
+        const result = distributeLayoutFrames({
+            title: { x: 0, y: 0, width: 100, height: 30 },
+            accent: { x: 180, y: 0, width: 20, height: 30 },
+            dateTime: { x: 400, y: 0, width: 100, height: 30 },
+        }, 'horizontal');
+
+        expect(result.title?.x).toBe(0);
+        expect(result.accent?.x).toBe(240);
+        expect(result.dateTime?.x).toBe(400);
     });
 
     it('builds a top-first recursive layer tree for nested groups', () => {

@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { faXmark } from '@fortawesome/free-solid-svg-icons';
+import { faCalendarDays, faXmark } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
+import { storeToRefs } from 'pinia';
 import { nextTick, ref, watch } from 'vue';
+
+import { usePublisherAppointmentsStore } from '../stores/publisherAppointments';
+import DesignButton from './design/DesignButton.vue';
+import DesignIconButton from './design/DesignIconButton.vue';
 
 export interface AppointmentPanelOption {
     key: string;
@@ -17,47 +22,45 @@ const props = defineProps<{
     appointments: AppointmentPanelOption[];
     calendars: AppointmentCalendarOption[];
     hasError: boolean;
-    hasFilters: boolean;
     isLoading: boolean;
-    open: boolean;
     totalCount: number;
 }>();
 
 const emit = defineEmits<{
     close: [];
-    resetFilters: [];
 }>();
-
-const search = defineModel<string>('search', { required: true });
-const selectedCalendar = defineModel<string>('selectedCalendar', { required: true });
-const selectedRange = defineModel<string>('selectedRange', { required: true });
-const onlyDrafts = defineModel<boolean>('onlyDrafts', { required: true });
-const selectedAppointmentKey = defineModel<string>('selectedAppointmentKey', { required: true });
+const appointmentStore = usePublisherAppointmentsStore();
+const {
+    appointmentDialogOpen, appointmentSearch, hasAppointmentFilters, onlyAppointmentsWithDraft,
+    selectedAppointmentKey, selectedAppointmentRange, selectedCalendarFilter,
+} = storeToRefs(appointmentStore);
 const dialog = ref<HTMLDialogElement | null>(null);
+const pendingAppointmentKey = ref('');
 
 watch(
-    () => props.open,
-    async (open) => {
-        await nextTick();
-        if (open && !dialog.value?.open) {
-            if (typeof dialog.value?.showModal === 'function') {
-                dialog.value.showModal();
-            } else {
-                dialog.value?.setAttribute('open', '');
-            }
-        } else if (!open && dialog.value?.open) {
+    appointmentDialogOpen,
+    (open) => {
+        if (!open && (dialog.value?.open || dialog.value?.hasAttribute('open'))) {
             if (typeof dialog.value.close === 'function') {
                 dialog.value.close();
-            } else {
-                dialog.value.removeAttribute('open');
             }
+            dialog.value.removeAttribute('open');
+            return;
         }
+        if (!open) return;
+        pendingAppointmentKey.value = selectedAppointmentKey.value;
+        void nextTick(() => {
+            if (!appointmentDialogOpen.value || dialog.value?.open) return;
+            if (typeof dialog.value?.showModal === 'function') dialog.value.showModal();
+            else dialog.value?.setAttribute('open', '');
+        });
     },
     { immediate: true },
 );
 
-const closeAfterSelection = () => {
-    if (selectedAppointmentKey.value) {
+const confirmSelection = () => {
+    if (pendingAppointmentKey.value) {
+        selectedAppointmentKey.value = pendingAppointmentKey.value;
         emit('close');
     }
 };
@@ -79,13 +82,13 @@ const closeFromBackdrop = (event: MouseEvent) => {
     >
         <section id="appointments-editor" class="publisher-appointment-panel">
             <header class="publisher-appointment-panel__header">
-                <div>
-                    <p>Dokumente</p>
+                <div class="publisher-appointment-panel__title">
+                    <span class="publisher-appointment-panel__icon"><FontAwesomeIcon :icon="faCalendarDays" aria-hidden="true" /></span>
                     <h2 id="appointments-panel-title">Termin auswählen</h2>
                 </div>
-                <button type="button" class="publisher-appointment-panel__close" aria-label="Dialog schließen" @click="emit('close')">
+                <DesignIconButton class="publisher-appointment-panel__close" label="Dialog schließen" @click="emit('close')">
                     <FontAwesomeIcon :icon="faXmark" aria-hidden="true" />
-                </button>
+                </DesignIconButton>
             </header>
 
             <div class="appointment-picker">
@@ -103,11 +106,11 @@ const closeFromBackdrop = (event: MouseEvent) => {
                     <div class="appointment-picker__filters">
                         <label>
                             Suche
-                            <input v-model="search" type="search" placeholder="Titel oder Kalender" autofocus />
+                            <input v-model="appointmentSearch" type="search" placeholder="Titel oder Kalender" autofocus />
                         </label>
                         <label>
                             Kalender
-                            <select v-model="selectedCalendar">
+                            <select v-model="selectedCalendarFilter">
                                 <option value="">Alle Kalender</option>
                                 <option v-for="calendar in calendars" :key="calendar.id" :value="calendar.id">
                                     {{ calendar.label }}
@@ -116,7 +119,7 @@ const closeFromBackdrop = (event: MouseEvent) => {
                         </label>
                         <label>
                             Zeitraum
-                            <select v-model="selectedRange">
+                            <select v-model="selectedAppointmentRange">
                                 <option value="">Nächste 12 Monate</option>
                                 <option value="30">Nächste 30 Tage</option>
                                 <option value="90">Nächste 90 Tage</option>
@@ -131,26 +134,26 @@ const closeFromBackdrop = (event: MouseEvent) => {
                         </p>
                         <div class="appointment-picker__filter-actions">
                             <label class="appointment-picker__draft-filter">
-                                <input v-model="onlyDrafts" type="checkbox" />
+                                <input v-model="onlyAppointmentsWithDraft" type="checkbox" />
                                 Nur mit Entwurf
                             </label>
-                            <button
-                                v-if="hasFilters"
-                                type="button"
+                            <DesignButton
+                                v-if="hasAppointmentFilters"
                                 class="appointment-picker__reset"
-                                @click="emit('resetFilters')"
+                                size="compact"
+                                variant="ghost"
+                                @click="appointmentStore.resetAppointmentFilters"
                             >
                                 Filter zurücksetzen
-                            </button>
+                            </DesignButton>
                         </div>
                     </div>
 
                     <label for="appointment">Kalendertermin</label>
                     <select
                         id="appointment"
-                        v-model="selectedAppointmentKey"
+                        v-model="pendingAppointmentKey"
                         :disabled="appointments.length === 0"
-                        @change="closeAfterSelection"
                     >
                         <option value="">Bitte Termin auswählen</option>
                         <option v-for="appointment in appointments" :key="appointment.key" :value="appointment.key">
@@ -159,6 +162,13 @@ const closeFromBackdrop = (event: MouseEvent) => {
                     </select>
                 </template>
             </div>
+            <footer class="publisher-appointment-panel__footer">
+                <DesignButton variant="secondary" @click="emit('close')">Abbrechen</DesignButton>
+                <DesignButton :disabled="!pendingAppointmentKey" @click="confirmSelection">
+                    <template #icon><FontAwesomeIcon :icon="faCalendarDays" aria-hidden="true" /></template>
+                    Termin verwenden
+                </DesignButton>
+            </footer>
         </section>
     </dialog>
 </template>
@@ -169,6 +179,7 @@ const closeFromBackdrop = (event: MouseEvent) => {
     max-width: none;
     max-height: min(760px, calc(100dvh - 32px));
     box-sizing: border-box;
+    margin: auto;
     padding: 0;
     overflow-y: auto;
     border: 1px solid var(--color-border-strong);
@@ -195,13 +206,20 @@ const closeFromBackdrop = (event: MouseEvent) => {
     justify-content: space-between;
 }
 
-.publisher-appointment-panel__header p {
-    margin: 0 0 2px;
-    color: var(--color-text-muted);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+.publisher-appointment-panel__title {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.publisher-appointment-panel__icon {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--color-surface-accent-strong);
+    color: var(--color-accent-text);
+    place-items: center;
 }
 
 .publisher-appointment-panel__header h2 {
@@ -229,6 +247,13 @@ const closeFromBackdrop = (event: MouseEvent) => {
 .publisher-appointment-panel__close:focus-visible {
     outline: 3px solid var(--color-focus-ring-strong);
     outline-offset: 1px;
+}
+
+.publisher-appointment-panel__footer {
+    display: flex;
+    margin-top: 22px;
+    gap: 10px;
+    justify-content: flex-end;
 }
 
 .appointment-picker__filters {

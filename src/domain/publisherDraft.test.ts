@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
     createLayoutOffsets,
+    createCustomTextStyle,
+    createLayoutCustomElement,
     createLayoutOrder,
     createLayoutRotations,
     createLayoutSizes,
@@ -9,6 +11,8 @@ import {
     createLayoutVisualStyles,
 } from './layoutEditing';
 import { createImageFocusByTemplate } from './imageFocus';
+import { createLayoutElementEffects } from './layoutEditing';
+import { createLayoutGradient } from './layoutGradient';
 import {
     deletePublisherDraft,
     findPublisherDraftAppointmentKeys,
@@ -29,7 +33,7 @@ const createStorage = () => {
 const createDraft = (): PublisherDraft => ({
     version: 1,
     selectedTemplateId: 'poster',
-    templateOverrides: { title: 'Lokaler Titel' },
+    templateOverrides: { title: 'Lokaler Titel', subtitle: 'Dynamischer Untertitel' },
     layouts: {
         split: {
             offsets: createLayoutOffsets(),
@@ -49,6 +53,104 @@ const createDraft = (): PublisherDraft => ({
 });
 
 describe('publisher draft', () => {
+    it('round-trips dynamically added layout elements', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        const element = createLayoutCustomElement('text', { width: 1920, height: 1080 }, {
+            name: 'Titel', text: '{{title}}', dataBinding: 'title',
+        });
+        const layout = draft.layouts.split!;
+        layout.customElements = [element];
+        layout.offsets[element.id] = { x: 0, y: 0 };
+        layout.sizes[element.id] = { width: element.frame.width, height: element.frame.height };
+        layout.rotations[element.id] = 0;
+        layout.order.push(element.id);
+        layout.styles[element.id] = createCustomTextStyle();
+
+        savePublisherDraft(storage, '42:custom', draft);
+
+        expect(loadPublisherDraft(storage, '42:custom')?.layouts.split?.customElements).toEqual([element]);
+        expect(loadPublisherDraft(storage, '42:custom')?.layouts.split?.order).toContain(element.id);
+    });
+
+    it('round-trips dynamic image-color bindings with their fallback colors', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        draft.layouts.split!.styles.title!.color = '#eeeeee';
+        draft.layouts.split!.styles.title!.colorBinding = { imageId: 'data:image', token: 'foreground' };
+        draft.layouts.split!.visualStyles.background!.fill = '#222222';
+        draft.layouts.split!.visualStyles.background!.fillBinding = { imageId: 'data:image', token: 'background' };
+
+        savePublisherDraft(storage, '42:palette', draft);
+        const restored = loadPublisherDraft(storage, '42:palette')!;
+
+        expect(restored.layouts.split?.styles.title).toMatchObject({
+            color: '#eeeeee', colorBinding: { imageId: 'data:image', token: 'foreground' },
+        });
+        expect(restored.layouts.split?.visualStyles.background).toMatchObject({
+            fill: '#222222', fillBinding: { imageId: 'data:image', token: 'background' },
+        });
+    });
+
+    it('round-trips gradients, layer opacity, and locked layers', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        const layout = draft.layouts.split!;
+        layout.styles.title!.colorGradient = createLayoutGradient('#112233');
+        layout.visualStyles.background!.fillGradient = { ...createLayoutGradient('#445566'), type: 'radial' };
+        const effects = createLayoutElementEffects();
+        effects.opacity = 0.45;
+        layout.effects = { title: effects };
+        layout.locked = ['title'];
+
+        savePublisherDraft(storage, '42:appearance', draft);
+        const restored = loadPublisherDraft(storage, '42:appearance')!.layouts.split!;
+
+        expect(restored.styles.title?.colorGradient?.stops[0].color).toBe('#112233');
+        expect(restored.visualStyles.background?.fillGradient?.type).toBe('radial');
+        expect(restored.effects?.title?.opacity).toBe(0.45);
+        expect(restored.locked).toEqual(['title']);
+    });
+
+    it('loads text from older drafts as frame text', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        const element = createLayoutCustomElement('text', { width: 1920, height: 1080 });
+        const { textMode: _, ...legacyElement } = element;
+        const layout = draft.layouts.split!;
+        layout.customElements = [legacyElement];
+        layout.offsets[element.id] = { x: 0, y: 0 };
+        layout.sizes[element.id] = { width: element.frame.width, height: element.frame.height };
+        layout.rotations[element.id] = 0;
+        layout.order.push(element.id);
+        layout.styles[element.id] = createCustomTextStyle();
+        storage.setItem('churchtools-publisher:draft:legacy-text', JSON.stringify(draft));
+
+        expect(loadPublisherDraft(storage, 'legacy-text')?.layouts.split?.customElements?.[0].textMode).toBe('frame');
+    });
+
+    it('round-trips icon and QR-code elements with their configuration', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        const icon = createLayoutCustomElement('icon', { width: 1920, height: 1080 }, { iconName: 'heart' });
+        const qr = createLayoutCustomElement('qr', { width: 1920, height: 1080 }, {
+            qrValue: '{{link}}', dataBinding: 'link',
+        });
+        const layout = draft.layouts.split!;
+        layout.customElements = [icon, qr];
+        for (const element of [icon, qr]) {
+            layout.offsets[element.id] = { x: 0, y: 0 };
+            layout.sizes[element.id] = { width: element.frame.width, height: element.frame.height };
+            layout.rotations[element.id] = 0;
+            layout.order.push(element.id);
+            layout.visualStyles[element.id] = createLayoutVisualStyles('split').accent;
+        }
+
+        savePublisherDraft(storage, '42:visuals', draft);
+
+        expect(loadPublisherDraft(storage, '42:visuals')?.layouts.split?.customElements).toEqual([icon, qr]);
+    });
+
     it('round-trips and deletes a versioned appointment draft', () => {
         const storage = createStorage();
         savePublisherDraft(storage, '42:date', createDraft());
@@ -195,6 +297,19 @@ describe('publisher draft', () => {
         expect(loadPublisherDraft(storage, 'deleted-legacy')?.layouts.split?.deleted).toEqual([]);
     });
 
+    it('persists non-destructively hidden layers and keeps legacy layouts visible', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        draft.layouts.split!.hidden = ['title', 'accent'];
+        savePublisherDraft(storage, 'hidden-layers', draft);
+        expect(loadPublisherDraft(storage, 'hidden-layers')?.layouts.split?.hidden).toEqual(['title', 'accent']);
+
+        const legacyDraft = createDraft();
+        delete legacyDraft.layouts.split!.hidden;
+        savePublisherDraft(storage, 'hidden-legacy', legacyDraft);
+        expect(loadPublisherDraft(storage, 'hidden-legacy')?.layouts.split?.hidden).toBeUndefined();
+    });
+
     it('loads legacy layouts without groups and preserves nested groups', () => {
         const storage = createStorage();
         const draft = createDraft();
@@ -209,6 +324,10 @@ describe('publisher draft', () => {
         splitLayout.groups = [{
             id: 'outer',
             children: [{ id: 'inner', children: ['title', 'dateTime'] }, 'location'],
+            autoLayout: {
+                axis: 'vertical', gap: 8, horizontalOrigin: 'left', verticalOrigin: 'top',
+                anchor: { x: 120, y: 80 },
+            },
         }];
         savePublisherDraft(storage, 'groups-nested', draft);
         expect(loadPublisherDraft(storage, 'groups-nested')?.layouts.split?.groups).toEqual(splitLayout.groups);

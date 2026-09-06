@@ -74,8 +74,10 @@
 }
 
 .publisher-shell__tools {
+    position: relative;
+    z-index: 3;
     min-height: 0;
-    overflow: hidden;
+    overflow: visible;
     grid-area: tools;
     border-right: 1px solid var(--color-border);
     background: var(--color-surface);
