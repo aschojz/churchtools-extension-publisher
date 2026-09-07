@@ -4,7 +4,7 @@ Diese Datei gilt für das gesamte Repository. Sie beschreibt die Arbeitsregeln f
 
 ## Produktziel
 
-Der Publisher ist ein browserbasierter Layout-Editor innerhalb von ChurchTools. Ein Dokument besteht aus einer oder mehreren frei dimensionierbaren Seiten. Termindaten und optional nachgeladene verknüpfte Daten werden als Variablen in Text-, Bild- oder QR-Elemente eingesetzt. Das Layout bleibt beim Wechsel des Termins unverändert. Vorlagen sollen langfristig vollständige mehrseitige Dokumente speichern, nicht nur eine aktive Seite.
+Der Publisher ist ein browserbasierter Layout-Editor innerhalb von ChurchTools. Ein Dokument besteht aus einer oder mehreren frei dimensionierbaren Seiten. Termindaten und optional nachgeladene verknüpfte Daten werden als Variablen in Text-, Bild- oder QR-Elemente eingesetzt. Das Layout bleibt beim Wechsel des Termins unverändert. Vorlagen speichern vollständige mehrseitige Dokumente, nicht nur eine aktive Seite.
 
 ## Stack und lokale Voraussetzungen
 
@@ -21,11 +21,12 @@ Der Publisher ist ein browserbasierter Layout-Editor innerhalb von ChurchTools. 
 ```bash
 npm run typecheck
 npm test
+npm run test:e2e
 npm run build
 git diff --check
 ```
 
-Es gibt aktuell keinen Lint-, Format-, E2E- oder Visual-Regression-Runner. Bei UI-Änderungen zusätzlich den lokalen Editor im Browser in mindestens einem normalen Desktop-Viewport und einem schmalen Viewport prüfen.
+Es gibt aktuell keinen Lint-, Format- oder Visual-Regression-Runner. Playwright deckt die kritischen Browserpfade ab. Bei größeren UI-Änderungen den lokalen Editor zusätzlich in mindestens einem normalen Desktop-Viewport und einem schmalen Viewport prüfen.
 
 ## Architekturregeln
 
@@ -52,7 +53,7 @@ Es gibt aktuell keinen Lint-, Format-, E2E- oder Visual-Regression-Runner. Bei U
 - Seiten dürfen unterschiedliche Größen zwischen 64 und 8192 Pixeln besitzen und werden auf der Arbeitsfläche untereinander dargestellt.
 - Bilder werden im Cover-Modus zugeschnitten und nicht verzerrt. QR-Codes und Icons behalten ihr Seitenverhältnis. Linien haben keine Füllung und werden nur über Länge, Konturstärke und Drehung verändert.
 - Dynamische Text- und Farbbindungen speichern die Variable beziehungsweise das Farb-Token plus Fallback. Aufgelöste Terminwerte oder analysierte Farben werden nicht destruktiv in die Vorlage geschrieben.
-- Vorlagen müssen nach der geplanten Modellmigration alle Seiten, Seitengrößen, Ebenen, Gruppen, Bindungen, Effekte und Bildfokusse enthalten. Keine neuen Funktionen auf das bestehende Einzelseiten-Vorlagenmodell zuschneiden.
+- Vorlagen müssen alle Seiten, Seitengrößen, Ebenen, Gruppen, Bindungen, Effekte und Bildfokusse enthalten. Keine neuen Funktionen auf ein Einzelseiten-Vorlagenmodell zuschneiden.
 - Sichtbarkeit und Sperren sind nicht destruktiv. Löschen muss über Undo rückgängig zu machen sein, sofern keine ausdrücklich bestätigte Dokumentlöschung vorliegt.
 - Beim Export sind Auswahlrahmen, Handles, Hilfslinien und Editor-Chrome ausgeschlossen; die Ausgabedimension muss exakt der Seitengröße entsprechen.
 

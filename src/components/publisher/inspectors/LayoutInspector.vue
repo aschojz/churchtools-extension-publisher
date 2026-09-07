@@ -75,9 +75,9 @@ const { errors: imagePaletteErrors, palettes: imagePalettes, sources: imagePalet
 const {
     availableLayoutElements, hasLayoutSelection, hasMultipleLayoutSelection,
     selectedLayoutElement, selectedLayoutElements, selectedLayoutGeometry, selectedLayoutGroupPath,
-    selectedLayoutGroupDepth, selectedLayoutStyle, selectedLayoutTextMode, selectedLayoutVisualStyle,
+    selectedLayoutGroupDepth, selectedLayoutGroupId, selectedLayoutStyle, selectedLayoutTextMode, selectedLayoutVisualStyle,
 } = storeToRefs(usePublisherEditorStore());
-const canEditSelectedEffects = computed(() => hasLayoutSelection.value && selectedLayoutGroupDepth.value === 0);
+const canEditSelectedEffects = computed(() => hasLayoutSelection.value);
 const layerTree = computed(() => {
     const state = activePage.value.layouts[activePage.value.templateId];
     return createLayoutLayerTree(
@@ -89,7 +89,7 @@ const layerTree = computed(() => {
 const activeLayout = computed(() => activePage.value.layouts[activePage.value.templateId]);
 const effectElementIds = computed(() => Object.entries(activeLayout.value?.effects ?? {})
     .filter(([, effects]) => layoutElementHasEffects(effects))
-    .map(([elementId]) => elementId as LayoutElementId));
+    .map(([elementId]) => elementId));
 const hiddenElementIds = computed(() => activeLayout.value?.hidden ?? []);
 const lockedElementIds = computed(() => activeLayout.value?.locked ?? []);
 const selectionIsLocked = computed(() => selectedLayoutElements.value.length > 0 &&
@@ -150,7 +150,7 @@ const selectedLineElement = computed(() => selectedCustomElement.value?.kind ===
 const emit = defineEmits<{
     deleteElements: [elementIds: LayoutElementId[]];
     drillIntoElement: [elementId: LayoutElementId];
-    updateEffects: [elementIds: LayoutElementId[], effects: LayoutElementEffects];
+    updateEffects: [targetIds: string[], effects: LayoutElementEffects];
     updateGradient: [field: 'color' | 'fill', gradient: LayoutGradient | null];
     moveLayer: [source: LayoutLayerDragNode, target: LayoutLayerDragNode, placement: LayoutLayerDropPlacement];
     restoreFontSize: [event: FocusEvent];
@@ -180,33 +180,36 @@ const contentTabs = [
     { id: 'layers', label: 'Ebenen' },
 ];
 const effectsDialogOpen = ref(false);
-const effectsDialogElementIds = ref<LayoutElementId[]>([]);
+const effectsDialogElementIds = ref<string[]>([]);
 const effectsDialogValue = computed(() => normalizeLayoutElementEffects(
     activeLayout.value?.effects?.[effectsDialogElementIds.value[0] ?? ''],
 ));
-const openEffectsDialog = (elementIds: LayoutElementId[]) => {
-    if (elementIds.length === 0) return;
-    effectsDialogElementIds.value = [...elementIds];
+const openEffectsDialog = (targetIds: string[]) => {
+    if (targetIds.length === 0) return;
+    effectsDialogElementIds.value = [...targetIds];
     effectsDialogOpen.value = true;
 };
 const applyEffects = (effects: LayoutElementEffects) => {
     emit('updateEffects', effectsDialogElementIds.value, effects);
 };
 const selectedLayerEffects = computed(() => normalizeLayoutElementEffects(
-    activeLayout.value?.effects?.[selectedLayoutElement.value ?? ''],
+    activeLayout.value?.effects?.[selectedLayoutGroupId.value ?? selectedLayoutElement.value ?? ''],
 ));
+const selectedEffectTargetIds = computed(() => selectedLayoutGroupId.value
+    ? [selectedLayoutGroupId.value]
+    : selectedLayoutElements.value);
 const updateLayerOpacity = (event: Event) => {
     if (!canEditSelectedEffects.value || selectionContainsLocked.value) return;
     const percent = (event.target as HTMLInputElement).valueAsNumber;
     if (!Number.isFinite(percent)) return;
-    emit('updateEffects', selectedLayoutElements.value, {
+    emit('updateEffects', selectedEffectTargetIds.value, {
         ...selectedLayerEffects.value,
         opacity: Math.min(1, Math.max(0, percent / 100)),
     });
 };
 const updateLayerBlendMode = (event: Event) => {
     if (!canEditSelectedEffects.value || selectionContainsLocked.value) return;
-    emit('updateEffects', selectedLayoutElements.value, {
+    emit('updateEffects', selectedEffectTargetIds.value, {
         ...selectedLayerEffects.value,
         blendMode: (event.target as HTMLSelectElement).value as LayoutElementEffects['blendMode'],
     });
@@ -474,7 +477,7 @@ const toggleFontStyle = (style: 'bold' | 'italic') => {
             </div>
             <footer v-if="activeContentTab === 'layers'" class="inspector-layer-footer">
                 <span>{{ selectedLayoutElements.length ? `${selectedLayoutElements.length} ausgewählt` : 'Keine Auswahl' }}</span>
-                <div><DesignIconButton size="compact" :label="selectionIsLocked ? 'Auswahl entsperren' : 'Auswahl sperren'" :disabled="!hasLayoutSelection" @click="emit('toggleLock', selectedLayoutElements)"><FontAwesomeIcon :icon="selectionIsLocked ? faLockOpen : faLock" aria-hidden="true" /></DesignIconButton><DesignIconButton size="compact" :label="selectedLayoutGroupDepth ? 'Gruppeneffekte werden noch nicht unterstützt' : 'Ebeneneffekte'" :disabled="!canEditSelectedEffects || selectionContainsLocked" @click="openEffectsDialog(selectedLayoutElements)"><FontAwesomeIcon :icon="faWandMagicSparkles" aria-hidden="true" /></DesignIconButton><DesignIconButton variant="danger" size="compact" label="Auswahl löschen" :disabled="!hasLayoutSelection || selectionContainsLocked" @click="emit('deleteElements', selectedLayoutElements)"><FontAwesomeIcon :icon="faTrashCan" aria-hidden="true" /></DesignIconButton></div>
+                <div><DesignIconButton size="compact" :label="selectionIsLocked ? 'Auswahl entsperren' : 'Auswahl sperren'" :disabled="!hasLayoutSelection" @click="emit('toggleLock', selectedLayoutElements)"><FontAwesomeIcon :icon="selectionIsLocked ? faLockOpen : faLock" aria-hidden="true" /></DesignIconButton><DesignIconButton size="compact" label="Ebeneneffekte" :disabled="!canEditSelectedEffects || selectionContainsLocked" @click="openEffectsDialog(selectedEffectTargetIds)"><FontAwesomeIcon :icon="faWandMagicSparkles" aria-hidden="true" /></DesignIconButton><DesignIconButton variant="danger" size="compact" label="Auswahl löschen" :disabled="!hasLayoutSelection || selectionContainsLocked" @click="emit('deleteElements', selectedLayoutElements)"><FontAwesomeIcon :icon="faTrashCan" aria-hidden="true" /></DesignIconButton></div>
             </footer>
         </div>
 

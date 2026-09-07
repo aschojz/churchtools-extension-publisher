@@ -1,12 +1,22 @@
 # ChurchTools Publisher
 
-Technischer Durchstich für einen späteren grafischen Publisher innerhalb einer ChurchTools-Extension.
+Der ChurchTools Publisher ist ein browserbasierter Mehrseiten-Layouteditor für Terminmedien. Ein Dokument kann frei dimensionierte Seiten, Texte, Bilder, Formen, Icons, QR-Codes und verschachtelte Gruppen enthalten. ChurchTools-Termindaten werden als austauschbarer Datenkontext gebunden, sodass dasselbe Layout mit einem anderen Termin neu gerendert werden kann.
 
-Der aktuelle Stand umfasst Terminauswahl, Detailabruf, isoliertes Prop-Mapping, manuelle Inhaltsüberschreibungen, zwei auswählbare Konva-Templates, erste Auswahl- und Verschiebefunktionen, responsive Vorschau und PNG-Export in 1920 × 1080 Pixeln.
+Eine vollständige Produktbeschreibung steht in [EXTENSION_STORE.md](EXTENSION_STORE.md), der technische Audit und priorisierte Backlog in [analyse.md](analyse.md).
+
+## Technischer Aufbau
+
+- Vue 3, TypeScript und Pinia
+- Konva und `vue-konva` für Szenengraph, Interaktion und Export
+- TanStack Vue Query und ChurchTools-Client für Termindaten
+- Vitest für Domain-, Store- und Komponententests
+- Playwright für kritische Browser-Interaktionen
+
+Der `PublisherDocumentStore` ist die kanonische Quelle für Seiten, Layoutzustände und Historien. Der `PublisherEditorStore` hält Werkzeug-, Zoom- und seitengebundene Auswahlzustände. Canvas-Gruppen werden rekursiv als echte Konva-Gruppen gerendert; persistierte Daten enthalten ausschließlich serialisierbare Domain-Werte und keine Konva-Nodes.
 
 ## Lokale Entwicklung
 
-Vorausgesetzt werden das ChurchTools-Monorepo und dieses Repository als Geschwisterverzeichnisse:
+Das ChurchTools-Monorepo und dieses Repository müssen als Geschwisterverzeichnisse vorliegen, weil mehrere interne Pakete lokal eingebunden werden:
 
 ```text
 git/
@@ -14,171 +24,35 @@ git/
 └── extension-publisher-gpt/
 ```
 
-Die internen Pakete werden lokal aus `../churchtools/frontend-packages/` eingebunden. Sie sind nicht in der öffentlichen npm Registry verfügbar. Nach Änderungen an diesen Paketen muss gegebenenfalls erneut `npm install` ausgeführt werden.
-
 ```bash
 npm install
 npm run dev
 ```
 
-Die lokale Konfiguration liegt in `.env` und wird nicht versioniert. Grundlage ist `.env-example`:
-
-```dotenv
-VITE_KEY=publisher
-VITE_BASE_URL=https://example.church.tools
-VITE_USERNAME=...
-VITE_PASSWORD=...
-```
-
-Der Vite-Basispfad ist `/ccm/<VITE_KEY>/`. Anmeldung, API-Basis-URL und Produktionseinbettung folgen dem offiziellen Boilerplate.
+Die lokale Konfiguration basiert auf `.env-example`. Der Vite-Basispfad lautet `/ccm/<VITE_KEY>/`.
 
 ## Verifikation
 
 ```bash
 npm run typecheck
 npm test
+npm run test:e2e
 npm run build
+git diff --check
 ```
 
-Der Boilerplate enthält keinen Lint-Runner. Für Mapper und Stage-Abmessungen ist Vitest eingerichtet.
+Für den ersten Playwright-Lauf wird einmalig der Testbrowser benötigt:
 
-## Untersuchte ChurchTools-Infrastruktur
-
-Ausgangspunkt ist das offizielle Repository `churchtools/extension-boilerplate`, untersucht auf Stand `c723b0154f751412eced661e9c2384f4f5632775` vom 5. Dezember 2025.
-
-Die Extension verwendet lokal:
-
-- `@churchtools/churchtools-client` für Anmeldung und HTTP-Zugriff
-- `@churchtools/api-types` für generierte OpenAPI-Typen
-- `@churchtools/vue-query` für vorhandene TanStack-Query-Composables
-- `@churchtools/utils` als transitive Voraussetzung der Query-Abstraktion
-- `@tanstack/vue-query` und Vue 3 als Laufzeitbasis
-
-### Terminauswahl
-
-Die Seite lädt zunächst die sichtbaren Kalender mit `useCalendarsQuery()` aus `@churchtools/vue-query`. Anschließend ruft ein kleiner lokaler Query-Composable alle Termine dieser Kalender von heute bis zwölf Monate im Voraus ab:
-
-```text
-GET /calendars/appointments?calendar_ids[]=…&from=…&to=…
+```bash
+npx playwright install chromium
 ```
 
-Die Antwort verwendet den generierten Typ `AppointmentCalculatedWithIncludes`. Die Optionen werden chronologisch sortiert und durch Termin-ID plus konkretem Startzeitpunkt eindeutig identifiziert. Datum und Uhrzeit im Select richten sich nach der Benutzersprache; Ganztagstermine zeigen keine Uhrzeit.
+## Wichtige Produktinvarianten
 
-Die geladene Liste kann clientseitig akzentunabhängig nach mehreren Begriffen in Titel und Kalendername durchsucht, auf einen sichtbaren Kalender, auf die nächsten 30, 90 oder 365 Tage sowie auf Termine mit lokalem Entwurf begrenzt und gemeinsam zurückgesetzt werden. Termine mit einem gültigen Entwurf sind direkt in der Auswahlliste markiert. Eine Trefferanzeige und ein eigener Leerzustand geben direkt Rückmeldung, ohne zusätzliche API-Anfragen auszulösen.
-
-Das Monorepo exportiert außerdem `useAppointmentQuery()` aus `@churchtools/vue-query`. Der Hook verwendet:
-
-```text
-GET /calendars/appointments/{appointmentId}/{startDate}
-```
-
-und liefert ebenfalls `AppointmentCalculatedWithIncludes`. Er benötigt zwingend sowohl die Termin-ID als auch das Datum eines konkreten Vorkommens. Genau diese beiden Werte stehen nach der Auswahl einer Listenoption zur Verfügung und werden für den gezielten Detailabruf verwendet.
-
-Für eine Terminserie existiert außerdem:
-
-```text
-GET /calendars/{calendarId}/appointments/{appointmentId}
-```
-
-mit dem Antworttyp `AppointmentCalculated`. Dieser enthält `appointment: AppointmentBase` und die berechneten Vorkommen in `calculatedDates`, wird für die Listenauswahl aber nicht benötigt.
-
-### Relevante Felder
-
-`AppointmentBase` enthält die für das spätere Prop-Mapping benötigten Werte:
-
-- Titel: `title`
-- Zeitraum: berechnetes `startDate` und `endDate`
-- Ganztägig: `allDay`
-- Ort: `address`, insbesondere `meetingAt`, Straße, PLZ und Ort
-- Bild: `image?.imageUrl`, ergänzt um `w=1920`, `h=1080` und `q=100`
-
-Das Bildmodell `Image` stellt zusätzlich `fileUrl`, `relativeUrl`, Crop-/Focus-Optionen und Metadaten bereit. Der Publisher verwendet `imageUrl` als Basis der ChurchTools-Bildtransformation und fordert statt des Standard-Thumbnails eine Variante in Exportgröße (1920 × 1080 Pixel) mit voller Qualität an.
-
-### Sprache und Zeitzone
-
-Innerhalb von ChurchTools steht die Benutzersprache über `window.settings.language` bereit. Lokal wird auf `navigator.language` zurückgefallen. Für Datum und Uhrzeit soll `Intl.DateTimeFormat` mit dieser Sprache verwendet werden. Die Instanz-Zeitzone kann über `window.settings.timezone` berücksichtigt werden; bis diese verfügbar ist, greift die Browser-Zeitzone als Fallback.
-
-Die vorhandenen Formatierungshelfer aus `@churchtools/utils` hängen teilweise von globaler ChurchTools-Übersetzung und `date-fns`-Locale ab. Für das kleine darstellungsorientierte Prop-Modell wird deshalb die native `Intl`-API verwendet.
-
-## Mapping und Template
-
-`mapAppointmentToTemplateProps()` nimmt nur den benötigten Ausschnitt des generierten Appointment-Typs entgegen und erzeugt:
-
-```ts
-interface EventTemplateProps {
-    title: string;
-    date: string;
-    time: string;
-    location: string;
-    imageUrl: string | null;
-}
-```
-
-Das Konva-Template kennt weder Query-Zustand noch Appointment-ID oder ChurchTools-Response. Es rendert ausschließlich diese Props. Fehlende Uhrzeit und fehlender Ort erzeugen keine Leerzeilen; ohne Bild erscheint eine definierte Fallback-Fläche. Der Titel ist auf einen festen Bereich mit maximal drei sichtbaren Zeilen und Ellipsis begrenzt.
-
-### Manuelle Überschreibungen
-
-Titel, Datum, Uhrzeit und Ort können vor dem Export einzeln überschrieben werden. Die Änderungen liegen als separates `EventTemplateOverrides`-Objekt zwischen Mapper und Template und verändern weder den geladenen API-Response noch den ChurchTools-Termin:
-
-```text
-gemappte EventTemplateProps + EventTemplateOverrides → gerenderte EventTemplateProps
-```
-
-Ein leerer Wert ist eine gültige Überschreibung und blendet beispielsweise Uhrzeit oder Ort aus. Jeder Wert kann einzeln auf das gemappte Original zurückgesetzt werden; zusätzlich steht ein gemeinsamer Reset bereit. Beim Wechsel des Termins werden alle Überschreibungen verworfen.
-
-Das Veranstaltungsbild kann für Vorschau und Export lokal durch eine JPEG-, PNG- oder WebP-Datei bis 20 MB ersetzt werden. Dafür wird ausschließlich eine temporäre Blob-URL im Browser erzeugt; es gibt keinen Upload und keine Änderung am ChurchTools-Termin. Beim Zurücksetzen, Terminwechsel oder Verlassen der Seite wird die URL wieder freigegeben.
-
-Der Fokuspunkt des Cover-Zuschnitts lässt sich horizontal und vertikal von 0 bis 100 Prozent verschieben; zusätzlich kann der Ausschnitt auf 100 bis 300 Prozent vergrößert werden. Beide Templates besitzen eigene Fokus- und Zoomwerte, weil ihre Bildflächen unterschiedliche Seitenverhältnisse verwenden. Die Einstellung wirkt auf Vorschau und Export.
-
-Textüberschreibungen, Template-Auswahl, Layoutzustände und Bildfokus beider Templates, Rastereinstellung und Vorschauzoom werden pro Termin als versionierter Entwurf im `localStorage` des Browsers gespeichert und beim erneuten Öffnen wiederhergestellt. Fehlerhafte oder inkompatible Einträge werden ignoriert. Über die Oberfläche kann der aktuelle lokale Entwurf vollständig gelöscht werden. Ersatzbilder sind nicht Bestandteil des dauerhaften Entwurfs, weil ihre temporären Blob-URLs einen Seitenneustart nicht überleben.
-
-Ein Entwurf kann zusätzlich als versionierte JSON-Datei heruntergeladen und in einem anderen Browser wieder importiert werden. Der Import ist auf dieselbe konkrete Termininstanz beschränkt, validiert alle enthaltenen Editorwerte und akzeptiert Dateien bis 1 MB. Auch die portable Datei enthält aus demselben Grund kein lokales Ersatzbild.
-
-### Template-Auswahl
-
-Die Oberfläche bietet zwei fest codierte 1920-×-1080-Templates: eine geteilte Fläche und ein vollflächiges Bildposter. Beide erhalten dasselbe `EventTemplateProps`-Objekt und verwenden dieselbe Exportlogik. Ein Template-Wechsel beeinflusst deshalb weder die geladenen Termindaten noch manuelle Inhaltsüberschreibungen.
-
-Die gemeinsamen Template-Metadaten liegen inzwischen in einem versionierten `PublisherTemplateDefinition`-Modell. Es beschreibt ID, Name, Dokumentgröße, Kompositionsvariante, Bildfläche sowie Bindung, Ausgangsrahmen und vollständige Ausgangstypografie aller editierbaren Texte. Dazu gehören Schriftfamilie und -schnitt, Ausrichtung, Zeilenhöhe, Umbruch und Ellipsis. Auch Hintergrundflächen, Bild-Fallbacks, Overlays, Trennlinien und feste Footer-Texte liegen als geordnete und validierte Dekorationsebenen in der Definition. Beide eingebauten Templates werden ohne darstellungsspezifische Textzweige aus diesen Definitionen gerendert; Parser und Serializer bilden die Grundlage für spätere lokale benutzerdefinierte Templates.
-
-### Erste Layoutbearbeitung
-
-Mehrere Textelemente lassen sich mit Strg/Cmd- oder Umschalt-Klick sowie durch einen auf freier Vorschaufläche gezogenen Auswahlrahmen gemeinsam auswählen. Bewegung per Drag-and-drop, Pfeiltasten und Schaltflächen sowie Größen-, Drehungs-, Ausrichtungs-, Typografie- und Zurücksetzen-Aktionen wirken anschließend auf die gesamte Auswahl und werden gemeinsam in der Undo-Historie gespeichert. Exakte Geometriewerte und die Ebenenreihenfolge bleiben bei Mehrfachauswahl ausgeblendet, da sie nur für ein einzelnes Element eindeutig sind.
-
-Eine Mehrfachauswahl kann dauerhaft gruppiert werden. Gruppen sind verschachtelbar: Werden eine vorhandene Gruppe und weitere Elemente erneut gruppiert, bleibt die bestehende Gruppe als innere Ebene erhalten. Ein Klick auf ein Gruppenmitglied wählt zunächst die äußerste Gruppe aus; jeder Doppelklick steigt genau eine Ebene tiefer und wählt dort entweder die innere Gruppe oder das konkrete Element. Die aktive Gruppenebene wird in der Auswahlmeldung angezeigt. „Gruppenebene aufheben“ löst die gerade ausgewählte Ebene und bewahrt andere innere Gruppen. Gruppieren und Aufheben sind mit Strg/Cmd+G beziehungsweise Strg/Cmd+Umschalt+G erreichbar, werden in der Undo-Historie erfasst und im lokalen Entwurf gespeichert.
-
-Titel, kombinierte Datums-/Uhrzeile und Ort können auf der Konva-Arbeitsfläche ausgewählt, verschoben, in Breite und Höhe verändert sowie frei gedreht werden. Der Konva-Transformer stellt dafür Größen- und Rotationsgriffe bereit. Zusätzlich erlaubt eine tastaturfähige Elementleiste dieselben Änderungen in festen Schritten und kann die drei Texte schrittweise nach vorne oder hinten anordnen. Auswahlrahmen und Transformer werden vor dem Export ausgeblendet. Positionen, Größen, normalisierte Winkel und Ebenenreihenfolge liegen als serialisierbare Werte im Vue-Zustand und nicht ausschließlich in den Konva-Nodes. Sie werden pro Template getrennt gehalten, bleiben innerhalb der Dokumentgrenzen und können auf die Ausgangswerte zurückgesetzt werden.
-
-Für jedes ausgewählte Textelement können außerdem Schriftgröße und Textfarbe geändert werden. Die Schriftgröße wird auf 12 bis 240 Pixel begrenzt, die Farbe als sechsstelliger Hex-Wert gespeichert. Beide Werte sind Bestandteil des Layoutzustands, der Undo-/Redo-Historie, lokaler und portabler Entwürfe sowie des PNG-Exports. Ältere Entwürfe ohne Stilwerte werden beim Laden mit den bisherigen Template-Standardwerten ergänzt.
-
-Für das ausgewählte Element stehen zusätzlich exakte Zahlenfelder für X, Y, Breite, Höhe und Drehung bereit. Eingaben werden auf gültige Dokumentgrenzen und Mindestgrößen begrenzt; auch diese Änderungen sind rückgängig machbar und Bestandteil des lokalen Entwurfs.
-
-Ein einzelnes ausgewähltes Element kann unabhängig vom restlichen Layout auf seine ursprüngliche Position, Größe, Drehung und Ebenenposition zurückgesetzt werden.
-
-Sechs Ausrichtungsaktionen setzen die sichtbaren Begrenzungen eines ausgewählten Elements an die linke, horizontale mittlere oder rechte beziehungsweise obere, vertikale mittlere oder untere Dokumentkante. Das funktioniert auch für gedrehte Elemente.
-
-Bis zu 50 Layoutänderungen können pro Template rückgängig gemacht und wiederholt werden. Die Historie umfasst direkte Canvas-Interaktionen, die zugänglichen Steuerelemente, Ebenenänderungen und den vollständigen Layout-Reset; eine neue Änderung nach einem Rückgängig-Schritt verwirft den bisherigen Wiederholen-Zweig.
-
-Ausgewählte Elemente lassen sich zusätzlich mit den Pfeiltasten verschieben; Umschalt erhöht den jeweiligen Schritt um den Faktor fünf. Escape hebt die Auswahl auf. Strg/Cmd+Z sowie Strg+Y beziehungsweise Strg/Cmd+Umschalt+Z bedienen die Layout-Historie. Während der Fokus in einem Eingabefeld, einer Textarea oder einer Auswahl liegt, greift der Editor nicht in die normalen Tastaturfunktionen ein.
-
-Raster-Snapping kann im Editor ein- und ausgeschaltet werden. Aktiv rasten Positionen und Größen nach einer direkten Konva-Interaktion auf 20 Pixel und Drehungen auf 15° ein; die zugänglichen Steuerelemente verwenden dieselben Schritte. Bei deaktiviertem Raster arbeiten die Steuerelemente mit 5 Pixeln beziehungsweise 5°. Beim direkten Verschieben rasten Kanten und Mittellinien zusätzlich an den übrigen Textelementen sowie den Dokumentkanten und der Dokumentmitte ein. Pinke Hilfslinien zeigen die aktive Ausrichtung und verschwinden vor dem Export.
-
-## Vorschau und Export
-
-Die Dokumentgröße bleibt immer 1920 × 1080 Pixel. Ein `ResizeObserver` ermittelt ausschließlich die Vorschau-Skalierung. Für den Export wird die Stage kurz auf die unveränderte Dokumentgröße mit Skalierung 1 gesetzt und anschließend auf den Vorschauzustand zurückgestellt. Dadurch entstehen keine Rundungsfehler durch gebrochene Vorschaugrößen.
-
-Der Vorschauzoom kann zwischen 50 und 200 Prozent der automatisch eingepassten Größe gewählt werden. Größere Stufen machen die Arbeitsfläche innerhalb ihres Containers scrollbar; Dokumentkoordinaten, Layoutzustand und Exportauflösung bleiben davon unabhängig.
-
-Vor dem Download werden Schriftarten und ein vorhandenes Bild abgewartet. Das erzeugte PNG wird anschließend mit `createImageBitmap()` geprüft; nur ein tatsächliches Bild mit exakt 1920 × 1080 Pixeln wird heruntergeladen. Der Browser-Test gegen die konfigurierte Instanz bestätigt Auswahl, Detailabruf, Fallback-Rendering und die exakte Exportgröße.
-
-## Konva-Bewertung
-
-Empfehlung für den nächsten Ausbauschritt: **Konva weiterverwenden.**
-
-- Die deklarative Vue-3-Integration ist für ein festes Template nachvollziehbar.
-- Dokumentkoordinaten und responsive Vorschau lassen sich sauber trennen.
-- Textumbruch, feste Textbereiche und Ellipsis reichen für den Durchstich aus.
-- Bild-Cropping im Cover-Stil ist mit dem nativen Crop-Rechteck direkt abbildbar.
-- Der PNG-Export ist deterministisch, sofern vorab auf Bilder und Fonts gewartet wird.
-- Auswahl, Transformer, Raster-Snapping, Ebenenreihenfolge und visuelle Hilfslinien funktionieren auf demselben Szenengraph.
-
-Der End-to-End-Test gegen `joschatest.church.tools` wurde mit einem eigens angelegten Termin inklusive hochgeladenem Bild durchgeführt. Das ChurchTools-Bild ließ sich mit der realen CORS-Konfiguration laden, im Cover-Stil zuschneiden und als Bestandteil eines verifizierten PNGs mit exakt 1920 × 1080 Pixeln exportieren. Ein Bildfehler ist weiterhin sichtbar behandelt und fällt für Vorschau und Export auf die definierte Farbfläche zurück. Aktuell gibt es keinen konkreten Grund für einen Alternativ-Spike mit Fabric.js oder DOM/SVG.
+- Neue Dokumente und Seiten starten leer und transparent.
+- Ein Terminwechsel ersetzt nur den Datenkontext und niemals das Layout.
+- Seiten dürfen unterschiedliche Größen besitzen und liegen untereinander auf einer gemeinsamen zoombaren Arbeitsfläche.
+- Bilder werden im Cover-Modus zugeschnitten; Icons und QR-Codes bleiben proportional.
+- Vorlagen speichern das vollständige mehrseitige Dokument und behalten dynamische Daten- und Farbbindungen.
+- Gruppenhierarchie, Ebenen-Inspector und Canvas verwenden denselben rekursiven Szenengraphen.
+- PNG- und JPEG-Ausgaben werden pro Seite konfiguriert und gemeinsam als ZIP exportiert.

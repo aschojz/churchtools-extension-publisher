@@ -24,3 +24,5 @@ dist-ssr
 *.sln
 *.sw?
 releases
+playwright-report
+test-results

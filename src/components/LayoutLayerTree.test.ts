@@ -148,6 +148,22 @@ describe('LayoutLayerTree', () => {
         expect(wrapper.emitted('editEffects')).toEqual([['title']]);
     });
 
+    it('marks effects on the group node without marking its children', async () => {
+        const wrapper = mount(LayoutLayerTree, {
+            props: {
+                effectElementIds: ['outer'],
+                elementLabels,
+                nodes: nestedNodes,
+                selectedElementIds: ['title', 'dateTime', 'location'],
+            },
+        });
+
+        await wrapper.get('[aria-label="Gruppeneffekte bearbeiten"]').trigger('click');
+
+        expect(wrapper.emitted('editEffects')).toEqual([['outer']]);
+        expect(wrapper.find('[aria-label="Effekte von Titel bearbeiten"]').exists()).toBe(false);
+    });
+
     it('emits an inside move when a drag handle is dropped onto a group', async () => {
         const wrapper = mount(LayoutLayerTree, {
             props: { elementLabels, nodes: nestedNodes, selectedElementIds: [] },

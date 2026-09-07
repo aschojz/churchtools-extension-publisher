@@ -37,15 +37,15 @@ const emit = defineEmits<{
             </div>
         </div>
         <div class="inspector-section">
-            <h3>Meine Vorlagen</h3><p>Speichert nur die Gestaltung. Beim nächsten Termin werden dessen Inhalte eingesetzt.</p>
+            <h3>Meine Vorlagen</h3><p>Speichert alle Seiten, Größen und Gestaltungseinstellungen. Beim nächsten Termin werden dessen Inhalte eingesetzt.</p>
             <form class="design-template-create" @submit.prevent="emit('saveDesign')">
                 <label class="inspector-field">Vorlagenname<input :value="name" :maxlength="MAX_PUBLISHER_DESIGN_TEMPLATE_NAME_LENGTH" placeholder="z. B. Sonntagsfolie" @input="emit('update:name', ($event.target as HTMLInputElement).value)" /></label>
-                <DesignButton type="submit">Aktuelles Layout speichern</DesignButton>
+                <DesignButton type="submit">Aktuelles Dokument speichern</DesignButton>
             </form>
             <p v-if="status" class="local-draft__status" role="status">{{ status }}</p><p v-if="error" class="local-draft__error" role="alert">{{ error }}</p>
             <div v-if="designTemplates.length" class="design-template-list" aria-label="Gespeicherte Vorlagen">
                 <article v-for="designTemplate in designTemplates" :key="designTemplate.id" :class="{ 'is-active': selectedDesignTemplateId === designTemplate.id }">
-                    <div><strong>{{ designTemplate.name }}</strong><small>{{ TEMPLATE_OPTIONS.find(({ id }) => id === designTemplate.baseTemplateId)?.label }}</small></div><span v-if="selectedDesignTemplateId === designTemplate.id" class="design-template-list__active">Aktiv</span>
+                    <div><strong>{{ designTemplate.name }}</strong><small>{{ designTemplate.pages.length }} Seite{{ designTemplate.pages.length === 1 ? '' : 'n' }} · {{ designTemplate.pages.map(({ width, height }) => `${width} × ${height}`).join(', ') }}</small></div><span v-if="selectedDesignTemplateId === designTemplate.id" class="design-template-list__active">Aktiv</span>
                     <div class="design-template-list__actions"><DesignButton variant="secondary" size="compact" @click="emit('applyDesign', designTemplate)">Anwenden</DesignButton><DesignButton variant="secondary" size="compact" @click="emit('saveDesign', designTemplate)">Aktualisieren</DesignButton><DesignButton variant="danger" size="compact" @click="emit('deleteDesign', designTemplate)">Löschen</DesignButton></div>
                 </article>
             </div>

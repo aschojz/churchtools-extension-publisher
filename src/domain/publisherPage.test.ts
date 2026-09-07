@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { LAYOUT_ELEMENT_IDS, createLayoutGroups, createLayoutOffsets, createLayoutOrder, createLayoutRotations, createLayoutSizes, createLayoutTextStyles, createLayoutVisualStyles } from './layoutEditing';
-import { createPublisherPage, pageShowsTemplateDecorations } from './publisherPage';
+import { createBlankPublisherPage, createPublisherPage, createStandardPublisherLayout, pageShowsTemplateDecorations } from './publisherPage';
 
 describe('publisher page', () => {
     it('creates independent pages with the requested dimensions and template', () => {
@@ -31,5 +31,16 @@ describe('publisher page', () => {
         expect(pageShowsTemplateDecorations(page)).toBe(false);
         page.layouts.split.deleted = ['title'];
         expect(pageShowsTemplateDecorations(page)).toBe(true);
+    });
+
+    it('creates blank and standard layouts in the actual page dimensions', () => {
+        const blank = createBlankPublisherPage(600, 600, 'poster');
+        const standard = createStandardPublisherLayout('poster', 600, 600);
+
+        expect(blank.layouts.poster?.sizes.background).toEqual({ width: 600, height: 600 });
+        expect(blank.layouts.poster?.order).toEqual([]);
+        expect(standard.sizes.background).toEqual({ width: 600, height: 600 });
+        expect(standard.order).toEqual(LAYOUT_ELEMENT_IDS);
+        expect(standard.styles.location.fontSize).toBeGreaterThanOrEqual(12);
     });
 });

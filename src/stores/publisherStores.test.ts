@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { LAYOUT_ELEMENT_IDS } from '../domain/layoutEditing';
+import { cloneLayoutState } from '../domain/layoutHistory';
 import { usePublisherAppointmentsStore } from './publisherAppointments';
 import { usePublisherDocumentStore } from './publisherDocument';
 import { usePublisherEditorStore } from './publisherEditor';
@@ -33,6 +34,51 @@ describe('publisher stores', () => {
         expect(document.activePage).toMatchObject({ width: 600, height: 600 });
         expect(document.activePage.layouts.split?.deleted).toEqual(LAYOUT_ELEMENT_IDS);
         expect(document.activePage.layouts.split?.order).toEqual([]);
+    });
+
+    it('applies a standard seed through the same serializable page layout model', () => {
+        const document = usePublisherDocumentStore();
+        document.addPage(600, 600, 'split');
+
+        document.replaceActivePageTemplate('poster');
+
+        expect(document.activePage.templateId).toBe('poster');
+        expect(document.activePage.layouts.poster?.order).toEqual(LAYOUT_ELEMENT_IDS);
+        expect(document.activePage.layouts.poster?.sizes.background).toEqual({ width: 600, height: 600 });
+        expect(document.activePage.layouts.split).toBeUndefined();
+    });
+
+    it('owns page layout history and restores committed changes', () => {
+        const document = usePublisherDocumentStore();
+        const pageId = document.activePageId;
+        const previous = cloneLayoutState(document.activePage.layouts.split!);
+        const current = cloneLayoutState(previous);
+        current.offsets.title = { x: 80, y: 40 };
+
+        document.commitPageLayout(pageId, 'split', previous, current);
+        expect(document.activePage.layouts.split?.offsets.title).toEqual({ x: 80, y: 40 });
+
+        document.undoPageLayout(pageId, 'split');
+        expect(document.activePage.layouts.split?.offsets.title).toEqual({ x: 0, y: 0 });
+
+        document.redoPageLayout(pageId, 'split');
+        expect(document.activePage.layouts.split?.offsets.title).toEqual({ x: 80, y: 40 });
+    });
+
+    it('keeps the canvas selection scoped to the active page', () => {
+        const document = usePublisherDocumentStore();
+        const editor = usePublisherEditorStore();
+        const firstPageId = document.activePageId;
+        editor.activateCanvasPage(firstPageId);
+        expect(editor.setCanvasSelection(firstPageId, ['title'], null)).toBe(true);
+        expect(editor.selectedLayoutElements).toEqual(['title']);
+
+        const secondPage = document.addPage(600, 600, 'split');
+        editor.activateCanvasPage(secondPage.id);
+
+        expect(editor.selectedLayoutElements).toEqual([]);
+        expect(editor.setCanvasSelection(firstPageId, ['dateTime'], null)).toBe(false);
+        expect(editor.selectedLayoutElements).toEqual([]);
     });
 
     it('keeps the latest twelve unique colors with the most recent first', () => {

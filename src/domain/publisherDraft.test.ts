@@ -337,13 +337,29 @@ describe('publisher draft', () => {
         splitLayout.groups = [{
             id: 'outer',
             children: [{ id: 'inner', children: ['title', 'dateTime'] }, 'location'],
+            rotation: 30,
             autoLayout: {
                 axis: 'vertical', gap: 8, horizontalOrigin: 'left', verticalOrigin: 'top',
                 anchor: { x: 120, y: 80 },
             },
         }];
+        const groupEffects = createLayoutElementEffects();
+        groupEffects.shadow.enabled = true;
+        splitLayout.effects = { outer: groupEffects };
         savePublisherDraft(storage, 'groups-nested', draft);
-        expect(loadPublisherDraft(storage, 'groups-nested')?.layouts.split?.groups).toEqual(splitLayout.groups);
+        const restored = loadPublisherDraft(storage, 'groups-nested')?.layouts.split;
+        expect(restored?.groups).toEqual(splitLayout.groups);
+        expect(restored?.effects?.outer?.shadow.enabled).toBe(true);
+    });
+
+    it('rejects invalid group rotations instead of silently dropping them', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        draft.layouts.split!.groups = [{ id: 'group', children: ['title', 'dateTime'], rotation: Number.NaN }];
+
+        savePublisherDraft(storage, 'invalid-group-rotation', draft);
+
+        expect(loadPublisherDraft(storage, 'invalid-group-rotation')).toBeNull();
     });
 
     it('rejects invalid persisted text styles', () => {

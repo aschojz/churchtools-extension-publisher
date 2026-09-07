@@ -29,7 +29,7 @@ import {
     type PublisherDataField,
 } from './domain/appointmentDataFields';
 import type { PublisherImagePaletteSource } from './domain/imagePalette';
-import { createImageFocusByTemplate, type ImageFocus } from './domain/imageFocus';
+import type { ImageFocus } from './domain/imageFocus';
 import type { LayoutCustomElementKind, LayoutTextMode } from './domain/layoutEditing';
 import type { PublisherIconName } from './domain/publisherIcons';
 import { cloneLayoutState, type SerializableLayoutState } from './domain/layoutHistory';
@@ -54,7 +54,7 @@ import {
     parsePublisherDraftFile,
     serializePublisherDraftFile,
 } from './domain/publisherDraftFile';
-import { createPublisherPage } from './domain/publisherPage';
+import { clonePublisherPage, createBlankPublisherPage, createPublisherPage } from './domain/publisherPage';
 import {
     createPublisherExportSettings,
     publisherExportExtension,
@@ -216,14 +216,8 @@ const addPage = () => {
 };
 
 const removePage = (pageId: string) => {
-    if (pages.value.length <= 1) {
-        return;
-    }
-    const pageIndex = pages.value.findIndex(({ id }) => id === pageId);
-    pages.value = pages.value.filter(({ id }) => id !== pageId);
-    if (activePageId.value === pageId) {
-        activePageId.value = pages.value[Math.max(0, pageIndex - 1)]!.id;
-    }
+    if (!documentStore.removePage(pageId)) return;
+    editorStore.activateCanvasPage(activePageId.value);
     saveCurrentDraft();
 };
 
@@ -573,11 +567,7 @@ const resetTemplateOverrides = () => {
 };
 
 const updatePageDraftLayout = (pageId: string, templateId: TemplateId, state: SerializableLayoutState) => {
-    const page = pages.value.find(({ id }) => id === pageId);
-    if (!page) {
-        return;
-    }
-    page.layouts = { ...page.layouts, [templateId]: cloneLayoutState(state) };
+    if (!documentStore.pageById(pageId)?.layouts[templateId] || !state) return;
     saveCurrentDraft();
 };
 
@@ -588,9 +578,7 @@ const createDesignTemplateId = () =>
 
 const applyStandardTemplate = (templateId: TemplateId) => {
     restoringDraft.value = true;
-    activePage.value.templateId = templateId;
-    activePage.value.layouts = {};
-    activePage.value.imageFocus = createImageFocusByTemplate();
+    documentStore.replaceActivePageTemplate(templateId);
     selectedDesignTemplateId.value = '';
     draftRevision.value += 1;
     designTemplateStatus.value = 'Standardvorlage angewendet.';
@@ -601,10 +589,9 @@ const applyStandardTemplate = (templateId: TemplateId) => {
 };
 
 const persistCurrentDesignAsTemplate = (existing?: PublisherDesignTemplate) => {
-    const layout = templateRef.value?.getLayoutState();
     const name = (existing?.name ?? designTemplateName.value).trim();
-    if (!layout || !templateProps.value) {
-        designTemplateError.value = 'Die aktuelle Seite ist noch nicht bereit.';
+    if (pages.value.length === 0) {
+        designTemplateError.value = 'Das aktuelle Dokument enthält keine Seite.';
         return;
     }
     if (!name) {
@@ -616,9 +603,8 @@ const persistCurrentDesignAsTemplate = (existing?: PublisherDesignTemplate) => {
     const designTemplate: PublisherDesignTemplate = {
         id: existing?.id ?? createDesignTemplateId(),
         name: name.slice(0, MAX_PUBLISHER_DESIGN_TEMPLATE_NAME_LENGTH),
-        baseTemplateId: selectedTemplateId.value,
-        layout: cloneLayoutState(layout),
-        imageFocus: { ...imageFocusByTemplate.value[selectedTemplateId.value] },
+        pages: pages.value.map((page) => clonePublisherPage(page)),
+        activePageId: activePageId.value,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
     };
@@ -642,15 +628,11 @@ const persistCurrentDesignAsTemplate = (existing?: PublisherDesignTemplate) => {
 const applyDesignTemplate = (designTemplate: PublisherDesignTemplate) => {
     restoringDraft.value = true;
     selectedDesignTemplateId.value = designTemplate.id;
-    selectedTemplateId.value = designTemplate.baseTemplateId;
-    draftLayouts.value = {
-        ...draftLayouts.value,
-        [designTemplate.baseTemplateId]: cloneLayoutState(designTemplate.layout),
-    };
-    imageFocusByTemplate.value = {
-        ...imageFocusByTemplate.value,
-        [designTemplate.baseTemplateId]: { ...designTemplate.imageFocus },
-    };
+    const activeTemplatePageIndex = designTemplate.pages.findIndex(({ id }) => id === designTemplate.activePageId);
+    const instantiatedPages = designTemplate.pages.map((page) => clonePublisherPage(page, true));
+    const nextActivePageId = instantiatedPages[Math.max(0, activeTemplatePageIndex)]!.id;
+    documentStore.replacePages(instantiatedPages, nextActivePageId);
+    editorStore.activateCanvasPage(nextActivePageId);
     draftRevision.value += 1;
     designTemplateStatus.value = `Vorlage „${designTemplate.name}“ angewendet.`;
     designTemplateError.value = '';
@@ -682,9 +664,9 @@ const deleteLocalDraft = () => {
     try {
         deletePublisherDraft(window.localStorage, selectedAppointmentKey.value);
         templateOverrides.value = {};
-        const resetPage = createPublisherPage();
-        pages.value = [resetPage];
-        activePageId.value = resetPage.id;
+        const resetPage = createBlankPublisherPage();
+        documentStore.replacePages([resetPage], resetPage.id);
+        editorStore.activateCanvasPage(resetPage.id);
         snapEnabled.value = true;
         previewZoomPercent.value = 100;
         hasLocalDraft.value = false;
@@ -851,7 +833,7 @@ const importDraftFile = async (event: Event) => {
         savePublisherDraft(window.localStorage, selectedAppointmentKey.value, imported.draft);
         templateOverrides.value = { ...imported.draft.templateOverrides };
         if (imported.draft.pages?.length && imported.draft.activePageId) {
-            pages.value = imported.draft.pages.map((page) => ({
+            const importedPages = imported.draft.pages.map((page) => ({
                 ...page,
                 layouts: Object.fromEntries(Object.entries(page.layouts).map(([templateId, state]) => [
                     templateId,
@@ -862,7 +844,8 @@ const importDraftFile = async (event: Event) => {
                     poster: { ...page.imageFocus.poster },
                 },
             }));
-            activePageId.value = imported.draft.activePageId;
+            documentStore.replacePages(importedPages, imported.draft.activePageId);
+            editorStore.activateCanvasPage(imported.draft.activePageId);
         } else {
             const importedPage = createPublisherPage();
             importedPage.templateId = imported.draft.selectedTemplateId;
@@ -876,8 +859,8 @@ const importDraftFile = async (event: Event) => {
                 split: { ...imported.draft.imageFocus.split },
                 poster: { ...imported.draft.imageFocus.poster },
             };
-            pages.value = [importedPage];
-            activePageId.value = importedPage.id;
+            documentStore.replacePages([importedPage], importedPage.id);
+            editorStore.activateCanvasPage(importedPage.id);
         }
         snapEnabled.value = imported.draft.snapEnabled;
         previewZoomPercent.value = imported.draft.previewZoomPercent;

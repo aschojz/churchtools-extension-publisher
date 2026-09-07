@@ -20,8 +20,8 @@ const emit = defineEmits<{
     remove: [pageId: string];
 }>();
 const activatePage = (pageId: string) => {
+    editorStore.activateCanvasPage(pageId);
     documentStore.activatePage(pageId);
-    editorStore.clearSelectionState();
 };
 </script>
 

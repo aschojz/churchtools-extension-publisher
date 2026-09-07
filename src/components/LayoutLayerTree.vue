@@ -14,7 +14,7 @@ import DesignIconButton from './design/DesignIconButton.vue';
 const props = withDefaults(defineProps<{
     depth?: number;
     elementLabels: Record<LayoutElementId, string>;
-    effectElementIds?: LayoutElementId[];
+    effectElementIds?: string[];
     elementPreviews?: Partial<Record<LayoutElementId, {
         color?: string;
         imageSource?: string;
@@ -29,7 +29,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
     drillIntoElement: [elementId: LayoutElementId];
-    editEffects: [elementId: LayoutElementId];
+    editEffects: [targetId: string];
     moveLayer: [source: LayoutLayerDragNode, target: LayoutLayerDragNode, placement: LayoutLayerDropPlacement];
     selectElement: [elementId: LayoutElementId, event: MouseEvent];
     selectGroup: [groupId: string, event: MouseEvent];
@@ -145,6 +145,8 @@ const dropClass = (target: LayoutLayerDragNode) => {
                     <button type="button" class="inspector-layer-list__drag" :disabled="groupContainsLocked(node.elementIds)" :draggable="!groupContainsLocked(node.elementIds)" aria-label="Gruppe verschieben" @dragstart="startLayerDrag({ kind: 'group', id: node.id }, $event)" @dragend="activeDrop = null"><FontAwesomeIcon :icon="faGripVertical" aria-hidden="true" /></button>
                     <DesignIconButton class="inspector-layer-group__toggle" :label="collapsedGroups.has(node.id) ? 'Gruppe aufklappen' : 'Gruppe zuklappen'" :aria-expanded="!collapsedGroups.has(node.id)" @click="toggleGroup(node.id)"><FontAwesomeIcon :icon="collapsedGroups.has(node.id) ? faAngleRight : faAngleDown" aria-hidden="true" /></DesignIconButton>
                     <button type="button" class="inspector-layer-list__select inspector-layer-list__select--group" :aria-pressed="groupIsSelected(node.elementIds)" @click="emit('selectGroup', node.id, $event)"><span class="inspector-layer-list__icon">▰</span><span>{{ depth === 0 ? 'Gruppe' : 'Untergruppe' }}</span></button>
+                    <DesignIconButton v-if="effectElementIds.includes(node.id)" class="inspector-layer-list__effect" label="Gruppeneffekte bearbeiten" @click="emit('editEffects', node.id)"><FontAwesomeIcon :icon="faWandMagicSparkles" aria-hidden="true" /></DesignIconButton>
+                    <span v-else class="inspector-layer-list__effect-placeholder" />
                     <span class="inspector-layer-list__lock" :title="groupContainsLocked(node.elementIds) ? groupIsLocked(node.elementIds) ? 'Gruppe ist gesperrt' : 'Gruppe enthält gesperrte Ebenen' : undefined"><FontAwesomeIcon v-if="groupContainsLocked(node.elementIds)" :icon="faLock" aria-hidden="true" /></span>
                     <DesignIconButton class="inspector-layer-list__visibility" :label="groupIsHidden(node.elementIds) ? 'Gruppe einblenden' : 'Gruppe ausblenden'" @click="emit('toggleVisibility', node.elementIds)"><FontAwesomeIcon :icon="groupIsHidden(node.elementIds) ? faEyeSlash : faEye" aria-hidden="true" /></DesignIconButton>
                 </div>

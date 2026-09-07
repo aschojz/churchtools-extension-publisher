@@ -38,8 +38,8 @@ const appointmentStore = usePublisherAppointmentsStore();
 const { activePageId, pages } = storeToRefs(documentStore);
 const {
     availableLayoutElements, canRedoLayout, canUndoLayout, layoutChanged, previewZoomPercent,
-    selectedLayerPosition, selectedLayerTotal, selectedLayoutElement, selectedLayoutElementChanged,
-    selectedLayoutElements, selectedLayoutGeometry, selectedLayoutGroupPath, selectedLayoutStyle,
+    selectedLayerPosition, selectedLayerTotal, selectedLayoutElementChanged,
+    selectedLayoutGeometry, selectedLayoutGroupPath, selectedLayoutStyle,
     selectedLayoutTextContent, selectedLayoutTextMode, selectedLayoutVisualStyle, snapEnabled,
 } = storeToRefs(editorStore);
 const previewZoom = (value: number) => (value / 100) * 0.32;
@@ -52,11 +52,14 @@ const setPageTemplateRef = (pageId: string, instance: unknown) => {
     else pageTemplateRefs.delete(pageId);
     if (pageId === activePageId.value) emitActiveTemplate();
 };
-watch(activePageId, emitActiveTemplate, { flush: 'post' });
+watch(activePageId, (pageId) => {
+    editorStore.activateCanvasPage(pageId);
+    emitActiveTemplate();
+}, { flush: 'post', immediate: true });
 const isActive = (pageId: string) => pageId === activePageId.value;
 const activatePage = (pageId: string) => {
+    editorStore.activateCanvasPage(pageId);
     documentStore.activatePage(pageId);
-    editorStore.clearSelectionState();
 };
 const openAppointments = () => {
     appointmentStore.appointmentDialogOpen = true;
@@ -89,7 +92,7 @@ defineExpose({ exportPage });
                 :data-values="dataValues"
                 :draft-id="`${draftId}:${page.id}`"
                 :image-focus="page.imageFocus[page.templateId]"
-                :initial-layouts="page.layouts"
+                :page-id="page.id"
                 :preview-zoom="previewZoom(previewZoomPercent)"
                 :template="template"
                 :template-id="page.templateId"
@@ -101,8 +104,6 @@ defineExpose({ exportPage });
                 @layer-position-change="(position, total) => { if (isActive(page.id)) { selectedLayerPosition = position; selectedLayerTotal = total; } }"
                 @layout-change="isActive(page.id) && (layoutChanged = $event)"
                 @layout-state-change="(templateId, state) => emit('layoutStateChange', page.id, templateId, state)"
-                @selection-change="isActive(page.id) && (selectedLayoutElement = $event)"
-                @selection-ids-change="isActive(page.id) && (selectedLayoutElements = $event)"
                 @selection-group-change="(canGroup, canUngroup, depth) => isActive(page.id) && editorStore.updateLayoutGrouping(canGroup, canUngroup, depth)"
                 @selection-group-path-change="isActive(page.id) && (selectedLayoutGroupPath = [...$event])"
                 @selection-default-change="isActive(page.id) && (selectedLayoutElementChanged = $event)"

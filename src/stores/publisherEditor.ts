@@ -27,6 +27,7 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
     const layoutChanged = ref(false);
     const canUndoLayout = ref(false);
     const canRedoLayout = ref(false);
+    const activeCanvasPageId = ref<string | null>(null);
     const selectedLayoutElement = ref<LayoutElementId | null>(null);
     const selectedLayoutElements = ref<LayoutElementId[]>([]);
     const selectedLayoutGeometry = ref<LayoutSelectionGeometry | null>(null);
@@ -39,6 +40,7 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
     const canUngroupLayoutSelection = ref(false);
     const selectedLayoutGroupDepth = ref(0);
     const selectedLayoutGroupPath = ref<string[]>([]);
+    const selectedLayoutGroupId = ref<string | null>(null);
     const selectedLayerPosition = ref(0);
     const selectedLayerTotal = ref(0);
     const hasLayoutSelection = computed(() => selectedLayoutElements.value.length > 0);
@@ -54,6 +56,25 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
         selectedLayoutTextMode.value = null;
         selectedLayoutVisualStyle.value = null;
         selectedLayoutGroupPath.value = [];
+        selectedLayoutGroupId.value = null;
+        canGroupLayoutSelection.value = false;
+        canUngroupLayoutSelection.value = false;
+        selectedLayoutGroupDepth.value = 0;
+        selectedLayerPosition.value = 0;
+        selectedLayerTotal.value = 0;
+    };
+
+    const activateCanvasPage = (pageId: string) => {
+        if (activeCanvasPageId.value !== pageId) clearSelectionState();
+        activeCanvasPageId.value = pageId;
+    };
+
+    const setCanvasSelection = (pageId: string, elementIds: LayoutElementId[], groupId: string | null = null) => {
+        if (activeCanvasPageId.value !== pageId) return false;
+        selectedLayoutElements.value = [...elementIds];
+        selectedLayoutElement.value = elementIds.at(-1) ?? null;
+        selectedLayoutGroupId.value = groupId;
+        return true;
     };
 
     const updateLayoutHistory = (canUndo: boolean, canRedo: boolean) => {
@@ -73,6 +94,8 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
     return {
         activeEditorTool,
         activeEditorToolLabel,
+        activeCanvasPageId,
+        activateCanvasPage,
         availableLayoutElements,
         canGroupLayoutSelection,
         canRedoLayout,
@@ -90,12 +113,14 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
         selectedLayoutElements,
         selectedLayoutGeometry,
         selectedLayoutGroupDepth,
+        selectedLayoutGroupId,
         selectedLayoutGroupPath,
         selectedLayoutStyle,
         selectedLayoutTextContent,
         selectedLayoutTextMode,
         selectedLayoutVisualStyle,
         snapEnabled,
+        setCanvasSelection,
         updateLayerPosition,
         updateLayoutGrouping,
         updateLayoutHistory,

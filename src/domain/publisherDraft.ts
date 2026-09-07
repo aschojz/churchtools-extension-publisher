@@ -10,6 +10,7 @@ import {
     createLayoutGroups,
     createCustomTextStyle,
     createCustomVisualStyle,
+    flattenLayoutGroups,
     isHexColor,
     MAX_FONT_SIZE,
     MIN_FONT_SIZE,
@@ -22,6 +23,7 @@ import {
     type LayoutTextStyles,
     type LayoutVisualStyles,
     normalizeLayoutElementEffects,
+    normalizeRotation,
     LAYOUT_ELEMENT_IDS,
     SHAPE_LAYOUT_ELEMENT_IDS,
     TEXT_LAYOUT_ELEMENT_IDS,
@@ -322,6 +324,7 @@ const parseLayoutGroups = (value: unknown, validElementIds = new Set<LayoutEleme
             }
             children.push(group);
         }
+        if (candidate.rotation !== undefined && !isFiniteNumber(candidate.rotation)) return null;
         let autoLayout: LayoutGroup['autoLayout'];
         if (candidate.autoLayout !== undefined) {
             const layout = candidate.autoLayout;
@@ -340,7 +343,12 @@ const parseLayoutGroups = (value: unknown, validElementIds = new Set<LayoutEleme
                 anchor: { x: layout.anchor.x, y: layout.anchor.y },
             };
         }
-        return { id: candidate.id, children, ...(autoLayout ? { autoLayout } : {}) };
+        return {
+            id: candidate.id,
+            children,
+            ...(autoLayout ? { autoLayout } : {}),
+            ...(candidate.rotation !== undefined ? { rotation: normalizeRotation(candidate.rotation) } : {}),
+        };
     };
     const groups: LayoutGroups = [];
     for (const candidate of value) {
@@ -353,12 +361,12 @@ const parseLayoutGroups = (value: unknown, validElementIds = new Set<LayoutEleme
     return groups;
 };
 
-const parseLayoutEffects = (value: unknown, validElementIds: Set<LayoutElementId>): LayoutEffects | null => {
+const parseLayoutEffects = (value: unknown, validElementIds: Set<string>): LayoutEffects | null => {
     if (value === undefined) return {};
     if (!isRecord(value)) return null;
     const effects: LayoutEffects = {};
     for (const [elementId, candidate] of Object.entries(value)) {
-        if (!validElementIds.has(elementId as LayoutElementId) || !isRecord(candidate) ||
+        if (!validElementIds.has(elementId) || !isRecord(candidate) ||
             (candidate.shadow !== undefined && !isRecord(candidate.shadow)) ||
             (candidate.blur !== undefined && !isRecord(candidate.blur)) ||
             (candidate.opacity !== undefined && !isFiniteNumber(candidate.opacity)) ||
@@ -461,7 +469,11 @@ export const parsePublisherLayoutState = (
     const styles = parseLayoutStyles(value.styles, templateId, customElements);
     const visualStyles = parseLayoutVisualStyles(value.visualStyles, templateId, customElements);
     const groups = parseLayoutGroups(value.groups, validElementIds);
-    const effects = parseLayoutEffects(value.effects, validElementIds);
+    const effectTargetIds = new Set<string>([
+        ...validElementIds,
+        ...flattenLayoutGroups(groups ?? []).map(({ id }) => id),
+    ]);
+    const effects = parseLayoutEffects(value.effects, effectTargetIds);
     if (!geometryIsValid || !orderIsValid || !styles || !visualStyles || !groups || !effects) {
         return null;
     }

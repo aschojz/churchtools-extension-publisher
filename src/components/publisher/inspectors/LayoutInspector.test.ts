@@ -203,13 +203,20 @@ describe('LayoutInspector typography controls', () => {
         });
     });
 
-    it('does not incorrectly copy effects onto every child of a selected group', async () => {
+    it('applies group effects to the group node instead of copying them onto every child', async () => {
         const wrapper = mountInspector(textStyle());
-        usePublisherEditorStore().selectedLayoutGroupDepth = 1;
+        const store = usePublisherEditorStore();
+        store.selectedLayoutGroupDepth = 1;
+        store.selectedLayoutGroupId = 'group-1';
         await openTab(wrapper, 'Ebenen');
 
-        const button = wrapper.get('[aria-label="Gruppeneffekte werden noch nicht unterstützt"]');
-        expect(button.attributes()).toHaveProperty('disabled');
+        const button = wrapper.get('[aria-label="Ebeneneffekte"]');
+        expect(button.attributes()).not.toHaveProperty('disabled');
+        await button.trigger('click');
+        await wrapper.get('[aria-label="Schlagschatten aktivieren"]').setValue(true);
+        await wrapper.get('.publisher-effects-dialog').trigger('submit');
+
+        expect(wrapper.emitted('updateEffects')?.[0]?.[0]).toEqual(['group-1']);
     });
 
     it('groups extracted colors by image and emits static or dynamic color choices', async () => {

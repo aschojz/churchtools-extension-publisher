@@ -9,6 +9,7 @@ import { computed, nextTick, ref, shallowRef, watch } from 'vue';
 
 import EditableTextElement from './EditableTextElement.vue';
 import EditableVisualElement from './EditableVisualElement.vue';
+import CanvasSceneTree from './CanvasSceneTree.vue';
 import type { EventTemplateProps } from '../domain/EventTemplateProps';
 import {
     PUBLISHER_DATA_TRANSFER_TYPE,
@@ -23,6 +24,8 @@ import { layoutGradientFillConfig, normalizeLayoutGradient, type LayoutGradient 
 import { publisherIcon, type PublisherIconName } from '../domain/publisherIcons';
 import { usePublisherImagePalettesStore } from '../stores/publisherImagePalettes';
 import { usePublisherColorsStore } from '../stores/publisherColors';
+import { usePublisherDocumentStore } from '../stores/publisherDocument';
+import { usePublisherEditorStore } from '../stores/publisherEditor';
 import {
     alignLayoutGeometry,
     applyLayoutGroupAutoLayout,
@@ -35,7 +38,7 @@ import {
     constrainLineHeight,
     createCustomTextStyle,
     createCustomVisualStyle,
-    createCanvasStackOrder,
+    createLayoutLayerTree,
     createLayoutCustomElement,
     createLayoutGroups,
     createLayoutOrder,
@@ -59,7 +62,6 @@ import {
     layoutFramesIntersect,
     type AlignmentGuide,
     type LayoutElementId,
-    type LayoutEffects,
     type LayoutElementEffects,
     type LayoutCustomElement,
     type LayoutCustomElementKind,
@@ -102,14 +104,12 @@ import {
 } from '../domain/layoutEditing';
 import {
     cloneLayoutState,
-    commitLayoutHistory,
     createLayoutHistory,
-    redoLayoutHistory,
     type SerializableLayoutState,
-    undoLayoutHistory,
 } from '../domain/layoutHistory';
 import type { TemplateId } from '../domain/templates';
 import type { PublisherCanvasExportOptions } from '../domain/publisherExport';
+import { createStandardPublisherLayout } from '../domain/publisherPage';
 import {
     BUILT_IN_TEMPLATE_DEFINITIONS,
     scaleTemplateDefinition,
@@ -124,10 +124,10 @@ type ImageStatus = 'idle' | 'loading' | 'loaded' | 'error';
 
 const props = defineProps<{
     draftId: string;
+    pageId: string;
     documentHeight: number;
     documentWidth: number;
     dataValues: PublisherDataValues;
-    initialLayouts: Partial<Record<TemplateId, SerializableLayoutState>>;
     imageFocus: ImageFocus;
     previewZoom: number;
     template: EventTemplateProps;
@@ -137,6 +137,8 @@ const props = defineProps<{
 }>();
 const imagePaletteStore = usePublisherImagePalettesStore();
 const colorsStore = usePublisherColorsStore();
+const documentStore = usePublisherDocumentStore();
+const editorStore = usePublisherEditorStore();
 
 const emit = defineEmits<{
     imageStatus: [status: ImageStatus];
@@ -157,7 +159,19 @@ const emit = defineEmits<{
     selectionVisualStyleChange: [style: (LayoutVisualStyle & { elementId: LayoutElementId }) | null];
 }>();
 
-const customElements = ref<Record<TemplateId, LayoutCustomElement[]>>({ split: [], poster: [] });
+const currentStoredLayout = (templateId: TemplateId) =>
+    documentStore.pageById(props.pageId)?.layouts[templateId];
+const customElements = computed(() => new Proxy({} as Record<TemplateId, LayoutCustomElement[]>, {
+    get: (_target, property) => property === 'split' || property === 'poster'
+        ? currentStoredLayout(property)?.customElements ?? []
+        : undefined,
+    set: (_target, property, value: LayoutCustomElement[]) => {
+        if (property !== 'split' && property !== 'poster') return false;
+        const layout = documentStore.ensurePageLayout(props.pageId, property, () => createPageLayoutState(property));
+        layout.customElements = value;
+        return true;
+    },
+}));
 const customImageNodes = shallowRef<Record<string, HTMLImageElement>>({});
 const customQrNodes = shallowRef<Record<string, HTMLImageElement>>({});
 
@@ -197,7 +211,7 @@ const createPageLayoutSizes = (templateId: TemplateId) => Object.fromEntries(
 const createPageLayoutTextStyles = (templateId: TemplateId) => Object.fromEntries(
     [
         ...TEMPLATE_TEXT_BINDINGS.map((binding) => [binding, {
-        fontSize: scaledTemplateDefinitions.value[templateId].elements[binding].style.fontSize,
+        fontSize: constrainFontSize(scaledTemplateDefinitions.value[templateId].elements[binding].style.fontSize),
         color: scaledTemplateDefinitions.value[templateId].elements[binding].style.color,
         stroke: '#000000',
         strokeWidth: 0,
@@ -226,11 +240,33 @@ const createPageLayoutVisualStyles = (templateId: TemplateId): LayoutVisualStyle
     };
 };
 
+const createPageLayoutState = (templateId: TemplateId): SerializableLayoutState =>
+    createStandardPublisherLayout(templateId, props.documentWidth, props.documentHeight);
+
+type PersistedLayoutSection = Exclude<keyof SerializableLayoutState, 'customElements'>;
+const layoutSectionProxy = <Key extends PersistedLayoutSection>(key: Key) => computed(() => new Proxy(
+    {} as Record<TemplateId, NonNullable<SerializableLayoutState[Key]>>,
+    {
+        get: (_target, property) => property === 'split' || property === 'poster'
+            ? documentStore.ensurePageLayout(props.pageId, property, () => createPageLayoutState(property))[key]
+            : undefined,
+        set: (_target, property, value: NonNullable<SerializableLayoutState[Key]>) => {
+            if (property !== 'split' && property !== 'poster') return false;
+            documentStore.ensurePageLayout(props.pageId, property, () => createPageLayoutState(property));
+            documentStore.replacePageLayoutSection(props.pageId, property, key, value);
+            return true;
+        },
+    },
+));
+
 const stageRef = ref<VueKonvaRef<Konva.Stage> | null>(null);
 const transformerRef = ref<VueKonvaRef<Konva.Transformer> | null>(null);
 const image = shallowRef<HTMLImageElement | null>(null);
 const imageStatus = ref<ImageStatus>('idle');
-const selectedElements = ref<LayoutElementId[]>([]);
+const selectedElements = computed<LayoutElementId[]>({
+    get: () => editorStore.activeCanvasPageId === props.pageId ? editorStore.selectedLayoutElements : [],
+    set: (elementIds) => { editorStore.setCanvasSelection(props.pageId, elementIds, editorStore.selectedLayoutGroupId); },
+});
 const selectedElement = computed(() => selectedElements.value.at(-1) ?? null);
 const selectedGraphicText = computed(() => {
     if (selectedElements.value.length !== 1 || !selectedElement.value) return false;
@@ -245,55 +281,38 @@ const selectedKeepsAspectRatio = computed(() =>
         selectedElements.value.length === 1 && Boolean(selectedElement.value) &&
         isFixedAspectRatioLayoutElement(selectedElement.value!)
     ));
-const selectedGroupId = ref<string | null>(null);
+const selectedGroupId = computed<string | null>({
+    get: () => editorStore.activeCanvasPageId === props.pageId ? editorStore.selectedLayoutGroupId : null,
+    set: (groupId) => { editorStore.setCanvasSelection(props.pageId, selectedElements.value, groupId); },
+});
 const isExporting = ref(false);
 const activeAlignmentGuides = ref<AlignmentGuide[]>([]);
 const selectionRectangle = ref<LayoutFrame | null>(null);
-const layoutOffsets = ref<Record<TemplateId, ReturnType<typeof createLayoutOffsets>>>({
-    split: createLayoutOffsets(),
-    poster: createLayoutOffsets(),
-});
-const layoutSizes = ref<Record<TemplateId, ReturnType<typeof createPageLayoutSizes>>>({
-    split: createPageLayoutSizes('split'),
-    poster: createPageLayoutSizes('poster'),
-});
-const layoutRotations = ref<Record<TemplateId, ReturnType<typeof createLayoutRotations>>>({
-    split: createLayoutRotations(),
-    poster: createLayoutRotations(),
-});
-const layoutOrder = ref<Record<TemplateId, ReturnType<typeof createLayoutOrder>>>({
-    split: createLayoutOrder(),
-    poster: createLayoutOrder(),
-});
-const layoutTextStyles = ref<Record<TemplateId, ReturnType<typeof createPageLayoutTextStyles>>>({
-    split: createPageLayoutTextStyles('split'),
-    poster: createPageLayoutTextStyles('poster'),
-});
-const layoutVisualStyles = ref<Record<TemplateId, ReturnType<typeof createPageLayoutVisualStyles>>>({
-    split: createPageLayoutVisualStyles('split'),
-    poster: createPageLayoutVisualStyles('poster'),
-});
-const layoutGroups = ref<Record<TemplateId, ReturnType<typeof createLayoutGroups>>>({
-    split: createLayoutGroups(),
-    poster: createLayoutGroups(),
-});
-const layoutEffects = ref<Record<TemplateId, LayoutEffects>>({ split: {}, poster: {} });
-const deletedElements = ref<Record<TemplateId, LayoutElementId[]>>({ split: [], poster: [] });
-const hiddenElements = ref<Record<TemplateId, LayoutElementId[]>>({ split: [], poster: [] });
-const lockedElements = ref<Record<TemplateId, LayoutElementId[]>>({ split: [], poster: [] });
+const layoutOffsets = layoutSectionProxy('offsets');
+const layoutSizes = layoutSectionProxy('sizes');
+const layoutRotations = layoutSectionProxy('rotations');
+const layoutOrder = layoutSectionProxy('order');
+const layoutTextStyles = layoutSectionProxy('styles');
+const layoutVisualStyles = layoutSectionProxy('visualStyles');
+const layoutGroups = layoutSectionProxy('groups');
+const layoutEffects = layoutSectionProxy('effects');
+const deletedElements = layoutSectionProxy('deleted');
+const hiddenElements = layoutSectionProxy('hidden');
+const lockedElements = layoutSectionProxy('locked');
 const elementIsLocked = (elementId: LayoutElementId) => lockedElements.value[props.templateId].includes(elementId);
 const selectionContainsLockedElement = () => selectedElements.value.some(elementIsLocked);
 const availableElements = computed(() =>
     layoutOrder.value[props.templateId].filter((elementId) => !deletedElements.value[props.templateId].includes(elementId)));
-const canvasStackOrder = computed(() => createCanvasStackOrder(
-    layoutOrder.value[props.templateId],
-    deletedElements.value[props.templateId],
-    Boolean(props.template.location),
-));
-const layoutHistories = ref<Record<TemplateId, ReturnType<typeof createLayoutHistory>>>({
-    split: createLayoutHistory(),
-    poster: createLayoutHistory(),
-});
+const layoutHistories = computed(() => new Proxy({} as Record<TemplateId, ReturnType<typeof createLayoutHistory>>, {
+    get: (_target, property) => property === 'split' || property === 'poster'
+        ? documentStore.getPageLayoutHistory(props.pageId, property)
+        : undefined,
+    set: (_target, property, value: ReturnType<typeof createLayoutHistory>) => {
+        if (property !== 'split' && property !== 'poster') return false;
+        documentStore.replacePageLayoutHistory(props.pageId, property, value);
+        return true;
+    },
+}));
 let layoutGroupSequence = 0;
 let selectionStart: { x: number; y: number; additive: boolean } | null = null;
 let activeDrag: {
@@ -301,6 +320,14 @@ let activeDrag: {
     startPosition: { x: number; y: number };
     nodePositions: Partial<Record<LayoutElementId, { x: number; y: number }>>;
     nodeBounds: Partial<Record<LayoutElementId, LayoutFrame>>;
+} | null = null;
+let activeGroupDrag: {
+    groupId: string;
+    previousState: SerializableLayoutState;
+    startPosition: { x: number; y: number };
+    startAbsolutePosition: { x: number; y: number };
+    startBounds: LayoutFrame;
+    elementFrames: Partial<Record<LayoutElementId, LayoutFrame>>;
 } | null = null;
 
 const previewScale = computed(() => calculatePreviewScale(props.documentWidth, props.previewZoom, props.documentWidth));
@@ -315,10 +342,12 @@ const templateDefinition = computed(() => scaledTemplateDefinitions.value[props.
 const imageIsVisible = computed(() =>
     imageStatus.value === 'loaded' && !deletedElements.value[props.templateId].includes('image'));
 const transformerConfig = computed(() => ({
-    rotateEnabled: selectedElements.value.length === 1,
+    rotateEnabled: Boolean(selectedGroupId.value) || selectedElements.value.length === 1,
     flipEnabled: false,
     keepRatio: selectedKeepsAspectRatio.value,
-    enabledAnchors: selectedElements.value.length === 1
+    enabledAnchors: selectedGroupId.value
+        ? []
+        : selectedElements.value.length === 1
         ? selectedLine.value
             ? ['middle-left', 'middle-right']
             : selectedKeepsAspectRatio.value
@@ -401,11 +430,13 @@ const visualPaintConfig = (elementId: LayoutElementId, style: LayoutVisualStyle)
         ? { ...config, ...layoutGradientFillConfig(style.fillGradient, elementFrame(elementId), imagePaletteStore.resolveColor) }
         : config;
 };
-const elementEffects = (elementId: LayoutElementId) =>
-    normalizeLayoutElementEffects(layoutEffects.value[props.templateId][elementId]);
+const elementEffects = (targetId: string) =>
+    normalizeLayoutElementEffects(layoutEffects.value[props.templateId][targetId]);
 
-const decorationConfig = (decoration: TemplateDecoration) => ({
+const decorationConfig = (decoration: TemplateDecoration, origin = { x: 0, y: 0 }) => ({
     ...decoration.frame,
+    x: decoration.frame.x - origin.x,
+    y: decoration.frame.y - origin.y,
     listening: false,
     ...(decoration.type === 'text'
         ? {
@@ -481,28 +512,22 @@ type CanvasRenderItem =
     | { role: 'background'; id: 'background' }
     | { role: 'image'; id: 'image' }
     | { role: 'accent'; id: 'accent' }
-    | { role: 'decorationBehind'; id: 'decoration-behind' }
-    | { role: 'decorationOver'; id: 'decoration-over' }
     | { role: 'templateText'; id: TemplateTextBinding }
     | { role: 'custom'; id: LayoutElementId; element: LayoutCustomElement };
 
-const canvasRenderItems = computed<CanvasRenderItem[]>(() => canvasStackOrder.value.flatMap((stackItem): CanvasRenderItem[] => {
-    if (hiddenElements.value[props.templateId].includes(stackItem as LayoutElementId)) return [];
-    if (stackItem === 'background') return [{ role: 'background', id: stackItem }];
-    if (stackItem === 'image') return [{ role: 'image', id: stackItem }];
-    if (stackItem === 'accent') return [{ role: 'accent', id: stackItem }];
-    if (stackItem === 'decoration-behind') {
-        return [{ role: 'decorationBehind', id: stackItem }];
+const canvasRenderItem = (elementId: LayoutElementId): CanvasRenderItem[] => {
+    if (hiddenElements.value[props.templateId].includes(elementId) ||
+        deletedElements.value[props.templateId].includes(elementId) ||
+        (elementId === 'location' && !props.template.location)) return [];
+    if (elementId === 'background') return [{ role: 'background', id: elementId }];
+    if (elementId === 'image') return [{ role: 'image', id: elementId }];
+    if (elementId === 'accent') return [{ role: 'accent', id: elementId }];
+    if (TEMPLATE_TEXT_BINDINGS.includes(elementId as TemplateTextBinding)) {
+        return [{ role: 'templateText', id: elementId as TemplateTextBinding }];
     }
-    if (stackItem === 'decoration-over') {
-        return [{ role: 'decorationOver', id: stackItem }];
-    }
-    if (TEMPLATE_TEXT_BINDINGS.includes(stackItem as TemplateTextBinding)) {
-        return [{ role: 'templateText', id: stackItem as TemplateTextBinding }];
-    }
-    const element = customElementById(stackItem);
+    const element = customElementById(elementId);
     return element ? [{ role: 'custom', id: element.id, element }] : [];
-}));
+};
 
 const customTextMode = (element: LayoutCustomElement): LayoutTextMode => element.textMode ?? 'frame';
 
@@ -818,6 +843,46 @@ const selectedGroupVisualBounds = (group: LayoutGroup): LayoutFrame | null => {
     return { x, y, width: right - x, height: bottom - y };
 };
 
+const canvasSceneNodes = computed(() => createLayoutLayerTree(
+    layoutOrder.value[props.templateId],
+    layoutGroups.value[props.templateId],
+    deletedElements.value[props.templateId].filter((elementId) => elementId !== 'image').concat(
+        props.template.location ? [] : ['location'],
+    ),
+));
+const canvasGroupFrames = computed<Record<string, LayoutFrame>>(() => Object.fromEntries(
+    flattenLayoutGroups(layoutGroups.value[props.templateId]).flatMap((group) => {
+        const frame = selectedGroupVisualBounds(group);
+        return frame ? [[group.id, frame]] : [];
+    }),
+));
+const draggableGroupIds = computed(() => selectedGroupId.value
+    ? [selectedGroupId.value]
+    : selectedElements.value.length === 0
+        ? layoutGroups.value[props.templateId].map(({ id }) => id)
+        : []);
+const sceneRenderRevision = computed(() => [
+    documentStore.revision,
+    props.templateId,
+    props.template.title,
+    props.template.date,
+    props.template.time,
+    props.template.location,
+    imageStatus.value,
+].join(':'));
+const relativeElementFrame = (elementId: LayoutElementId, origin: { x: number; y: number }) => {
+    const frame = elementFrame(elementId);
+    return { ...frame, x: frame.x - origin.x, y: frame.y - origin.y };
+};
+const elementCanDragDirectly = (elementId: LayoutElementId) => {
+    const groupPath = findLayoutGroupPath(layoutGroups.value[props.templateId], elementId);
+    return groupPath.length === 0 || (
+        selectedGroupId.value === null &&
+        selectedElements.value.length === 1 &&
+        selectedElements.value[0] === elementId
+    );
+};
+
 const textMeasurementConfig = (elementId: LayoutElementId) => {
     if (!isTextLayoutElement(elementId)) return null;
     const customElement = customElementById(elementId);
@@ -1094,11 +1159,13 @@ const emitHistoryState = () => {
 };
 
 const commitCurrentLayout = (previousState: SerializableLayoutState) => {
-    layoutHistories.value[props.templateId] = commitLayoutHistory(
-        layoutHistories.value[props.templateId],
+    const history = documentStore.commitPageLayout(
+        props.pageId,
+        props.templateId,
         previousState,
         captureLayoutState(),
     );
+    layoutHistories.value[props.templateId] = history;
     emit('layoutStateChange', props.templateId, captureLayoutState());
     emitSelectionGeometry();
     emitHistoryState();
@@ -1106,19 +1173,8 @@ const commitCurrentLayout = (previousState: SerializableLayoutState) => {
 
 const restoreLayoutState = (state: SerializableLayoutState) => {
     const restored = cloneLayoutState(state);
-    customElements.value[props.templateId] = restored.customElements ?? [];
+    documentStore.replacePageLayout(props.pageId, props.templateId, restored);
     reloadAllCustomImages();
-    layoutOffsets.value[props.templateId] = restored.offsets;
-    layoutSizes.value[props.templateId] = restored.sizes;
-    layoutRotations.value[props.templateId] = restored.rotations;
-    layoutOrder.value[props.templateId] = restored.order;
-    layoutTextStyles.value[props.templateId] = restored.styles;
-    layoutVisualStyles.value[props.templateId] = restored.visualStyles;
-    layoutGroups.value[props.templateId] = restored.groups;
-    layoutEffects.value[props.templateId] = restored.effects ?? {};
-    deletedElements.value[props.templateId] = restored.deleted;
-    hiddenElements.value[props.templateId] = restored.hidden ?? [];
-    lockedElements.value[props.templateId] = restored.locked ?? [];
     reloadCurrentCustomQrs();
     emit('availableElementsChange', availableElements.value);
     emit('layoutStateChange', props.templateId, captureLayoutState());
@@ -1138,10 +1194,15 @@ const syncTransformer = async () => {
         return;
     }
 
-    const selectedNodes = selectedElements.value
-        .filter((elementId) => !elementIsLocked(elementId))
-        .map((elementId) => stage.findOne(`#editable-${elementId}`))
-        .filter((node): node is Konva.Node => Boolean(node));
+    const groupNode = selectedGroupId.value && !selectionContainsLockedElement()
+        ? stage.findOne(`#editable-group-${selectedGroupId.value}`)
+        : null;
+    const selectedNodes = groupNode
+        ? [groupNode]
+        : selectedElements.value
+            .filter((elementId) => !elementIsLocked(elementId))
+            .map((elementId) => stage.findOne(`#editable-${elementId}`))
+            .filter((node): node is Konva.Node => Boolean(node));
     transformer.nodes(!isExporting.value ? selectedNodes : []);
     transformer.getLayer()?.batchDraw();
 };
@@ -1208,6 +1269,7 @@ const groupSelectedElements = () => {
         return;
     }
     layoutGroups.value[props.templateId] = nextGroups;
+    pruneEffectsForCurrentTargets();
     commitCurrentLayout(previousState);
     updateSelection(selectedElements.value, groupId);
     emit('layoutChange', currentLayoutChanged.value);
@@ -1225,6 +1287,7 @@ const ungroupSelectedElements = () => {
         return;
     }
     layoutGroups.value[props.templateId] = nextGroups;
+    pruneEffectsForCurrentTargets();
     commitCurrentLayout(previousState);
     updateSelection(selectedElements.value);
     emit('layoutChange', currentLayoutChanged.value);
@@ -1299,6 +1362,21 @@ const stagePointerPosition = () => {
     return stage.getAbsoluteTransform().copy().invert().point(pointer);
 };
 
+const nodeDocumentPosition = (node: Konva.Node) => {
+    const stage = stageRef.value?.getNode();
+    return stage ? node.getAbsolutePosition(stage) : node.position();
+};
+
+const positionNodeAtDocumentPoint = (node: Konva.Node, point: { x: number; y: number }) => {
+    const stage = stageRef.value?.getNode();
+    const parent = node.getParent();
+    if (!stage || !parent) {
+        node.position(point);
+        return;
+    }
+    node.position(parent.getAbsoluteTransform(stage).copy().invert().point(point));
+};
+
 const cancelSelectionRectangle = () => {
     selectionStart = null;
     selectionRectangle.value = null;
@@ -1324,6 +1402,14 @@ const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEven
             return;
         }
         selectElement(elementId, eventIsAdditive(event));
+        cancelSelectionRectangle();
+        return;
+    }
+
+    const layoutGroup = event.target.findAncestor('.editable-layout-group', true);
+    const groupId = layoutGroup?.getAttr('layoutGroupId') as string | undefined;
+    if (groupId) {
+        selectGroup(groupId, eventIsAdditive(event));
         cancelSelectionRectangle();
         return;
     }
@@ -1480,9 +1566,10 @@ const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<D
             continue;
         }
         const baseFrame = templateElementFrames.value[props.templateId][movedId];
+        const documentPosition = nodeDocumentPosition(node);
         layoutOffsets.value[props.templateId][movedId] = {
-            x: node.x() - baseFrame.x,
-            y: node.y() - baseFrame.y,
+            x: documentPosition.x - baseFrame.x,
+            y: documentPosition.y - baseFrame.y,
         };
     }
     activeDrag = null;
@@ -1492,11 +1579,95 @@ const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<D
     void syncTransformer();
 };
 
+const startGroupDrag = (groupId: string, event: Konva.KonvaEventObject<DragEvent>) => {
+    const group = flattenLayoutGroups(layoutGroups.value[props.templateId]).find(({ id }) => id === groupId);
+    const stage = stageRef.value?.getNode();
+    if (!group || !stage || layoutGroupElementIds(group).some(elementIsLocked)) return;
+    if (selectedGroupId.value !== groupId) selectGroup(groupId);
+    const elementFrames = Object.fromEntries(layoutGroupElementIds(group).map((elementId) => [
+        elementId,
+        { ...elementFrame(elementId) },
+    ])) as Partial<Record<LayoutElementId, LayoutFrame>>;
+    activeGroupDrag = {
+        groupId,
+        previousState: captureLayoutState(),
+        startPosition: { ...event.target.position() },
+        startAbsolutePosition: { ...event.target.getAbsolutePosition(stage) },
+        startBounds: event.target.getClientRect({ relativeTo: stage, skipStroke: true, skipShadow: true }),
+        elementFrames,
+    };
+};
+
+const alignGroupWhileDragging = (groupId: string, event: Konva.KonvaEventObject<DragEvent>) => {
+    const drag = activeGroupDrag;
+    const stage = stageRef.value?.getNode();
+    if (!drag || drag.groupId !== groupId || !stage) return;
+    const movingIds = new Set(Object.keys(drag.elementFrames));
+    const targetFrames = layoutOrder.value[props.templateId]
+        .filter((elementId) => !movingIds.has(elementId))
+        .map((elementId) => stage.findOne(`#editable-${elementId}`))
+        .filter((node): node is Konva.Node => Boolean(node))
+        .map((node) => node.getClientRect({ relativeTo: stage, skipStroke: true, skipShadow: true }));
+    const absolutePosition = event.target.getAbsolutePosition(stage);
+    const rawDelta = {
+        x: absolutePosition.x - drag.startAbsolutePosition.x,
+        y: absolutePosition.y - drag.startAbsolutePosition.y,
+    };
+    const snapped = calculateSelectionDragSnap(
+        [drag.startBounds],
+        rawDelta,
+        targetFrames,
+        props.snapEnabled,
+        10,
+        documentSize.value,
+    );
+    activeAlignmentGuides.value = snapped.guides;
+    event.target.position({
+        x: drag.startPosition.x + snapped.offset.x,
+        y: drag.startPosition.y + snapped.offset.y,
+    });
+};
+
+const moveGroup = (groupId: string, event: Konva.KonvaEventObject<DragEvent>) => {
+    const drag = activeGroupDrag;
+    const stage = stageRef.value?.getNode();
+    activeAlignmentGuides.value = [];
+    if (!drag || drag.groupId !== groupId || !stage) return;
+    const absolutePosition = event.target.getAbsolutePosition(stage);
+    const delta = {
+        x: absolutePosition.x - drag.startAbsolutePosition.x,
+        y: absolutePosition.y - drag.startAbsolutePosition.y,
+    };
+    event.target.position(drag.startPosition);
+    for (const [elementId, frame] of Object.entries(drag.elementFrames) as [LayoutElementId, LayoutFrame][]) {
+        const baseFrame = templateElementFrames.value[props.templateId][elementId];
+        layoutOffsets.value[props.templateId][elementId] = {
+            x: frame.x + delta.x - baseFrame.x,
+            y: frame.y + delta.y - baseFrame.y,
+        };
+    }
+    activeGroupDrag = null;
+    syncSelectedAutoLayoutAnchor();
+    commitCurrentLayout(drag.previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+    void syncTransformer();
+};
+
+const transformGroup = (groupId: string, event: Konva.KonvaEventObject<Event>) => {
+    const group = flattenLayoutGroups(layoutGroups.value[props.templateId]).find(({ id }) => id === groupId);
+    if (!group || layoutGroupElementIds(group).some(elementIsLocked)) return;
+    const rotation = normalizeRotation((group.rotation ?? 0) + event.target.rotation());
+    event.target.rotation(0);
+    event.target.scale({ x: 1, y: 1 });
+    selectGroup(groupId);
+    setSelectedGroupGeometry('rotation', rotation);
+};
+
 const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<Event>) => {
     const node = event.target;
     const baseFrame = templateElementFrames.value[props.templateId][elementId];
     const currentFrame = elementFrame(elementId);
-    const snappedPosition = snapLayoutPoint({ x: node.x(), y: node.y() }, props.snapEnabled);
+    const snappedPosition = snapLayoutPoint(nodeDocumentPosition(node), props.snapEnabled);
     const customElement = customElementById(elementId);
 
     if (customElement?.kind === 'text' && customTextMode(customElement) === 'graphic') {
@@ -1521,13 +1692,13 @@ const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject
             layoutTextStyles.value[props.templateId][elementId] = currentStyle;
             layoutSizes.value[props.templateId][elementId] = { width: currentFrame.width, height: currentFrame.height };
             node.scale({ x: 1, y: 1 });
-            node.position({ x: currentFrame.x, y: currentFrame.y });
+            positionNodeAtDocumentPoint(node, { x: currentFrame.x, y: currentFrame.y });
             node.rotation(layoutRotations.value[props.templateId][elementId]);
             void syncTransformer();
             return;
         }
         node.scale({ x: 1, y: 1 });
-        node.position({ x: rotatedLayout.frame.x, y: rotatedLayout.frame.y });
+        positionNodeAtDocumentPoint(node, { x: rotatedLayout.frame.x, y: rotatedLayout.frame.y });
         node.rotation(rotatedLayout.rotation);
         layoutOffsets.value[props.templateId][elementId] = {
             x: rotatedLayout.frame.x - baseFrame.x,
@@ -1567,7 +1738,7 @@ const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject
 
     if (!rotatedLayout) {
         node.scale({ x: 1, y: 1 });
-        node.position({ x: currentFrame.x, y: currentFrame.y });
+        positionNodeAtDocumentPoint(node, { x: currentFrame.x, y: currentFrame.y });
         node.rotation(layoutRotations.value[props.templateId][elementId]);
         void syncTransformer();
         return;
@@ -1575,7 +1746,7 @@ const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject
 
     const previousState = captureLayoutState();
     node.scale({ x: 1, y: 1 });
-    node.position({ x: rotatedLayout.frame.x, y: rotatedLayout.frame.y });
+    positionNodeAtDocumentPoint(node, { x: rotatedLayout.frame.x, y: rotatedLayout.frame.y });
     node.rotation(rotatedLayout.rotation);
     layoutOffsets.value[props.templateId][elementId] = {
         x: rotatedLayout.frame.x - baseFrame.x,
@@ -2144,6 +2315,16 @@ const pruneDeletedElementsFromGroups = (groups: LayoutGroups, deleted: Set<Layou
         return children.length >= 2 ? [{ ...group, children }] : [];
     });
 
+const pruneEffectsForCurrentTargets = () => {
+    const validTargets = new Set<string>([
+        ...layoutOrder.value[props.templateId],
+        ...flattenLayoutGroups(layoutGroups.value[props.templateId]).map(({ id }) => id),
+    ]);
+    layoutEffects.value[props.templateId] = Object.fromEntries(
+        Object.entries(layoutEffects.value[props.templateId]).filter(([targetId]) => validTargets.has(targetId)),
+    );
+};
+
 const addElement = (
     kind: LayoutCustomElementKind,
     options: {
@@ -2286,9 +2467,17 @@ const setSelectedQrOptions = (
     emit('layoutChange', currentLayoutChanged.value);
 };
 
-const setElementEffects = (elementIds: LayoutElementId[], effects: LayoutElementEffects) => {
-    const existingIds = elementIds.filter((elementId) =>
-        layoutOrder.value[props.templateId].includes(elementId) && !elementIsLocked(elementId));
+const setElementEffects = (targetIds: string[], effects: LayoutElementEffects) => {
+    const groupsById = new Map(flattenLayoutGroups(layoutGroups.value[props.templateId]).map((group) => [group.id, group]));
+    const existingIds = targetIds.filter((targetId) => {
+        const group = groupsById.get(targetId);
+        return group
+            ? !layoutGroupElementIds(group).some(elementIsLocked)
+            : (
+                layoutOrder.value[props.templateId].includes(targetId as LayoutElementId) &&
+                !elementIsLocked(targetId as LayoutElementId)
+            );
+    });
     if (existingIds.length === 0) return;
     const previousState = captureLayoutState();
     const nextEffects = { ...layoutEffects.value[props.templateId] };
@@ -2327,6 +2516,7 @@ const deleteElements = (elementIds: LayoutElementId[]) => {
     );
     layoutOrder.value[props.templateId] = layoutOrder.value[props.templateId].filter((elementId) => !deleted.has(elementId));
     layoutGroups.value[props.templateId] = pruneDeletedElementsFromGroups(layoutGroups.value[props.templateId], deleted);
+    pruneEffectsForCurrentTargets();
     commitCurrentLayout(previousState);
     updateSelection([]);
     emit('availableElementsChange', availableElements.value);
@@ -2471,64 +2661,28 @@ const resetSelectedElement = () => {
 };
 
 const undoLayout = () => {
-    const result = undoLayoutHistory(layoutHistories.value[props.templateId], captureLayoutState());
+    const result = documentStore.undoPageLayout(props.pageId, props.templateId);
     if (!result) {
         return;
     }
 
-    layoutHistories.value[props.templateId] = result.history;
     restoreLayoutState(result.state);
     emitHistoryState();
 };
 
 const redoLayout = () => {
-    const result = redoLayoutHistory(layoutHistories.value[props.templateId], captureLayoutState());
+    const result = documentStore.redoPageLayout(props.pageId, props.templateId);
     if (!result) {
         return;
     }
 
-    layoutHistories.value[props.templateId] = result.history;
     restoreLayoutState(result.state);
     emitHistoryState();
 };
 
 const restoreDraftLayouts = () => {
-    for (const templateId of ['split', 'poster'] as const) {
-        const savedState = props.initialLayouts[templateId];
-        customElements.value[templateId] = savedState?.customElements?.map(
-            (element) => ({
-                ...element,
-                frame: { ...element.frame },
-                ...(element.kind === 'text' ? { textMode: element.textMode ?? 'frame' } : {}),
-            }),
-        ) ?? [];
-        const restored = savedState
-            ? cloneLayoutState(savedState)
-            : {
-                  offsets: createLayoutOffsets(),
-                  sizes: createPageLayoutSizes(templateId),
-                  rotations: createLayoutRotations(),
-                  order: createLayoutOrder(),
-                  styles: createPageLayoutTextStyles(templateId),
-                  visualStyles: createPageLayoutVisualStyles(templateId),
-                  groups: createLayoutGroups(),
-                  deleted: [],
-                  hidden: [],
-                  locked: [],
-              };
-        layoutOffsets.value[templateId] = restored.offsets;
-        layoutSizes.value[templateId] = restored.sizes;
-        layoutRotations.value[templateId] = restored.rotations;
-        layoutOrder.value[templateId] = restored.order;
-        layoutTextStyles.value[templateId] = restored.styles;
-        layoutVisualStyles.value[templateId] = restored.visualStyles;
-        layoutGroups.value[templateId] = restored.groups;
-        layoutEffects.value[templateId] = restored.effects ?? {};
-        deletedElements.value[templateId] = restored.deleted;
-        hiddenElements.value[templateId] = restored.hidden ?? [];
-        lockedElements.value[templateId] = restored.locked ?? [];
-        layoutHistories.value[templateId] = createLayoutHistory();
-    }
+    documentStore.ensurePageLayout(props.pageId, props.templateId, () => createPageLayoutState(props.templateId));
+    documentStore.resetPageLayoutHistory(props.pageId, props.templateId);
     reloadAllCustomImages();
     reloadCurrentCustomQrs();
     selectedElements.value = [];
@@ -2730,12 +2884,35 @@ defineExpose({
             @touchcancel="finishSelectionRectangle"
         >
             <v-layer>
-                <template v-for="item in canvasRenderItems" :key="item.id">
+                <CanvasSceneTree
+                    :draggable-group-ids="draggableGroupIds"
+                    :editor-scale="previewScale"
+                    :effects="layoutEffects[templateId]"
+                    :group-frames="canvasGroupFrames"
+                    :locked-element-ids="lockedElements[templateId]"
+                    :nodes="canvasSceneNodes"
+                    :render-revision="sceneRenderRevision"
+                    :selected-group-id="isExporting ? null : selectedGroupId"
+                    @group-drag-start="startGroupDrag"
+                    @group-dragging="alignGroupWhileDragging"
+                    @group-move="moveGroup"
+                    @group-transform="transformGroup"
+                >
+                    <template #before-element="{ elementId, origin }">
+                        <v-group v-if="elementId === 'image'" :config="{ listening: false }">
+                            <template v-for="decoration in decorationLayers('behindImage')" :key="decoration.id">
+                                <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration, origin)" />
+                                <v-text v-else :config="decorationConfig(decoration, origin)" />
+                            </template>
+                        </v-group>
+                    </template>
+                    <template #element="{ elementId, origin }">
+                      <template v-for="item in canvasRenderItem(elementId)" :key="item.id">
                     <EditableVisualElement
                         v-if="item.role === 'background'"
                         element-id="background"
-                        :frame="elementFrame('background')"
-                        :locked="elementIsLocked('background')"
+                        :frame="relativeElementFrame('background', origin)"
+                        :locked="elementIsLocked('background') || !elementCanDragDirectly('background')"
                         :editor-scale="previewScale"
                         :rotation="layoutRotations[templateId].background"
                         :selected="selectedElements.includes('background') && !isExporting"
@@ -2746,17 +2923,11 @@ defineExpose({
                         @move="moveElement"
                         @resize="resizeElement"
                     />
-                    <v-group v-else-if="item.role === 'decorationBehind'" :config="{ listening: false }">
-                        <template v-for="decoration in decorationLayers('behindImage')" :key="decoration.id">
-                            <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration)" />
-                            <v-text v-else :config="decorationConfig(decoration)" />
-                        </template>
-                    </v-group>
                     <EditableVisualElement
                         v-else-if="item.role === 'image'"
                         element-id="image"
-                        :frame="elementFrame('image')"
-                        :locked="elementIsLocked('image')"
+                        :frame="relativeElementFrame('image', origin)"
+                        :locked="elementIsLocked('image') || !elementCanDragDirectly('image')"
                         :editor-scale="previewScale"
                         :image-config="imageIsVisible ? imageConfig : null"
                         :rotation="layoutRotations[templateId].image"
@@ -2767,17 +2938,11 @@ defineExpose({
                         @move="moveElement"
                         @resize="resizeElement"
                     />
-                    <v-group v-else-if="item.role === 'decorationOver'" :config="{ listening: false }">
-                        <template v-for="decoration in decorationLayers('overImage')" :key="decoration.id">
-                            <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration)" />
-                            <v-text v-else :config="decorationConfig(decoration)" />
-                        </template>
-                    </v-group>
                     <EditableVisualElement
                         v-else-if="item.role === 'accent'"
                         element-id="accent"
-                        :frame="elementFrame('accent')"
-                        :locked="elementIsLocked('accent')"
+                        :frame="relativeElementFrame('accent', origin)"
+                        :locked="elementIsLocked('accent') || !elementCanDragDirectly('accent')"
                         :editor-scale="previewScale"
                         :rotation="layoutRotations[templateId].accent"
                         :selected="selectedElements.includes('accent') && !isExporting"
@@ -2793,9 +2958,9 @@ defineExpose({
                         :element-id="item.id"
                         :decoration-lines="editableTextDecorationLines(item.id)"
                         :editor-scale="previewScale"
-                        :frame="elementFrame(item.id)"
+                        :frame="relativeElementFrame(item.id, origin)"
                         :graphic-text="false"
-                        :locked="elementIsLocked(item.id)"
+                        :locked="elementIsLocked(item.id) || !elementCanDragDirectly(item.id)"
                         :rotation="layoutRotations[templateId][item.id]"
                         :selected="selectedElements.includes(item.id) && !isExporting"
                         :effects="elementEffects(item.id)"
@@ -2810,9 +2975,9 @@ defineExpose({
                         :element-id="item.element.id"
                         :decoration-lines="customTextDecorationLines(item.element)"
                         :editor-scale="previewScale"
-                        :frame="elementFrame(item.element.id)"
+                        :frame="relativeElementFrame(item.element.id, origin)"
                         :graphic-text="customTextMode(item.element) === 'graphic'"
-                        :locked="elementIsLocked(item.element.id)"
+                        :locked="elementIsLocked(item.element.id) || !elementCanDragDirectly(item.element.id)"
                         :rotation="layoutRotations[templateId][item.element.id]"
                         :selected="selectedElements.includes(item.element.id) && !isExporting"
                         :effects="elementEffects(item.element.id)"
@@ -2826,8 +2991,8 @@ defineExpose({
                         v-else-if="item.role === 'custom'"
                         :element-id="item.element.id"
                         :editor-scale="previewScale"
-                        :frame="elementFrame(item.element.id)"
-                        :locked="elementIsLocked(item.element.id)"
+                        :frame="relativeElementFrame(item.element.id, origin)"
+                        :locked="elementIsLocked(item.element.id) || !elementCanDragDirectly(item.element.id)"
                         :image-config="item.element.kind === 'image'
                             ? customImageConfig(item.element)
                             : item.element.kind === 'qr' && customQrNodes[item.element.id]
@@ -2844,7 +3009,17 @@ defineExpose({
                         @move="moveElement"
                         @resize="resizeElement"
                     />
-                </template>
+                      </template>
+                    </template>
+                    <template #after-element="{ elementId, origin }">
+                        <v-group v-if="elementId === 'image'" :config="{ listening: false }">
+                            <template v-for="decoration in decorationLayers('overImage')" :key="decoration.id">
+                                <v-rect v-if="decoration.type === 'rect'" :config="decorationConfig(decoration, origin)" />
+                                <v-text v-else :config="decorationConfig(decoration, origin)" />
+                            </template>
+                        </v-group>
+                    </template>
+                </CanvasSceneTree>
             </v-layer>
             <v-layer v-if="!isExporting" :config="{ listening: false }">
                 <v-rect

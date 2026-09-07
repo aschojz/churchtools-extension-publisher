@@ -27,7 +27,8 @@ churchtoolsClient.setBaseUrl(baseUrl);
 
 const username = import.meta.env.VITE_USERNAME;
 const password = import.meta.env.VITE_PASSWORD;
-if (import.meta.env.MODE === 'development' && username && password) {
+const browserTestMode = import.meta.env.VITE_E2E === 'true';
+if (import.meta.env.MODE === 'development' && !browserTestMode && username && password) {
     await churchtoolsClient.post('/login', { username, password });
 }
 

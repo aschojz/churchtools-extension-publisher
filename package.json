@@ -8,6 +8,7 @@
         "build": "vue-tsc --noEmit && vite build",
         "typecheck": "vue-tsc --noEmit",
         "test": "vitest run",
+        "test:e2e": "playwright test",
         "preview": "vite preview",
         "deploy": "npm run build && node scripts/package.js"
     },
@@ -29,6 +30,7 @@
         "vue-konva": "^3.4.0"
     },
     "devDependencies": {
+        "@playwright/test": "^1.63.0",
         "@types/node": "^24.3.0",
         "@types/qrcode": "^1.5.6",
         "@vitejs/plugin-vue": "^6.0.8",

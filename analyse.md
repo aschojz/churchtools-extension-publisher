@@ -1,37 +1,46 @@
 # Technische und konzeptionelle Analyse des ChurchTools Publisher
 
 Stand: 7. September 2026  
-Untersuchter Stand: aktueller lokaler Worktree auf Basis von Commit `66affa4`  
-Status: tiefgreifender statischer Audit plus lokaler UI-Smoke-Test; keine Produktfehler wurden im Rahmen dieser Analyse behoben
+Untersuchter Stand: Audit auf Basis von Commit `66affa4`, Fundament-Umsetzung auf Basis von `a02005c`
+Status: Audit plus Umsetzung der vier priorisierten Fundamente
 
 ## Kurzfazit
 
 Der Publisher ist kein kleiner Prototyp mehr, auch wenn README und Teile des Datenmodells ihn noch so behandeln. Er ist bereits ein umfangreicher Mehrseiten-Editor mit eigener Szenenlogik, Hierarchie, Auto-Layout, Datenbindungen, dynamischen Farben, Effekten, lokaler Persistenz und Export-Pipeline. Die fachliche Breite ist gut erkennbar und viele pure Domain-Funktionen sind ordentlich getestet.
 
-Das größte Risiko liegt nicht in einer einzelnen fehlenden Funktion, sondern in der auseinanderlaufenden Zustandsarchitektur. Dokumentzustand liegt teilweise in Pinia, teilweise in `App.vue` und zu großen Teilen lokal in jeder `EventTemplate`-Instanz. Diese Zustände werden über zahlreiche Events und imperative Methoden synchronisiert. Daraus entstehen bereits konkrete Fehler: Auswahlzustände bleiben seitenübergreifend uneindeutig, Gruppen sind im Datenmodell keine echten Canvas-Gruppen, und Gruppenrotation geht beim Laden aus der Persistenz verloren.
+Die zuvor größten strukturellen Risiken wurden mit den vier Fundamenten gezielt reduziert: Der persistierbare Dokumentzustand und die Auswahl besitzen nun kanonische Stores, Vorlagen bilden vollständige Mehrseitendokumente ab und Gruppen werden als echte Canvas-Knoten gerendert. Die verbleibenden Hauptrisiken liegen in der Größe des Canvas-Orchestrators, der Speicherung großer Bild-Assets, der Barrierefreiheit komplexer Interaktionen und der noch schmalen visuellen Regressionstest-Abdeckung.
 
-Vor einem weiteren größeren Feature-Ausbau sollten vier Fundamente stabilisiert werden:
+Vor einem weiteren größeren Feature-Ausbau wurden vier Fundamente stabilisiert:
 
 1. Pinia als kanonische Dokument- und Auswahlquelle, seitenbezogen und über Store-Actions verändert.
 2. Ein einheitliches mehrseitiges Vorlagenmodell anstelle der parallelen Welt aus zwei eingebauten Templates und einseitigen Designvorlagen.
 3. Ein echter Canvas-Szenengraph für Gruppen, damit Hierarchie, Transformation, Snapping und Gruppeneffekte dieselbe Semantik haben.
 4. Browserbasierte Tests für die Interaktionen, die Unit- und jsdom-Komponententests nicht zuverlässig abdecken.
 
+## Umsetzungsstand der vier Fundamente
+
+1. **Kanonischer Pinia-Zustand:** Seiten, aktive Seite, serialisierbare Layouts und deren Undo-/Redo-Historien liegen nun im `PublisherDocumentStore`. Die Auswahl ist mit einer aktiven Seiten-ID im `PublisherEditorStore` gebunden. Gemountete Canvas-Seiten besitzen keine parallele persistierbare Layout- oder Auswahlkopie mehr.
+2. **Mehrseitige Vorlagen:** Die Vorlagenbibliothek verwendet Schema-Version 2 und speichert vollständige Dokumente mit allen Seiten, Größen, Layouts, Gruppen, Bildfokussen und aktiver Seite. Alte einseitige Version-1-Vorlagen werden beim Lesen migriert; ein defekter Einzeleintrag blockiert nicht mehr die restliche Bibliothek.
+3. **Rekursiver Canvas-Szenengraph:** `LayoutGroup` wird rekursiv als echter Konva-Gruppenknoten gerendert. Gruppendrag bewegt einen Container und schreibt erst am Ende die Kindgeometrie zurück. Gruppenrotation ist persistierbar. Schatten, Unschärfe, Deckkraft und Mischmodus können am kompositierten Gruppenknoten liegen, ohne die Effekte auf Kinder zu kopieren.
+4. **Browser-Regressionstests:** Playwright mit Chromium ist eingerichtet. Die erste Suite prüft leeren Start, frei dimensionierte leere Seiten, seitengebundene Auswahl, Gruppenziel/-effekte und den Roundtrip einer mehrseitigen Dokumentvorlage.
+
+Diese Umsetzung beseitigt nicht alle nachfolgenden Findings. Insbesondere Asset-Persistenz in IndexedDB, Thumbnails und weitere visuelle Regressionstests bleiben eigenständige Ausbauschritte.
+
 ## Bewertungsübersicht
 
 | Bereich | Einschätzung | Begründung |
 |---|---|---|
 | Funktionsumfang | stark | Mehrere Seitengrößen, Canvas-Elemente, Termindaten, Bindungen, Gruppen, Auto-Layout, Farben, Effekte und Export sind vorhanden. |
-| Domain-Modell | mittel | Viele pure Helfer und Typen, aber Altlasten der zwei eingebauten Templates und Metadaten-Gruppen prägen das Modell. |
-| Zustandsmanagement | kritisch | Pinia ist nur teilweise eingeführt; dieselben Informationen werden in Stores, App und Canvas-Instanzen gespiegelt. |
-| Persistenz | kritisch | Version 1 trotz stark erweitertem Schema, lokale Größenprobleme und ein bestätigter Verlust von Gruppenrotation. |
-| Canvas-Interaktion | mittel bis kritisch | Breiter Umfang, aber zentrale Interaktionsdatei sehr groß und ohne echte Browser-/Canvas-Regressionstests. |
+| Domain-Modell | mittel bis gut | Seiten, Layouts und rekursive Gruppen besitzen gemeinsame serialisierbare Modelle; einige ältere Spezialpfade und der große Canvas-Orchestrator bleiben. |
+| Zustandsmanagement | mittel bis gut | Pinia ist die kanonische Quelle für Dokument, Historie und seitengebundene Auswahl; lokale UI-Zustände bleiben bewusst in Komponenten. |
+| Persistenz | mittel | Mehrseitige Vorlagen nutzen Version 2 mit Migration und Fehlerisolation; große Bild-Data-URLs in `localStorage` bleiben problematisch. |
+| Canvas-Interaktion | mittel | Echte rekursive Gruppen und Browser-Regressionstests stabilisieren die Kernpfade; weitere Handle-, Zoom- und DnD-Szenarien fehlen noch. |
 | UI-Konsistenz | mittel | Design-Komponenten und ein konsistenter Grundaufbau existieren, einzelne Glyphen, Dialoge, Tabs und Responsive-Verhalten weichen ab. |
 | Barrierefreiheit | ausbaufähig | Viele Beschriftungen sind vorhanden; Canvas, Drag-and-drop, Tabs und modale Fokusführung sind nicht vollständig zugänglich. |
-| Testabdeckung | mittel | 35 Testdateien und 184 grüne Tests, aber die risikoreichsten Canvas- und Orchestrierungsflüsse fehlen. |
+| Testabdeckung | mittel bis gut | 35 Vitest-Dateien mit 191 Tests sowie fünf grüne Playwright-Kernflüsse; visuelle und breitere Interaktionsregressionen fehlen noch. |
 | Build und Performance | mittel | Build funktioniert; Hauptchunk und mehrere synchrone Vollzustandsoperationen werden bei größeren Dokumenten problematisch. |
 | Sicherheit und Datenschutz | mittel | Kein Server-Schreibpfad, aber Abhängigkeitswarnungen und potenziell clientseitig eingebettete Dev-Zugangsdaten. |
-| Dokumentation und Release-Reife | schwach | README und Plan sind deutlich veraltet; Version, Store-Metadaten, Changelog und Releaseprozess sind noch prototypisch. |
+| Dokumentation und Release-Reife | mittel | README, `AGENTS.md`, Audit und Store-Beschreibung sind aktualisiert; Versionierung, Changelog und Releaseprozess bleiben prototypisch. |
 
 ## Untersuchungsumfang
 
@@ -118,9 +127,9 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 ## Priorisierte Findings
 
-### P0 – Persistierte Gruppenrotation wird verworfen
+### Behoben – Persistierte Gruppenrotation wurde verworfen
 
-**Status:** im Code bestätigt.  
+**Status:** behoben; Rotation wird validiert, normalisiert und per Roundtrip-Test abgesichert.
 **Evidenz:** `LayoutGroup` besitzt `rotation` (`src/domain/layoutEditing.ts:335-340`) und `cloneLayoutState()` kopiert sie (`src/domain/layoutHistory.ts:39-44`). `parseLayoutGroups()` erzeugt die Gruppe jedoch nur mit `id`, `children` und optional `autoLayout` (`src/domain/publisherDraft.ts:293-344`).
 
 **Auswirkung:** Eine im Transform-Inspector gedrehte Gruppe kann in der laufenden Sitzung korrekt wirken, verliert ihre Drehung aber beim Laden eines Entwurfs, beim JSON-Import und beim Laden einer gespeicherten Vorlage. Das ist stiller Datenverlust.
@@ -136,45 +145,45 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Bilder in IndexedDB als Blob beziehungsweise optimiertes Asset speichern und im Dokument nur eine Asset-ID halten. Vorher Bilddimensionen decodieren, gegebenenfalls verlustarm verkleinern und ein reales Speicherbudget anzeigen. Upload-, Draft- und Importlimits vereinheitlichen. Quota-Fehler als solche benennen.
 
-### P0 – Pinia ist nicht die kanonische Editorquelle
+### Stabilisiert – Pinia war nicht die kanonische Editorquelle
 
-**Status:** Architekturproblem im Code bestätigt.  
+**Status:** der persistierbare Seiten-/Layoutzustand, Historien und die seitengebundene Auswahl sind in Pinia zentralisiert; weitere fachliche Canvas-Actions können schrittweise aus `EventTemplate.vue` herausgezogen werden.
 **Evidenz:** `App.vue` umfasst 1.140 Zeilen und hält Dokumentworkflow, Persistenz, Daten, Vorlagen und Export. Jede `EventTemplate.vue`-Instanz umfasst 2.878 Zeilen und besitzt eigene Refs für Geometrie, Reihenfolge, Stile, Gruppen, Effekte, Sichtbarkeit, Sperren, Auswahl und Historie. `PublisherWorkspaceContent.vue` spiegelt nur Events der aktiven Instanz in den Editor-Store und steuert sie später wieder über `defineExpose()`-Methoden (`src/components/publisher/PublisherWorkspaceContent.vue:47-70, 83-114`; `src/App.vue:1099-1123`).
 
 **Auswirkung:** Ein Zustand kann gleichzeitig in drei Varianten existieren. Fehler werden zeitabhängig und schwer reproduzierbar; Undo, Seitenwechsel, Inspector und Canvas können auseinanderlaufen. Weitere Props, Emits und Sonderfälle erhöhen die Kopplung exponentiell.
 
 **Empfehlung:** Einen `PublisherDocumentStore` mit benannten, undo-fähigen Actions als alleinige Quelle einführen. Auswahl seitenbezogen im Editor-Store halten. `EventTemplate` liest die aktive Seite und dispatcht Gesten; Inspector und Toolbar rufen dieselben Actions auf. Imperative Canvas-Methoden auf rein technische Operationen wie `exportImage()` und Fokus beschränken.
 
-### P1 – Auswahl kann auf inaktiven Seiten sichtbar bleiben
+### Behoben – Auswahl konnte auf inaktiven Seiten sichtbar bleiben
 
-**Status:** bekannte Anforderung in `docs/todos.md`; der verursachende Pfad ist im Code bestätigt.  
+**Status:** behoben und im Browsertest mit zwei Seiten abgesichert.
 **Evidenz:** Beim Seitenwechsel wird nur `editorStore.clearSelectionState()` aufgerufen (`src/components/publisher/PublisherWorkspaceContent.vue:55-60`, `src/components/publisher/PublisherPagesPanel.vue:22-25`). Die vorherige `EventTemplate`-Instanz bleibt gemountet und ihr lokaler Auswahlzustand wird nicht geleert. Events inaktiver Seiten werden lediglich ignoriert.
 
 **Auswirkung:** Handles oder Auswahlrahmen können auf einer nicht aktiven Seite bleiben, während der Inspector keine Auswahl anzeigt. Tastatur- und Kontextaktionen beziehen sich dann auf eine andere Zustandsquelle als die sichtbare Markierung.
 
 **Empfehlung:** Auswahl in den gemeinsamen, seitenbezogenen Store verschieben oder beim Aktivieren einer Seite explizit `clearSelection()` auf allen anderen Instanzen ausführen. Browser-Integrationstest mit zwei Seiten ergänzen.
 
-### P1 – Gruppen sind Hierarchiemetadaten, keine Canvas-Gruppe
+### Behoben – Gruppen waren Hierarchiemetadaten statt Canvas-Gruppen
 
-**Status:** im Szenenaufbau bestätigt.  
+**Status:** behoben; Ebenenbaum und Canvas projizieren denselben rekursiven Gruppenbaum.
 **Evidenz:** Die Elementhierarchie liegt in `LayoutGroups`, die sichtbaren Elemente werden jedoch einzeln in der flachen Konva-Layerreihenfolge gerendert. `<v-group>` wird nur für nicht interaktive Dekorationsblöcke verwendet (`src/components/EventTemplate.vue:2749-2775`). Gruppentransformation berechnet und schreibt die Frames sämtlicher Kinder einzeln.
 
 **Auswirkung:** Ebenenbaum, Z-Order und Szenengraph haben unterschiedliche Strukturen. Gruppendrag kann zwischen Snap-Zielen flackern, verschachtelte Transformationen werden aufwendig, und ein Schatten auf der Gruppe lässt sich nicht als gemeinsamer Außenumriss darstellen. Das vom Nutzer beschriebene Problem überlagernder Schatten innerhalb einer Gruppe ist mit Einzeleffekten systembedingt.
 
 **Empfehlung:** Szenengraph auf rekursive Knoten umstellen: `GroupNode` enthält Kindknoten und eine lokale Transformationsmatrix. Für Gruppeneffekte die Gruppe als Einheit cachen beziehungsweise offscreen kompositieren. Migration vorhandener globaler Child-Frames sorgfältig planen und mit visuellen Tests absichern.
 
-### P1 – Designvorlagen speichern nur die aktive Seite
+### Behoben – Designvorlagen speicherten nur die aktive Seite
 
-**Status:** im Modell bestätigt und als offener Wunsch dokumentiert.  
+**Status:** behoben durch Vorlagenbibliothek Version 2 samt Migration von Version 1 und Browser-Roundtrip.
 **Evidenz:** `PublisherDesignTemplate` enthält `baseTemplateId`, genau ein `layout` und einen `imageFocus` (`src/domain/publisherDesignTemplate.ts:17-25`). Beim Speichern wird nur `templateRef.getLayoutState()` der aktiven Seite verwendet (`src/App.vue:603-624`); beim Anwenden wird nur diese Seite aktualisiert (`src/App.vue:642-660`).
 
 **Auswirkung:** Der zentrale Produktfall „ein mehrseitiges Layout einmal gestalten und jeden Termin damit exportieren“ ist nur teilweise erfüllt. Seitengrößen, Reihenfolge und weitere Seiten fehlen in der Vorlage.
 
 **Empfehlung:** Ein gemeinsames `PublisherDocumentTemplate` einführen, das Seiten samt Szenengraph, Größe, Reihenfolge und Bildfokus speichert. Beim Anwenden exakt diese Seiten ersetzen, aber den aktuellen Datenkontext erhalten. Bestehende einseitige Vorlagen migrieren, indem sie zu einer einseitigen Dokumentvorlage werden.
 
-### P1 – Zwei parallele Vorlagenkonzepte verursachen Reset- und Leerzustandsfehler
+### Stabilisiert – Zwei parallele Vorlagenkonzepte verursachten Reset- und Leerzustandsfehler
 
-**Status:** im Modell und in mehreren Workflows bestätigt.  
+**Status:** Standardvorlagen und gespeicherte Dokumentvorlagen bleiben zwei Katalogquellen, erzeugen aber denselben serialisierbaren Seiten-/Layoutzustand. Neue und zurückgesetzte Seiten verwenden eine eigene Blank-Factory.
 **Evidenz:** `TemplateId` ist weiterhin auf `split | poster` beschränkt. Selbst eine leere Seite erzeugt den vollständigen Zustand eines eingebauten Templates und markiert dessen Elemente als gelöscht (`src/stores/publisherDocument.ts:17-33`). Daneben existiert die separate Bibliothek benutzerdefinierter Designvorlagen. `applyStandardTemplate()` leert den Seitenzustand und lässt ihn aus der eingebauten Definition neu entstehen (`src/App.vue:589-600`).
 
 **Auswirkung:** „Leere Seite“, „Standardvorlage“, „Basistemplate“ und „gespeicherte Vorlage“ sind technisch verschiedene Sonderfälle. Das erklärt wiederkehrende Regressionen, bei denen eine Terminauswahl oder neue Seite versehentlich ein Standardlayout einsetzt.
@@ -190,9 +199,9 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Dokumente unabhängig vom Termin mit eigener Dokument-ID speichern. Ein Dokument referenziert optional einen Termin. Terminwechsel tauscht den Datenkontext, „Entwurf öffnen“ ist eine separate explizite Aktion. Autosave auch ohne Termin anbieten.
 
-### P1 – Entwurf löschen erzeugt wieder ein implizites Standardlayout
+### Behoben – Entwurf löschen erzeugte ein implizites Standardlayout
 
-**Status:** im Code bestätigt.  
+**Status:** behoben; Zurücksetzen verwendet die zentrale Factory für eine leere transparente Seite.
 **Evidenz:** `deleteLocalDraft()` erzeugt mit `createPublisherPage()` eine Seite ohne expliziten Blank-State (`src/App.vue:676-695`). Der Store verwendet dagegen `createBlankPage()` und löscht alle eingebauten Elemente (`src/stores/publisherDocument.ts:17-38`).
 
 **Auswirkung:** Nach dem Löschen eines Entwurfs kann das eingebaute Layout wieder erscheinen. Das widerspricht dem transparenten Initialzustand und der Regel, dass Standardlayouts nur bewusst angewendet werden.
@@ -208,27 +217,27 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** verzögert pro Seite ein kleines, nicht interaktives Thumbnail aus dem Szenengraphen rendern und nur nach Änderungen dieser Seite erneuern. Seiten zusätzlich benennbar, duplizierbar und per Drag-and-drop sortierbar machen.
 
-### P1 – Kritische Canvas-Flows haben keine Browserabdeckung
+### Stabilisiert – Kritische Canvas-Flows hatten keine Browserabdeckung
 
-**Status:** Testinventar bestätigt.  
+**Status:** Playwright und eine erste kritische Chromium-Suite sind eingerichtet; Handle-, Zoom-, Export- und visuelle Regressionen sollten als nächste Fälle ergänzt werden.
 **Evidenz:** 35 Vitest-Dateien mit 184 Tests sind vorhanden, aber keine direkten Tests für `EventTemplate.vue`, `App.vue`, `PublisherWorkspaceContent.vue`, `PublisherPagesPanel.vue`, `TemplateInspector.vue`, `LayoutEffectsDialog.vue` oder die editierbaren Canvas-Elemente. Es gibt keinen E2E-, visuellen Regression- oder Accessibility-Runner.
 
 **Auswirkung:** Genau die gemeldeten Fehler – Handles am Rand, Gruppendrag und Snapping, Trackpad-Zoom, Seitenwechsel, Canvas-/Ebenenhierarchie, Export mit realen Bildern – liegen außerhalb der verlässlichen Tests. jsdom simuliert Konva-Geometrie und Pointergesten nicht ausreichend.
 
 **Empfehlung:** Playwright oder vergleichbaren Browserrunner einführen. Eine kleine risikobasierte Suite ist wertvoller als weitere flache Mount-Tests: leerer Start, Seite hinzufügen, Elementtransform am Rand, Gruppe verschieben/nesten, Seite wechseln, Termindaten austauschen, dynamisches Auto-Layout, PNG/JPEG-Export.
 
-### P1 – Persistenzversion bleibt trotz umfangreicher Schemaänderungen auf 1
+### Teilweise behoben – Persistenzversion blieb trotz Schemaänderungen auf 1
 
-**Status:** im Code bestätigt.  
-**Evidenz:** Entwürfe und Designvorlagen verwenden weiterhin jeweils Version 1 (`src/domain/publisherDraft.ts:36`, `src/domain/publisherDesignTemplate.ts:12`). Das Modell enthält inzwischen Gruppen, verschachtelte Auto-Layouts, Sperren, Sichtbarkeit, eigene Elemente, Verläufe, dynamische Farbbindungen und Effekte.
+**Status:** Die Vorlagenbibliothek verwendet Version 2 mit expliziter V1-Migration. Das allgemeine Entwurfsformat ist weiterhin Version 1 und bleibt ein offener Migrationspunkt.
+**Evidenz:** `src/domain/publisherDesignTemplate.ts` enthält die V1-zu-V2-Migration; `src/domain/publisherDraft.ts` verwendet noch Version 1.
 
 **Auswirkung:** Kompatibilität beruht auf verteilten optionalen Defaults statt nachvollziehbaren Migrationen. Ein Parserfehler kann als „ungültig“ erscheinen, ohne klarzumachen, von welchem Schema migriert werden müsste.
 
 **Empfehlung:** Zentrale, sequentielle Migrationen `v1 -> v2 -> ...`, Fixture-Dateien alter Versionen und Roundtrip-Tests. Version des Dokuments und Version der Vorlagenbibliothek getrennt halten.
 
-### P1 – Ein defekter Vorlageneintrag blockiert die gesamte Bibliothek
+### Behoben – Ein defekter Vorlageneintrag blockierte die gesamte Bibliothek
 
-**Status:** im Code bestätigt.  
+**Status:** behoben; Einträge werden einzeln gelesen und ungültige beziehungsweise doppelte Einträge isoliert.
 **Evidenz:** `parsePublisherDesignTemplateLibrary()` gibt `null` zurück, sobald eine Vorlage ungültig ist oder eine ID doppelt vorkommt (`src/domain/publisherDesignTemplate.ts:63-88`). Danach verweigern Speichern und Löschen jede weitere Änderung (`src/domain/publisherDesignTemplate.ts:105-135`).
 
 **Auswirkung:** Ein einziger alter oder beschädigter Eintrag kann alle Vorlagen aus der UI verschwinden lassen und neue Speicherungen verhindern. Dies ist ein plausibler Grund für den zuvor beobachteten UI-Fehler beim Vorlagenspeichern.
