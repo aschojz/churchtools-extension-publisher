@@ -1,4 +1,5 @@
 import type { LayoutFrame } from './layoutEditing';
+import { isLayoutColorBinding, type LayoutColorBinding } from './imagePalette';
 
 export type LayoutGradientType = 'linear' | 'radial';
 
@@ -6,6 +7,7 @@ export interface LayoutGradientStop {
     id: string;
     offset: number;
     color: string;
+    colorBinding?: LayoutColorBinding;
     opacity: number;
 }
 
@@ -50,6 +52,7 @@ export const normalizeLayoutGradient = (gradient: LayoutGradient): LayoutGradien
             id: stop.id || `gradient-stop-${index}`,
             offset: clamp(stop.offset, 0, 1),
             color: /^#[0-9a-f]{6}$/i.test(stop.color) ? stop.color.toLowerCase() : '#000000',
+            ...(isLayoutColorBinding(stop.colorBinding) ? { colorBinding: { ...stop.colorBinding } } : {}),
             opacity: clamp(stop.opacity, 0, 1),
         }))
         .sort((left, right) => left.offset - right.offset),
@@ -63,21 +66,27 @@ const colorWithOpacity = (color: string, opacity: number) => {
     return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
 };
 
-export const layoutGradientCss = (gradient: LayoutGradient) => {
+export type LayoutGradientColorResolver = (binding: LayoutColorBinding | undefined, fallback: string) => string;
+
+export const layoutGradientCss = (gradient: LayoutGradient, resolveColor?: LayoutGradientColorResolver) => {
     const normalized = normalizeLayoutGradient(gradient);
     const stops = normalized.stops.map((stop) =>
-        `${colorWithOpacity(stop.color, stop.opacity)} ${Math.round(stop.offset * 100)}%`).join(', ');
+        `${colorWithOpacity(resolveColor?.(stop.colorBinding, stop.color) ?? stop.color, stop.opacity)} ${Math.round(stop.offset * 100)}%`).join(', ');
     return normalized.type === 'radial'
         ? `radial-gradient(circle, ${stops})`
         : `linear-gradient(90deg, ${stops})`;
 };
 
-export const layoutGradientFillConfig = (gradient: LayoutGradient, frame: LayoutFrame) => {
+export const layoutGradientFillConfig = (
+    gradient: LayoutGradient,
+    frame: LayoutFrame,
+    resolveColor?: LayoutGradientColorResolver,
+) => {
     const normalized = normalizeLayoutGradient(gradient);
     const point = (x: number, y: number) => ({ x: frame.width * x / 100, y: frame.height * y / 100 });
     const colorStops = normalized.stops.flatMap((stop) => [
         stop.offset,
-        colorWithOpacity(stop.color, stop.opacity),
+        colorWithOpacity(resolveColor?.(stop.colorBinding, stop.color) ?? stop.color, stop.opacity),
     ]);
     if (normalized.type === 'radial') {
         const radiusScale = Math.max(frame.width, frame.height) / 100;

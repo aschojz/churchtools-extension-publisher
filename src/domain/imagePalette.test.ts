@@ -24,6 +24,18 @@ describe('image palettes', () => {
         expect(colorContrastRatio(palette.background, palette.foreground)).toBeGreaterThanOrEqual(4.5);
     });
 
+    it('keeps the nine most populous extracted image colors', () => {
+        const extractedColors = Array.from({ length: 11 }, (_, index) => ({
+            hex: `#${(index + 1).toString(16).padStart(6, '0')}`,
+            population: index + 1,
+        }));
+        const palette = createPublisherImagePalette({ Vibrant: { hex: '#f05a28' } }, extractedColors);
+
+        expect(palette.colors).toHaveLength(9);
+        expect(palette.colors[0]?.hex).toBe('#00000b');
+        expect(palette.colors.at(-1)?.hex).toBe('#000003');
+    });
+
     it('resolves bindings only after their image palette is available', () => {
         const binding = { imageId: 'data:image', token: 'primary' } as const;
         expect(resolvePaletteBinding(binding, '#123456', {})).toBe('#123456');

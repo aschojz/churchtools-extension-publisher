@@ -12,7 +12,6 @@ describe('PublisherTopbar', () => {
             props: {
                 documentTitle: 'Unbenannt',
                 exportDisabled: false,
-                exportLabel: 'Als PNG exportieren',
                 hasTemplate: true,
             },
             global: { plugins: [createPinia()] },
@@ -21,5 +20,6 @@ describe('PublisherTopbar', () => {
         expect(wrapper.text()).toContain('Publisher');
         expect(wrapper.text()).not.toContain('Termine');
         expect(wrapper.find('[aria-label="Termindaten"]').exists()).toBe(true);
+        expect(wrapper.text()).toContain('Exportieren');
     });
 });

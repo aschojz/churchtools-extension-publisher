@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { LayoutTextStyle } from '../../../domain/layoutEditing';
 import { usePublisherEditorStore } from '../../../stores/publisherEditor';
 import { usePublisherImagePalettesStore } from '../../../stores/publisherImagePalettes';
+import { usePublisherColorsStore } from '../../../stores/publisherColors';
 import LayoutInspector from './LayoutInspector.vue';
 
 const textStyle = (overrides: Partial<LayoutTextStyle> = {}): LayoutTextStyle & { elementId: 'title' } => ({
@@ -38,7 +39,7 @@ const mountInspector = (style: LayoutTextStyle & { elementId: 'title' }) => {
     editorStore.selectedLayoutGeometry = { elementId: 'title', x: 10, y: 20, width: 300, height: 80, rotation: 0 };
     editorStore.selectedLayerPosition = 1;
     editorStore.selectedLayerTotal = 1;
-    return mount(LayoutInspector, { global: { plugins: [pinia] } });
+    return mount(LayoutInspector, { global: { plugins: [pinia], stubs: { teleport: true } } });
 };
 
 const openTab = async (wrapper: ReturnType<typeof mountInspector>, label: string) => {
@@ -154,11 +155,24 @@ describe('LayoutInspector typography controls', () => {
         const wrapper = mountInspector(textStyle({ stroke: '#123456', strokeWidth: 2 }));
         await openTab(wrapper, 'Kontur');
 
-        expect(wrapper.get('[aria-label="Textkonturfarbe"]').attributes('value')).toBe('#123456');
-        await wrapper.get('[aria-label="Textkonturfarbe"]').setValue('#abcdef');
+        await wrapper.get('[aria-label="Textkonturfarbe"]').trigger('click');
+        expect(wrapper.get('[aria-label="Textkonturfarbe mit Farbwähler"]').attributes('value')).toBe('#123456');
+        await wrapper.get('[aria-label="Textkonturfarbe mit Farbwähler"]').setValue('#abcdef');
         await wrapper.get('input[type="number"]').setValue(4);
-        expect(wrapper.emitted('updateTextStyle')).toContainEqual(['stroke', expect.anything()]);
+        expect(wrapper.emitted('setStaticColor')).toContainEqual(['stroke', '#abcdef']);
         expect(wrapper.emitted('updateTextStyle')).toContainEqual(['strokeWidth', expect.anything()]);
+    });
+
+    it('offers gradient editing as an enabled tab of the fill color popover', async () => {
+        const wrapper = mountInspector(textStyle());
+
+        await wrapper.get('[aria-label="Textfarbe"]').trigger('click');
+        const gradientTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text() === 'Verlauf');
+        await gradientTab!.trigger('click');
+        await wrapper.findAll('button').find((button) => button.text() === 'Verlauf hinzufügen')!.trigger('click');
+
+        expect(wrapper.emitted('updateGradient')?.[0]?.[0]).toBe('color');
+        expect(wrapper.emitted('updateGradient')?.[0]?.[1]).toMatchObject({ type: 'linear' });
     });
 
     it('keeps deletion in the sticky layer footer', async () => {
@@ -199,7 +213,9 @@ describe('LayoutInspector typography controls', () => {
     });
 
     it('groups extracted colors by image and emits static or dynamic color choices', async () => {
-        const wrapper = mountInspector(textStyle());
+        const wrapper = mountInspector(textStyle({
+            colorBinding: { imageId: 'data:image', token: 'primary' },
+        }));
         const paletteStore = usePublisherImagePalettesStore();
         paletteStore.syncSources([{ id: 'data:image', label: 'Terminbild', source: 'data:image/png;base64,image' }]);
         paletteStore.palettes['data:image'] = {
@@ -209,13 +225,43 @@ describe('LayoutInspector typography controls', () => {
         paletteStore.statuses['data:image'] = 'ready';
 
         await openTab(wrapper, 'Farbe');
-        expect(wrapper.get('.inspector-image-palette').text()).toContain('Terminbild');
+        const palette = wrapper.get('.inspector-image-palette');
+        expect(palette.text()).not.toContain('Terminbild');
+        expect(palette.get('.inspector-image-palette__preview img').attributes('src')).toBe('data:image/png;base64,image');
+        expect(palette.get('[aria-label="Primär aus Terminbild dynamisch verwenden"] svg').classes()).toContain('fa-star');
+        expect(palette.get('[aria-label="Hintergrund aus Terminbild dynamisch verwenden"] .inspector-image-palette__role').classes()).toContain('is-background');
+        expect(palette.get('[aria-label="Vordergrund aus Terminbild dynamisch verwenden"] .inspector-image-palette__role').classes()).toContain('is-foreground');
+        expect(palette.get('[aria-label="Terminbild erneut analysieren"]').attributes('title')).toBe('Terminbild erneut analysieren');
+        expect(palette.get('[aria-label="Primär aus Terminbild dynamisch verwenden"]').attributes('aria-pressed')).toBe('true');
+        expect(wrapper.find('.inspector-color-binding').exists()).toBe(false);
         await wrapper.get('[aria-label="Primär aus Terminbild dynamisch verwenden"]').trigger('click');
-        expect(wrapper.emitted('setColorBinding')).toEqual([[
-            'color', { imageId: 'data:image', token: 'primary' },
-        ]]);
+        await palette.get('[aria-label="Dynamische Bildfarbe lösen"]').trigger('click');
+        expect(wrapper.emitted('setColorBinding')).toEqual([
+            ['color', { imageId: 'data:image', token: 'primary' }],
+            ['color', null],
+        ]);
 
-        await wrapper.get('[title="Kräftig: #F05A28"]').trigger('click');
+        await palette.get('[title="Kräftig: #F05A28"]').trigger('click');
         expect(wrapper.emitted('setStaticColor')).toEqual([['color', '#f05a28']]);
+    });
+
+    it('shows recent colors, reapplies them, and remembers colors from the native picker', async () => {
+        const wrapper = mountInspector(textStyle());
+        const colorsStore = usePublisherColorsStore();
+        colorsStore.rememberColor('#123456');
+        await wrapper.vm.$nextTick();
+
+        const recent = wrapper.get('[aria-label="Zuletzt benutzte Farben"]');
+        expect(wrapper.findAll('.inspector-swatches').map((swatches) => swatches.attributes('aria-label')).slice(0, 2)).toEqual([
+            'Zuletzt benutzte Farben',
+            'Farbfelder',
+        ]);
+        expect(recent.get('button').attributes('title')).toBe('#123456');
+        await recent.get('button').trigger('click');
+        expect(wrapper.emitted('setStaticColor')).toEqual([['color', '#123456']]);
+
+        await wrapper.get('[aria-label="Textfarbe"]').trigger('click');
+        await wrapper.get('[aria-label="Textfarbe mit Farbwähler"]').setValue('#abcdef');
+        expect(colorsStore.lastUsedColor).toBe('#abcdef');
     });
 });

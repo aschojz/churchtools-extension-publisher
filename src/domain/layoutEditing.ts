@@ -203,9 +203,9 @@ export const layoutElementHasEffects = (effects?: LayoutElementEffectsInput | nu
         normalized.opacity < 1 || normalized.blendMode !== 'source-over';
 };
 
-export const createCustomTextStyle = (): LayoutTextStyle => ({
+export const createCustomTextStyle = (color = '#ffffff'): LayoutTextStyle => ({
     fontSize: 64,
-    color: '#ffffff',
+    color,
     stroke: '#000000',
     strokeWidth: 0,
     fontFamily: 'Lato, Arial, sans-serif',
@@ -219,8 +219,8 @@ export const createCustomTextStyle = (): LayoutTextStyle => ({
     strikethroughStyle: 'none',
 });
 
-export const createCustomVisualStyle = (): LayoutVisualStyle => ({
-    fill: '#69a7e8',
+export const createCustomVisualStyle = (fill = '#69a7e8'): LayoutVisualStyle => ({
+    fill,
     stroke: '#2768ad',
     strokeWidth: 0,
 });

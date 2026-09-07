@@ -10,6 +10,7 @@ import {
 } from '../../domain/layoutEditing';
 import DesignButton from '../design/DesignButton.vue';
 import DesignIconButton from '../design/DesignIconButton.vue';
+import PublisherColorPicker from './PublisherColorPicker.vue';
 
 const props = defineProps<{
     effects: LayoutElementEffects;
@@ -83,7 +84,7 @@ const applyEffects = () => {
                 <section v-if="activeSection === 'shadow'" class="publisher-effects-dialog__settings">
                     <div class="publisher-effects-dialog__heading"><div><strong>Schlagschatten</strong><small>Folgt dem sichtbaren Inhalt der Ebene.</small></div><label><input v-model="draft.shadow.enabled" type="checkbox" /> Aktiv</label></div>
                     <fieldset :disabled="!draft.shadow.enabled">
-                        <label class="inspector-color-field"><input v-model="draft.shadow.color" type="color" aria-label="Schattenfarbe" /><span><strong>Farbe</strong><small>{{ draft.shadow.color.toUpperCase() }}</small></span></label>
+                        <label class="inspector-color-field"><PublisherColorPicker v-model="draft.shadow.color" label="Schattenfarbe" :disabled="!draft.shadow.enabled" /><span><strong>Farbe</strong><small>{{ draft.shadow.color.toUpperCase() }}</small></span></label>
                         <label class="publisher-effects-dialog__range"><span>Deckkraft</span><input v-model.number="shadowOpacityPercent" type="range" min="0" max="100" step="1" /><input v-model.number="shadowOpacityPercent" type="number" min="0" max="100" step="1" /><small>%</small></label>
                         <label class="publisher-effects-dialog__range"><span>Weichzeichnung</span><input v-model.number="draft.shadow.blur" type="range" min="0" max="200" step="1" /><input v-model.number="draft.shadow.blur" type="number" min="0" max="200" step="1" /><small>px</small></label>
                         <div class="publisher-effects-dialog__pair"><label>Versatz X<input v-model.number="draft.shadow.offsetX" type="number" min="-500" max="500" step="1" /></label><label>Versatz Y<input v-model.number="draft.shadow.offsetY" type="number" min="-500" max="500" step="1" /></label></div>

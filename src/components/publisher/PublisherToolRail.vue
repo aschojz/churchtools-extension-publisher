@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { faCaretUp, faCircle, faFont, faIcons, faImage, faMinus, faParagraph, faQrcode, faSquare } from '@fortawesome/free-solid-svg-icons';
+import {
+    faCircle,
+    faFont,
+    faIcons,
+    faImage,
+    faMinus,
+    faParagraph,
+    faPlay,
+    faQrcode,
+    faSquare,
+} from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { ref } from 'vue';
 
@@ -32,19 +42,69 @@ const chooseIcon = (iconName: PublisherIconName) => {
 
 <template>
     <div class="publisher-toolrail" role="toolbar" aria-label="Elemente hinzufügen">
-        <DesignIconButton label="Grafiktext hinzufügen" :disabled="disabled" @click="emit('addText', 'graphic')"><FontAwesomeIcon :icon="faFont" aria-hidden="true" /></DesignIconButton>
-        <DesignIconButton label="Rahmentext hinzufügen" :disabled="disabled" @click="emit('addText', 'frame')"><FontAwesomeIcon :icon="faParagraph" aria-hidden="true" /></DesignIconButton>
-        <DesignIconButton label="Bild hinzufügen" :disabled="disabled" @click="chooseImage"><FontAwesomeIcon :icon="faImage" aria-hidden="true" /></DesignIconButton>
+        <DesignIconButton
+            label="Grafiktext hinzufügen"
+            :disabled="disabled"
+            :icon="faFont"
+            @click="emit('addText', 'graphic')"
+        />
+        <DesignIconButton
+            label="Rahmentext hinzufügen"
+            :disabled="disabled"
+            :icon="faParagraph"
+            @click="emit('addText', 'frame')"
+        />
+        <DesignIconButton label="Bild hinzufügen" :disabled="disabled" :icon="faImage" @click="chooseImage" />
         <span class="publisher-toolrail__separator" aria-hidden="true" />
-        <DesignIconButton label="Quadrat hinzufügen" :disabled="disabled" @click="emit('add', 'rectangle')"><FontAwesomeIcon :icon="faSquare" aria-hidden="true" /></DesignIconButton>
-        <DesignIconButton label="Kreis hinzufügen" :disabled="disabled" @click="emit('add', 'circle')"><FontAwesomeIcon :icon="faCircle" aria-hidden="true" /></DesignIconButton>
-        <DesignIconButton label="Dreieck hinzufügen" :disabled="disabled" @click="emit('add', 'triangle')"><FontAwesomeIcon :icon="faCaretUp" aria-hidden="true" /></DesignIconButton>
-        <DesignIconButton label="Strich hinzufügen" :disabled="disabled" @click="emit('add', 'line')"><FontAwesomeIcon :icon="faMinus" aria-hidden="true" /></DesignIconButton>
-        <DesignIconButton label="Font-Awesome-Icon hinzufügen" :disabled="disabled" :active="iconMenuOpen" toggle @click="iconMenuOpen = !iconMenuOpen"><FontAwesomeIcon :icon="faIcons" aria-hidden="true" /></DesignIconButton>
-        <DesignIconButton label="QR-Code hinzufügen" :disabled="disabled" @click="emit('addQr')"><FontAwesomeIcon :icon="faQrcode" aria-hidden="true" /></DesignIconButton>
+        <DesignIconButton
+            label="Quadrat hinzufügen"
+            :disabled="disabled"
+            :icon="faSquare"
+            @click="emit('add', 'rectangle')"
+        />
+        <DesignIconButton
+            label="Kreis hinzufügen"
+            :disabled="disabled"
+            :icon="faCircle"
+            @click="emit('add', 'circle')"
+        />
+        <DesignIconButton
+            label="Dreieck hinzufügen"
+            :disabled="disabled"
+            :icon="faPlay"
+            :rotation="270"
+            @click="emit('add', 'triangle')"
+        />
+        <DesignIconButton label="Strich hinzufügen" :disabled="disabled" :icon="faMinus" @click="emit('add', 'line')" />
+        <DesignIconButton
+            label="Font-Awesome-Icon hinzufügen"
+            :disabled="disabled"
+            :active="iconMenuOpen"
+            :icon="faIcons"
+            toggle
+            @click="iconMenuOpen = !iconMenuOpen"
+        />
+        <DesignIconButton label="QR-Code hinzufügen" :disabled="disabled" :icon="faQrcode" @click="emit('addQr')" />
         <div v-if="iconMenuOpen" class="publisher-toolrail__icon-menu" role="menu" aria-label="Icon auswählen">
-            <button v-for="item in PUBLISHER_ICONS" :key="item.id" type="button" role="menuitem" :aria-label="`${item.label} hinzufügen`" :title="item.label" @click="chooseIcon(item.id)"><FontAwesomeIcon :icon="item.icon" aria-hidden="true" /></button>
+            <button
+                v-for="item in PUBLISHER_ICONS"
+                :key="item.id"
+                type="button"
+                role="menuitem"
+                :aria-label="`${item.label} hinzufügen`"
+                :title="item.label"
+                @click="chooseIcon(item.id)"
+            >
+                <FontAwesomeIcon :icon="item.icon" aria-hidden="true" />
+            </button>
         </div>
-        <input ref="imageInput" hidden type="file" accept="image/jpeg,image/png,image/webp" :disabled="disabled" @change="handleImage" />
+        <input
+            ref="imageInput"
+            hidden
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            :disabled="disabled"
+            @change="handleImage"
+        />
     </div>
 </template>

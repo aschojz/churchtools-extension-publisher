@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type Konva from 'konva';
+import { Rect as KonvaRect } from 'konva/lib/shapes/Rect';
 import { Text as KonvaText } from 'konva/lib/shapes/Text';
 import QRCode from 'qrcode';
 import type { Box } from 'konva/lib/shapes/Transformer';
@@ -21,6 +22,7 @@ import type { LayoutColorBinding } from '../domain/imagePalette';
 import { layoutGradientFillConfig, normalizeLayoutGradient, type LayoutGradient } from '../domain/layoutGradient';
 import { publisherIcon, type PublisherIconName } from '../domain/publisherIcons';
 import { usePublisherImagePalettesStore } from '../stores/publisherImagePalettes';
+import { usePublisherColorsStore } from '../stores/publisherColors';
 import {
     alignLayoutGeometry,
     applyLayoutGroupAutoLayout,
@@ -107,6 +109,7 @@ import {
     undoLayoutHistory,
 } from '../domain/layoutHistory';
 import type { TemplateId } from '../domain/templates';
+import type { PublisherCanvasExportOptions } from '../domain/publisherExport';
 import {
     BUILT_IN_TEMPLATE_DEFINITIONS,
     scaleTemplateDefinition,
@@ -133,6 +136,7 @@ const props = defineProps<{
     showTemplateDecorations: boolean;
 }>();
 const imagePaletteStore = usePublisherImagePalettesStore();
+const colorsStore = usePublisherColorsStore();
 
 const emit = defineEmits<{
     imageStatus: [status: ImageStatus];
@@ -394,7 +398,7 @@ const visualPaintConfig = (elementId: LayoutElementId, style: LayoutVisualStyle)
     const resolved = resolvedVisualStyle(style);
     const { fillGradient: _, ...config } = resolved;
     return style.fillGradient
-        ? { ...config, ...layoutGradientFillConfig(style.fillGradient, elementFrame(elementId)) }
+        ? { ...config, ...layoutGradientFillConfig(style.fillGradient, elementFrame(elementId), imagePaletteStore.resolveColor) }
         : config;
 };
 const elementEffects = (elementId: LayoutElementId) =>
@@ -453,7 +457,7 @@ const editableTextConfig = (binding: TemplateTextBinding) => {
             editableStyle.textTransform,
         ),
         ...(editableStyle.colorGradient
-            ? layoutGradientFillConfig(editableStyle.colorGradient, elementFrame(binding))
+            ? layoutGradientFillConfig(editableStyle.colorGradient, elementFrame(binding), imagePaletteStore.resolveColor)
             : { fill: resolvedTextColor(editableStyle) }),
         stroke: editableStyle.strokeWidth > 0 ? resolvedTextStrokeColor(editableStyle) : undefined,
         strokeWidth: editableStyle.strokeWidth,
@@ -548,7 +552,7 @@ const customTextConfig = (element: LayoutCustomElement) => {
     return {
         text: resolvedCustomText(element, style),
         ...(style.colorGradient
-            ? layoutGradientFillConfig(style.colorGradient, elementFrame(element.id))
+            ? layoutGradientFillConfig(style.colorGradient, elementFrame(element.id), imagePaletteStore.resolveColor)
             : { fill: resolvedTextColor(style) }),
         stroke: style.strokeWidth > 0 ? resolvedTextStrokeColor(style) : undefined,
         strokeWidth: style.strokeWidth,
@@ -636,7 +640,7 @@ const customIconPathConfig = (element: LayoutCustomElement): Konva.PathConfig | 
     const scale = Math.min(frame.width / sourceWidth, frame.height / sourceHeight);
     const style = resolvedVisualStyle(layoutVisualStyles.value[props.templateId][element.id] ?? createCustomVisualStyle());
     const fillConfig = style.fillGradient
-        ? layoutGradientFillConfig(style.fillGradient, { x: 0, y: 0, width: sourceWidth, height: sourceHeight })
+        ? layoutGradientFillConfig(style.fillGradient, { x: 0, y: 0, width: sourceWidth, height: sourceHeight }, imagePaletteStore.resolveColor)
         : { fill: style.fill };
     return {
         data: path,
@@ -1947,6 +1951,7 @@ const setSelectedElementStaticColor = (field: LayoutColorField, color: string) =
         }
     }
     commitCurrentLayout(previousState);
+    colorsStore.rememberColor(normalized);
     emit('layoutChange', currentLayoutChanged.value);
 };
 
@@ -2165,7 +2170,7 @@ const addElement = (
     layoutRotations.value[props.templateId][element.id] = 0;
     layoutOrder.value[props.templateId] = [...layoutOrder.value[props.templateId], element.id];
     if (kind === 'text') {
-        const style = createCustomTextStyle();
+        const style = createCustomTextStyle(colorsStore.lastUsedColor ?? undefined);
         layoutTextStyles.value[props.templateId][element.id] = style;
         if (customTextMode(element) === 'graphic') {
             syncGraphicTextSize(element.id);
@@ -2185,11 +2190,12 @@ const addElement = (
         }
     }
     if (['rectangle', 'circle', 'triangle', 'line', 'icon', 'qr'].includes(kind)) {
+        const recentColor = colorsStore.lastUsedColor;
         layoutVisualStyles.value[props.templateId][element.id] = kind === 'qr'
-            ? { fill: '#000000', stroke: '#000000', strokeWidth: 0 }
+            ? { fill: recentColor ?? '#000000', stroke: recentColor ?? '#000000', strokeWidth: 0 }
             : kind === 'line'
-                ? { fill: '#69a7e8', stroke: '#69a7e8', strokeWidth: 4 }
-                : createCustomVisualStyle();
+                ? { fill: recentColor ?? '#69a7e8', stroke: recentColor ?? '#69a7e8', strokeWidth: 4 }
+                : createCustomVisualStyle(recentColor ?? undefined);
     }
     loadCustomImage(element);
     void loadCustomQr(element);
@@ -2611,7 +2617,7 @@ watch(
     },
 );
 
-const exportPng = async () => {
+const exportImage = async ({ format, quality }: PublisherCanvasExportOptions) => {
     await document.fonts.ready;
     reflowAutoLayoutGroups();
 
@@ -2631,14 +2637,35 @@ const exportPng = async () => {
         scaleY: stage.scaleY(),
     };
 
+    let jpegBackground: KonvaRect | null = null;
     try {
         isExporting.value = true;
         await syncTransformer();
         stage.size({ width: props.documentWidth, height: props.documentHeight });
         stage.scale({ x: 1, y: 1 });
+        if (format === 'jpeg') {
+            const layer = stage.getLayers()[0];
+            if (layer) {
+                jpegBackground = new KonvaRect({
+                    x: 0,
+                    y: 0,
+                    width: props.documentWidth,
+                    height: props.documentHeight,
+                    fill: '#ffffff',
+                    listening: false,
+                });
+                layer.add(jpegBackground);
+                jpegBackground.moveToBottom();
+            }
+        }
         stage.draw();
-        return stage.toDataURL({ pixelRatio: 1, mimeType: 'image/png' });
+        return stage.toDataURL({
+            pixelRatio: 1,
+            mimeType: format === 'jpeg' ? 'image/jpeg' : 'image/png',
+            quality: format === 'jpeg' ? quality : undefined,
+        });
     } finally {
+        jpegBackground?.destroy();
         isExporting.value = false;
         stage.size({ width: previewState.width, height: previewState.height });
         stage.scale({ x: previewState.scaleX, y: previewState.scaleY });
@@ -2656,7 +2683,7 @@ defineExpose({
     drillIntoElement,
     deleteElements,
     deleteSelectedElements,
-    exportPng,
+    exportImage,
     groupSelectedElements,
     getLayoutState,
     moveLayerNode,

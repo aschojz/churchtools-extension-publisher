@@ -29,4 +29,22 @@ describe('layout gradients', () => {
             fillRadialGradientEndRadius: 240,
         });
     });
+
+    it('resolves dynamic image colors while retaining the stop color as fallback', () => {
+        const gradient = createLayoutGradient('#112233');
+        gradient.stops[0]!.colorBinding = { imageId: 'image-1', token: 'primary' };
+        const config = layoutGradientFillConfig(
+            gradient,
+            { x: 0, y: 0, width: 200, height: 80 },
+            (binding, fallback) => binding?.imageId === 'image-1' ? '#abcdef' : fallback,
+        );
+
+        expect(config.fillLinearGradientColorStops).toEqual([
+            0, 'rgba(171, 205, 239, 1)',
+            1, 'rgba(255, 255, 255, 1)',
+        ]);
+        expect(normalizeLayoutGradient(gradient).stops[0]?.colorBinding).toEqual({
+            imageId: 'image-1', token: 'primary',
+        });
+    });
 });

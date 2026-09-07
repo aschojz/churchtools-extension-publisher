@@ -20,6 +20,7 @@
         "@fortawesome/free-solid-svg-icons": "^7.3.1",
         "@fortawesome/vue-fontawesome": "^3.3.3",
         "@tanstack/vue-query": "^5.101.4",
+        "jszip": "^3.10.1",
         "konva": "^10.3.0",
         "node-vibrant": "^4.0.4",
         "pinia": "^4.0.3",

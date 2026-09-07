@@ -9,15 +9,20 @@ import {
     type LayoutGradient,
     type LayoutGradientStop,
 } from '../../domain/layoutGradient';
+import type { LayoutColorBinding } from '../../domain/imagePalette';
+import { usePublisherImagePalettesStore } from '../../stores/publisherImagePalettes';
 import DesignButton from '../design/DesignButton.vue';
 import DesignIconButton from '../design/DesignIconButton.vue';
+import PublisherColorPicker from './PublisherColorPicker.vue';
 
 const props = defineProps<{
     disabled?: boolean;
+    embedded?: boolean;
     fallbackColor: string;
     gradient: LayoutGradient | null;
 }>();
 const emit = defineEmits<{ update: [gradient: LayoutGradient | null] }>();
+const imagePalettesStore = usePublisherImagePalettesStore();
 
 const updateGradient = (change: Partial<LayoutGradient>) => {
     if (!props.gradient) return;
@@ -66,12 +71,12 @@ const reverseStops = () => {
 </script>
 
 <template>
-    <div class="inspector-gradient-editor">
+    <div class="inspector-gradient-editor" :class="{ 'inspector-gradient-editor--embedded': embedded }">
         <DesignButton v-if="!gradient" size="compact" variant="secondary" :disabled="disabled" @click="emit('update', createLayoutGradient(fallbackColor))">Verlauf hinzufügen</DesignButton>
-        <details v-else open>
-            <summary><span>Verlauf bearbeiten</span><FontAwesomeIcon :icon="faAngleDown" aria-hidden="true" /></summary>
+        <component :is="embedded ? 'div' : 'details'" v-else :open="embedded ? undefined : true">
+            <summary v-if="!embedded"><span>Verlauf bearbeiten</span><FontAwesomeIcon :icon="faAngleDown" aria-hidden="true" /></summary>
             <div class="inspector-gradient-editor__body">
-                <div class="inspector-gradient-editor__preview" :style="{ background: layoutGradientCss(gradient) }" />
+                <div class="inspector-gradient-editor__preview" :style="{ background: layoutGradientCss(gradient, imagePalettesStore.resolveColor) }" />
                 <div class="inspector-gradient-editor__topline">
                     <select aria-label="Verlaufstyp" :disabled="disabled" :value="gradient.type" @change="updateGradient({ type: ($event.target as HTMLSelectElement).value as LayoutGradient['type'] })"><option value="linear">Linear</option><option value="radial">Radial</option></select>
                     <DesignIconButton size="compact" label="Verlauf umkehren" :disabled="disabled" @click="reverseStops"><FontAwesomeIcon :icon="faArrowRightArrowLeft" aria-hidden="true" /></DesignIconButton>
@@ -89,7 +94,16 @@ const reverseStops = () => {
                 </div>
                 <div class="inspector-gradient-stops">
                     <div v-for="stop in gradient.stops" :key="stop.id" class="inspector-gradient-stop">
-                        <input type="color" aria-label="Farbe des Verlaufspunkts" :disabled="disabled" :value="stop.color" @input="updateStop(stop.id, { color: ($event.target as HTMLInputElement).value })" />
+                        <PublisherColorPicker
+                            :model-value="stop.color"
+                            :color-binding="stop.colorBinding"
+                            :disabled="disabled"
+                            dynamic
+                            label="Farbe des Verlaufspunkts"
+                            size="compact"
+                            @update:color-binding="updateStop(stop.id, { colorBinding: ($event as LayoutColorBinding | null) ?? undefined })"
+                            @update:model-value="updateStop(stop.id, { color: $event, colorBinding: undefined })"
+                        />
                         <label title="Position"><span class="sr-only">Position</span><input type="number" min="0" max="100" step="1" :disabled="disabled" :value="Math.round(stop.offset * 100)" @input="updateStopNumber(stop.id, 'offset', $event)" /><span>%</span></label>
                         <label title="Deckkraft"><span class="sr-only">Deckkraft</span><input type="number" min="0" max="100" step="1" :disabled="disabled" :value="Math.round(stop.opacity * 100)" @input="updateStopNumber(stop.id, 'opacity', $event)" /><span>%</span></label>
                         <DesignIconButton size="compact" label="Verlaufspunkt löschen" :disabled="disabled || gradient.stops.length <= 2" @click="removeStop(stop.id)"><FontAwesomeIcon :icon="faTrashCan" aria-hidden="true" /></DesignIconButton>
@@ -97,6 +111,6 @@ const reverseStops = () => {
                 </div>
                 <DesignButton size="compact" variant="secondary" :disabled="disabled" @click="addStop"><FontAwesomeIcon :icon="faPlus" aria-hidden="true" /> Verlaufspunkt</DesignButton>
             </div>
-        </details>
+        </component>
     </div>
 </template>

@@ -24,6 +24,20 @@ export const usePublisherImagePalettesStore = defineStore('publisherImagePalette
         const unique = nextSources.filter((source, index, entries) => source.source &&
             entries.findIndex(({ id }) => id === source.id) === index);
         const previous = sourceById.value;
+        const nextIds = new Set(unique.map(({ id }) => id));
+        const trackedIds = new Set([
+            ...Object.keys(previous),
+            ...Object.keys(palettes.value),
+            ...Object.keys(statuses.value),
+            ...Object.keys(errors.value),
+        ]);
+        for (const imageId of trackedIds) {
+            if (nextIds.has(imageId)) continue;
+            delete palettes.value[imageId];
+            delete statuses.value[imageId];
+            delete errors.value[imageId];
+            revision.value += 1;
+        }
         for (const source of unique) {
             if (previous[source.id]?.source !== source.source) {
                 delete palettes.value[source.id];
@@ -42,9 +56,10 @@ export const usePublisherImagePalettesStore = defineStore('publisherImagePalette
         delete errors.value[imageId];
         const sourceUrl = source.source;
         try {
-            const extracted = await Vibrant.from(sourceUrl).maxDimension(640).quality(5).getPalette();
+            const analyzer = Vibrant.from(sourceUrl).maxDimension(640).maxColorCount(64).quality(5).build();
+            const extracted = await analyzer.getPalette();
             if (sourceById.value[imageId]?.source !== sourceUrl) return;
-            const palette = createPublisherImagePalette(extracted);
+            const palette = createPublisherImagePalette(extracted, analyzer.result?.colors ?? []);
             if (palette.colors.length === 0) throw new Error('Keine Farben erkannt.');
             palettes.value[imageId] = palette;
             statuses.value[imageId] = 'ready';

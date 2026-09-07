@@ -5,7 +5,6 @@ import {
     LAYOUT_ELEMENT_IDS,
     createLayoutGroups,
     createLayoutOffsets,
-    createLayoutOrder,
     createLayoutRotations,
     createLayoutSizes,
     createLayoutTextStyles,
@@ -19,7 +18,7 @@ const createBlankLayout = (templateId: TemplateId): SerializableLayoutState => (
     offsets: createLayoutOffsets(),
     sizes: createLayoutSizes(templateId),
     rotations: createLayoutRotations(),
-    order: createLayoutOrder(),
+    order: [],
     styles: createLayoutTextStyles(templateId),
     visualStyles: createLayoutVisualStyles(templateId),
     groups: createLayoutGroups(),
@@ -56,9 +55,9 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         if (pages.value.some(({ id }) => id === pageId)) activePageId.value = pageId;
     };
 
-    const addPage = (width: number, height: number, templateId: TemplateId, blank = false) => {
+    const addPage = (width: number, height: number, templateId: TemplateId) => {
         const page = createPublisherPage(width, height, templateId);
-        if (blank) page.layouts = { [templateId]: createBlankLayout(templateId) };
+        page.layouts = { [templateId]: createBlankLayout(templateId) };
         pages.value = [...pages.value, page];
         activePageId.value = page.id;
         return page;

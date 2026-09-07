@@ -97,6 +97,7 @@ describe('publisher draft', () => {
         const draft = createDraft();
         const layout = draft.layouts.split!;
         layout.styles.title!.colorGradient = createLayoutGradient('#112233');
+        layout.styles.title!.colorGradient.stops[0]!.colorBinding = { imageId: 'data:image', token: 'primary' };
         layout.visualStyles.background!.fillGradient = { ...createLayoutGradient('#445566'), type: 'radial' };
         const effects = createLayoutElementEffects();
         effects.opacity = 0.45;
@@ -107,6 +108,7 @@ describe('publisher draft', () => {
         const restored = loadPublisherDraft(storage, '42:appearance')!.layouts.split!;
 
         expect(restored.styles.title?.colorGradient?.stops[0].color).toBe('#112233');
+        expect(restored.styles.title?.colorGradient?.stops[0].colorBinding).toEqual({ imageId: 'data:image', token: 'primary' });
         expect(restored.visualStyles.background?.fillGradient?.type).toBe('radial');
         expect(restored.effects?.title?.opacity).toBe(0.45);
         expect(restored.locked).toEqual(['title']);
@@ -295,6 +297,17 @@ describe('publisher draft', () => {
             layouts: { split: legacyLayout },
         }));
         expect(loadPublisherDraft(storage, 'deleted-legacy')?.layouts.split?.deleted).toEqual([]);
+    });
+
+    it('removes legacy deleted layers from the restored layer order', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        draft.layouts.split!.deleted = ['background', 'image'];
+
+        storage.setItem('churchtools-publisher:draft:deleted-order-legacy', JSON.stringify(draft));
+
+        expect(loadPublisherDraft(storage, 'deleted-order-legacy')?.layouts.split?.order)
+            .toEqual(createLayoutOrder().filter((elementId) => !['background', 'image'].includes(elementId)));
     });
 
     it('persists non-destructively hidden layers and keeps legacy layouts visible', () => {

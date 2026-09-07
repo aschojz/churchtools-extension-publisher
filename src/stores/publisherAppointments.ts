@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
 import type { PublisherDataField } from '../domain/appointmentDataFields';
+import type { PublisherRelatedDataSource } from '../domain/appointmentRelatedData';
 
 export const usePublisherAppointmentsStore = defineStore('publisherAppointments', () => {
     const selectedAppointmentKey = ref('');
@@ -11,6 +12,7 @@ export const usePublisherAppointmentsStore = defineStore('publisherAppointments'
     const onlyAppointmentsWithDraft = ref(false);
     const appointmentDialogOpen = ref(false);
     const dataFields = ref<PublisherDataField[]>([]);
+    const relatedDataSources = ref<PublisherRelatedDataSource[]>([]);
     const hasAppointmentFilters = computed(() => Boolean(
         appointmentSearch.value || selectedCalendarFilter.value || selectedAppointmentRange.value || onlyAppointmentsWithDraft.value,
     ));
@@ -27,6 +29,7 @@ export const usePublisherAppointmentsStore = defineStore('publisherAppointments'
         dataFields,
         hasAppointmentFilters,
         onlyAppointmentsWithDraft,
+        relatedDataSources,
         resetAppointmentFilters,
         selectedAppointmentKey,
         selectedAppointmentRange,

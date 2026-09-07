@@ -108,8 +108,11 @@ export const savePublisherDesignTemplate = (
 ) => {
     const parsedTemplate = parseDesignTemplate(template);
     const templates = loadPublisherDesignTemplates(storage);
-    if (!parsedTemplate || !templates) {
-        throw new Error('Die Vorlagenbibliothek ist ungültig.');
+    if (!parsedTemplate) {
+        throw new Error('Das aktuelle Layout enthält ungültige Vorlagendaten.');
+    }
+    if (!templates) {
+        throw new Error('Die gespeicherte Vorlagenbibliothek ist ungültig.');
     }
 
     const nextTemplates = [

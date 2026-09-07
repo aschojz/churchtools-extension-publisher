@@ -10,7 +10,9 @@ import {
     faLockOpen,
     faListOl,
     faListUl,
+    faStar,
     faStrikethrough,
+    faSync,
     faTrashCan,
     faUnderline,
     faWandMagicSparkles,
@@ -50,6 +52,7 @@ import {
 } from '../../../domain/layoutEditing';
 import { usePublisherDocumentStore } from '../../../stores/publisherDocument';
 import { usePublisherEditorStore } from '../../../stores/publisherEditor';
+import { PUBLISHER_DEFAULT_COLORS, usePublisherColorsStore } from '../../../stores/publisherColors';
 import { usePublisherImagePalettesStore } from '../../../stores/publisherImagePalettes';
 import DesignButton from '../../design/DesignButton.vue';
 import DesignIconButton from '../../design/DesignIconButton.vue';
@@ -57,6 +60,7 @@ import DesignTabs from '../../design/DesignTabs.vue';
 import LayoutLayerTree from '../../LayoutLayerTree.vue';
 import LayoutEffectsDialog from '../LayoutEffectsDialog.vue';
 import LayoutGradientEditor from '../LayoutGradientEditor.vue';
+import PublisherColorPicker from '../PublisherColorPicker.vue';
 
 const props = withDefaults(defineProps<{
     dataValues?: PublisherDataValues;
@@ -65,6 +69,8 @@ const props = withDefaults(defineProps<{
 
 const { activePage } = storeToRefs(usePublisherDocumentStore());
 const imagePaletteStore = usePublisherImagePalettesStore();
+const colorsStore = usePublisherColorsStore();
+const { recentColors } = storeToRefs(colorsStore);
 const { errors: imagePaletteErrors, palettes: imagePalettes, sources: imagePaletteSources, statuses: imagePaletteStatuses } = storeToRefs(imagePaletteStore);
 const {
     availableLayoutElements, hasLayoutSelection, hasMultipleLayoutSelection,
@@ -167,6 +173,7 @@ const emit = defineEmits<{
 const activeAppearanceTab = ref('fill');
 const activeContentTab = ref('layers');
 const appearanceTabs = [{ id: 'fill', label: 'Farbe' }, { id: 'stroke', label: 'Kontur' }];
+const fillColorPickerTabs: ('color' | 'gradient')[] = ['color', 'gradient'];
 const contentTabs = [
     { id: 'text', label: 'Text' },
     { id: 'paragraph', label: 'Absatz' },
@@ -204,7 +211,6 @@ const updateLayerBlendMode = (event: Event) => {
         blendMode: (event.target as HTMLSelectElement).value as LayoutElementEffects['blendMode'],
     });
 };
-const colors = ['#FFFFFF', '#E9EEF4', '#17202A', '#2768AD', '#69A7E8', '#22A06B', '#F5A623', '#D64545'];
 const imagePaletteTokens: ImagePaletteToken[] = ['primary', 'background', 'foreground'];
 const activeColorField = computed<'color' | 'fill' | 'stroke' | null>(() => {
     if (activeAppearanceTab.value === 'stroke') {
@@ -276,24 +282,50 @@ const toggleFontStyle = (style: 'bold' | 'italic') => {
             <DesignTabs v-model="activeAppearanceTab" label="Farbe und Kontur" :items="appearanceTabs" />
             <div class="inspector-fixed-block__scroll">
                 <template v-if="activeAppearanceTab === 'fill'">
-                    <label v-if="(selectedLayoutStyle || selectedLayoutVisualStyle) && !selectedLineElement" class="inspector-color-field">
-                        <input v-if="selectedLayoutStyle" type="color" aria-label="Textfarbe" :disabled="selectionContainsLocked" :value="selectedLayoutStyle.color" @input="emit('updateTextStyle', 'color', $event)" />
-                        <input v-else type="color" aria-label="Füllfarbe" :disabled="selectionContainsLocked" :value="selectedLayoutVisualStyle!.fill" @input="emit('updateVisualStyle', 'fill', $event)" />
+                    <div v-if="(selectedLayoutStyle || selectedLayoutVisualStyle) && !selectedLineElement" class="inspector-color-field">
+                        <PublisherColorPicker
+                            :model-value="selectedLayoutStyle?.color ?? selectedLayoutVisualStyle!.fill"
+                            :color-binding="activeColorBinding"
+                            :gradient="selectedQrElement ? null : activeGradient"
+                            :tabs="selectedQrElement ? ['color'] : fillColorPickerTabs"
+                            :label="selectedLayoutStyle ? 'Textfarbe' : 'Füllfarbe'"
+                            :disabled="selectionContainsLocked"
+                            :dynamic="!selectedQrElement"
+                            @update:color-binding="activeColorField && emit('setColorBinding', activeColorField, $event)"
+                            @update:model-value="selectedLayoutStyle ? emit('setTextColor', $event) : emit('setFillColor', $event)"
+                        >
+                            <template v-if="!selectedQrElement" #gradient>
+                                <LayoutGradientEditor
+                                    embedded
+                                    :fallback-color="activeGradientFallback"
+                                    :gradient="activeGradient"
+                                    :disabled="selectionContainsLocked"
+                                    @update="activeColorField && emit('updateGradient', activeColorField as 'color' | 'fill', $event)"
+                                />
+                            </template>
+                        </PublisherColorPicker>
                         <span><strong>{{ activeColorBinding ? 'Fallback-Farbe' : selectedLayoutStyle ? 'Textfarbe' : selectedQrElement ? 'QR-Farbe' : 'Füllfarbe' }}</strong><small>{{ (selectedLayoutStyle?.color ?? selectedLayoutVisualStyle?.fill)?.toUpperCase() }}</small></span>
-                    </label>
-                    <LayoutGradientEditor
-                        v-if="activeColorField && activeColorField !== 'stroke' && !selectedQrElement && !selectedLineElement"
-                        :fallback-color="activeGradientFallback"
-                        :gradient="activeGradient"
-                        :disabled="selectionContainsLocked"
-                        @update="emit('updateGradient', activeColorField as 'color' | 'fill', $event)"
-                    />
-                    <p v-else-if="selectedLineElement" class="inspector-empty">Ein Strich besitzt keine Füllung. Farbe und Stärke bearbeitest du im Tab Kontur.</p>
+                    </div>
+                    <p v-if="selectedLineElement" class="inspector-empty">Ein Strich besitzt keine Füllung. Farbe und Stärke bearbeitest du im Tab Kontur.</p>
                     <p v-else-if="selectedLayoutElement === 'image' || selectedLayoutElement?.startsWith('image-')" class="inspector-empty">Der Bildausschnitt bleibt proportional. Größe und Position bearbeitest du unter Transformieren.</p>
-                    <p v-else class="inspector-empty">Wähle Text oder eine Form, um die Farbe zu bearbeiten.</p>
-                    <div class="inspector-swatches" aria-label="Farbfelder"><button v-for="color in colors" :key="color" type="button" :style="{ backgroundColor: color }" :title="color" :disabled="selectionContainsLocked || (!selectedLayoutStyle && !selectedLayoutVisualStyle) || Boolean(selectedLineElement)" @click="selectedLayoutStyle ? emit('setTextColor', color) : emit('setFillColor', color)" /></div>
+                    <p v-else-if="!selectedLayoutStyle && !selectedLayoutVisualStyle" class="inspector-empty">Wähle Text oder eine Form, um die Farbe zu bearbeiten.</p>
+                    <section v-if="recentColors.length" class="inspector-recent-colors">
+                        <strong>Zuletzt benutzt</strong>
+                        <div class="inspector-swatches" aria-label="Zuletzt benutzte Farben">
+                            <button
+                                v-for="color in recentColors"
+                                :key="color"
+                                type="button"
+                                :style="{ backgroundColor: color }"
+                                :title="color.toUpperCase()"
+                                :disabled="!activeColorField || selectionContainsLocked"
+                                @click="applyExtractedColor(color)"
+                            />
+                        </div>
+                    </section>
+                    <div class="inspector-swatches" aria-label="Farbfelder"><button v-for="color in PUBLISHER_DEFAULT_COLORS" :key="color" type="button" :style="{ backgroundColor: color }" :title="color" :disabled="selectionContainsLocked || (!selectedLayoutStyle && !selectedLayoutVisualStyle) || Boolean(selectedLineElement)" @click="selectedLayoutStyle ? emit('setTextColor', color) : emit('setFillColor', color)" /></div>
                     <div v-if="selectedQrElement" class="inspector-qr-options">
-                        <label class="inspector-color-field"><input type="color" aria-label="QR-Hintergrundfarbe" :value="selectedQrElement.qrBackground" @input="emit('updateQrOption', 'qrBackground', ($event.target as HTMLInputElement).value)" /><span><strong>Hintergrund</strong><small>{{ selectedQrElement.qrBackground?.toUpperCase() }}</small></span></label>
+                        <label class="inspector-color-field"><PublisherColorPicker :model-value="selectedQrElement.qrBackground ?? '#ffffff'" label="QR-Hintergrundfarbe" :disabled="selectionContainsLocked" @update:model-value="emit('updateQrOption', 'qrBackground', $event)" /><span><strong>Hintergrund</strong><small>{{ selectedQrElement.qrBackground?.toUpperCase() }}</small></span></label>
                         <div class="inspector-compact-fields">
                             <label class="inspector-field">Rand<input type="number" min="0" max="10" step="1" :value="selectedQrElement.qrMargin" @input="emit('updateQrOption', 'qrMargin', ($event.target as HTMLInputElement).valueAsNumber)" /></label>
                             <label class="inspector-field">Fehlerkorrektur<select :value="selectedQrElement.qrErrorCorrection" @change="emit('updateQrOption', 'qrErrorCorrection', ($event.target as HTMLSelectElement).value)"><option value="L">Niedrig</option><option value="M">Mittel</option><option value="Q">Hoch</option><option value="H">Sehr hoch</option></select></label>
@@ -301,38 +333,57 @@ const toggleFontStyle = (style: 'bold' | 'italic') => {
                     </div>
                 </template>
                 <template v-else>
-                    <template v-if="selectedLayoutStyle"><label class="inspector-color-field"><input type="color" aria-label="Textkonturfarbe" :value="selectedLayoutStyle.stroke" @input="emit('updateTextStyle', 'stroke', $event)" /><span><strong>{{ activeColorBinding ? 'Fallback-Farbe' : 'Textkontur' }}</strong><small>{{ selectedLayoutStyle.stroke.toUpperCase() }}</small></span></label><label class="inspector-field">Konturstärke<input type="number" min="0" max="100" step="1" :value="selectedLayoutStyle.strokeWidth" @input="emit('updateTextStyle', 'strokeWidth', $event)" /></label></template>
-                    <template v-else-if="selectedLayoutVisualStyle && !selectedQrElement"><label class="inspector-color-field"><input type="color" aria-label="Konturfarbe" :value="selectedLayoutVisualStyle.stroke" @input="emit('updateVisualStyle', 'stroke', $event)" /><span><strong>{{ activeColorBinding ? 'Fallback-Farbe' : selectedLineElement ? 'Strichfarbe' : 'Konturfarbe' }}</strong><small>{{ selectedLayoutVisualStyle.stroke.toUpperCase() }}</small></span></label><label class="inspector-field">{{ selectedLineElement ? 'Strichstärke' : 'Konturstärke' }}<input type="number" min="0" max="100" step="1" :value="selectedLayoutVisualStyle.strokeWidth" @input="emit('updateVisualStyle', 'strokeWidth', $event)" /></label></template>
+                    <template v-if="selectedLayoutStyle"><label class="inspector-color-field"><PublisherColorPicker :model-value="selectedLayoutStyle.stroke" label="Textkonturfarbe" :disabled="selectionContainsLocked" @update:model-value="emit('setStaticColor', 'stroke', $event)" /><span><strong>{{ activeColorBinding ? 'Fallback-Farbe' : 'Textkontur' }}</strong><small>{{ selectedLayoutStyle.stroke.toUpperCase() }}</small></span></label><label class="inspector-field">Konturstärke<input type="number" min="0" max="100" step="1" :value="selectedLayoutStyle.strokeWidth" @input="emit('updateTextStyle', 'strokeWidth', $event)" /></label></template>
+                    <template v-else-if="selectedLayoutVisualStyle && !selectedQrElement"><label class="inspector-color-field"><PublisherColorPicker :model-value="selectedLayoutVisualStyle.stroke" :label="selectedLineElement ? 'Strichfarbe' : 'Konturfarbe'" :disabled="selectionContainsLocked" @update:model-value="emit('setStaticColor', 'stroke', $event)" /><span><strong>{{ activeColorBinding ? 'Fallback-Farbe' : selectedLineElement ? 'Strichfarbe' : 'Konturfarbe' }}</strong><small>{{ selectedLayoutVisualStyle.stroke.toUpperCase() }}</small></span></label><label class="inspector-field">{{ selectedLineElement ? 'Strichstärke' : 'Konturstärke' }}<input type="number" min="0" max="100" step="1" :value="selectedLayoutVisualStyle.strokeWidth" @input="emit('updateVisualStyle', 'strokeWidth', $event)" /></label></template>
                     <p v-else-if="selectedQrElement" class="inspector-empty">QR-Codes haben keine Kontur. Farbe und Hintergrund bearbeitest du im Tab Farbe.</p>
                     <p v-else class="inspector-empty">Wähle Text oder eine Form, um die Kontur zu bearbeiten.</p>
                 </template>
-                <div v-if="activeColorBinding && activeColorField" class="inspector-color-binding">
-                    <span>Dynamisch: {{ imagePaletteTokenLabel(activeColorBinding.token) }}</span>
-                    <DesignButton size="compact" variant="secondary" @click="emit('setColorBinding', activeColorField, null)">Lösen</DesignButton>
-                </div>
                 <div v-if="imagePaletteSources.length" class="inspector-image-palettes">
                     <article v-for="source in imagePaletteSources" :key="source.id" class="inspector-image-palette">
-                        <header>
-                            <span><strong>{{ source.label }}</strong><small>Bildfarben</small></span>
-                            <DesignButton size="compact" variant="secondary" :disabled="imagePaletteStatuses[source.id] === 'loading'" @click="imagePaletteStore.analyze(source.id)">{{ imagePaletteStatuses[source.id] === 'loading' ? 'Analysiere …' : imagePalettes[source.id] ? 'Neu analysieren' : 'Farben extrahieren' }}</DesignButton>
-                        </header>
-                        <p v-if="imagePaletteErrors[source.id]" class="inspector-note inspector-note--error">{{ imagePaletteErrors[source.id] }}</p>
-                        <template v-if="imagePalettes[source.id]">
+                        <div class="inspector-image-palette__preview" :title="source.label">
+                            <img :src="source.source" alt="" />
+                        </div>
+                        <div v-if="imagePalettes[source.id]" class="inspector-image-palette__colors">
                             <div class="inspector-image-palette__tokens" aria-label="Dynamische Bildfarben">
                                 <button
                                     v-for="token in imagePaletteTokens"
                                     :key="token"
                                     type="button"
+                                    :style="{ backgroundColor: imagePalettes[source.id]![token] }"
+                                    :title="`${imagePaletteTokenLabel(token)}: ${imagePalettes[source.id]![token].toUpperCase()}`"
                                     :aria-label="`${imagePaletteTokenLabel(token)} aus ${source.label} dynamisch verwenden`"
                                     :aria-pressed="activeColorBinding?.imageId === source.id && activeColorBinding?.token === token"
                                     :disabled="!activeColorField"
                                     @click="bindImageColor(source.id, token)"
-                                ><i :style="{ backgroundColor: imagePalettes[source.id]![token] }" /><span>{{ imagePaletteTokenLabel(token) }}</span></button>
+                                >
+                                    <FontAwesomeIcon v-if="token === 'primary'" :icon="faStar" aria-hidden="true" />
+                                    <i v-else class="inspector-image-palette__role" :class="`is-${token}`" aria-hidden="true" />
+                                </button>
+                                <button
+                                    v-if="activeColorBinding?.imageId === source.id && activeColorField"
+                                    type="button"
+                                    class="inspector-image-palette__unbind"
+                                    aria-label="Dynamische Bildfarbe lösen"
+                                    @click="emit('setColorBinding', activeColorField, null)"
+                                >Lösen</button>
                             </div>
                             <div class="inspector-swatches inspector-swatches--image" :aria-label="`Extrahierte Farben aus ${source.label}`">
                                 <button v-for="color in imagePalettes[source.id]!.colors" :key="color.id" type="button" :style="{ backgroundColor: color.hex }" :title="`${color.label}: ${color.hex.toUpperCase()}`" :disabled="!activeColorField" @click="applyExtractedColor(color.hex)" />
                             </div>
-                        </template>
+                        </div>
+                        <div v-else class="inspector-image-palette__colors inspector-image-palette__colors--empty" aria-hidden="true">
+                            <i v-for="index in 9" :key="index" />
+                        </div>
+                        <DesignIconButton
+                            class="inspector-image-palette__sync"
+                            :class="{ 'is-loading': imagePaletteStatuses[source.id] === 'loading' }"
+                            size="compact"
+                            :icon="faSync"
+                            :label="imagePaletteStatuses[source.id] === 'loading' ? `${source.label} wird analysiert` : imagePalettes[source.id] ? `${source.label} erneut analysieren` : `${source.label} analysieren`"
+                            :disabled="imagePaletteStatuses[source.id] === 'loading'"
+                            @click="imagePaletteStore.analyze(source.id)"
+                        />
+                        <p v-if="imagePaletteErrors[source.id]" class="inspector-note inspector-note--error">{{ imagePaletteErrors[source.id] }}</p>
                     </article>
                 </div>
             </div>

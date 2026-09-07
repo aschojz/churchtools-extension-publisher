@@ -50,13 +50,13 @@ export const cloneLayoutState = (state: SerializableLayoutState): SerializableLa
     order: [...state.order],
     styles: Object.fromEntries(Object.entries(state.styles).map(([id, style]) => [id, {
         ...style,
-        ...(style.colorGradient ? { colorGradient: { ...style.colorGradient, stops: style.colorGradient.stops.map((stop) => ({ ...stop })) } } : {}),
+        ...(style.colorGradient ? { colorGradient: { ...style.colorGradient, stops: style.colorGradient.stops.map((stop) => ({ ...stop, ...(stop.colorBinding ? { colorBinding: { ...stop.colorBinding } } : {}) })) } } : {}),
         ...(style.colorBinding ? { colorBinding: { ...style.colorBinding } } : {}),
         ...(style.strokeBinding ? { strokeBinding: { ...style.strokeBinding } } : {}),
     }])),
     visualStyles: Object.fromEntries(Object.entries(state.visualStyles).map(([id, style]) => [id, {
         ...style,
-        ...(style.fillGradient ? { fillGradient: { ...style.fillGradient, stops: style.fillGradient.stops.map((stop) => ({ ...stop })) } } : {}),
+        ...(style.fillGradient ? { fillGradient: { ...style.fillGradient, stops: style.fillGradient.stops.map((stop) => ({ ...stop, ...(stop.colorBinding ? { colorBinding: { ...stop.colorBinding } } : {}) })) } } : {}),
         ...(style.fillBinding ? { fillBinding: { ...style.fillBinding } } : {}),
         ...(style.strokeBinding ? { strokeBinding: { ...style.strokeBinding } } : {}),
     }])),

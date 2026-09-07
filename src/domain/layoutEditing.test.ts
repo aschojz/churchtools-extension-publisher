@@ -11,6 +11,8 @@ import {
     constrainTransformerFrame,
     constrainFontSize,
     createCanvasStackOrder,
+    createCustomTextStyle,
+    createCustomVisualStyle,
     createLayoutCustomElement,
     createLayoutLayerTree,
     createLayoutOrder,
@@ -47,6 +49,11 @@ import {
 import type { LayoutGroup } from './layoutEditing';
 
 describe('layout editing', () => {
+    it('uses a supplied recent color for new text and visual styles', () => {
+        expect(createCustomTextStyle('#123456').color).toBe('#123456');
+        expect(createCustomVisualStyle('#abcdef').fill).toBe('#abcdef');
+    });
+
     it('creates centered, uniquely identifiable custom elements', () => {
         const text = createLayoutCustomElement('text', { width: 1920, height: 1080 });
         const circle = createLayoutCustomElement('circle', { width: 600, height: 600 });

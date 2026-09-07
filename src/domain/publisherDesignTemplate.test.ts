@@ -79,4 +79,19 @@ describe('publisher design templates', () => {
         expect(persisted).toContain('baseTemplateId');
         expect(persisted).toContain('layout');
     });
+
+    it('loads and updates templates whose legacy order still contains deleted layers', () => {
+        const storage = createStorage();
+        const legacyTemplate = createTemplate();
+        legacyTemplate.layout.deleted = ['background', 'image'];
+        storage.setItem(PUBLISHER_DESIGN_TEMPLATE_STORAGE_KEY, JSON.stringify({
+            version: 1,
+            templates: [legacyTemplate],
+        }));
+
+        expect(loadPublisherDesignTemplates(storage)?.[0]?.layout.order)
+            .toEqual(createLayoutOrder().filter((elementId) => !['background', 'image'].includes(elementId)));
+        expect(savePublisherDesignTemplate(storage, { ...createTemplate('template-2'), name: 'Neue Vorlage' }))
+            .toHaveLength(2);
+    });
 });

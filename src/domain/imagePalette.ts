@@ -26,6 +26,7 @@ export interface PublisherImagePalette {
 
 export interface ImagePaletteSwatchLike {
     hex: string;
+    population?: number;
 }
 
 export type ImagePaletteSwatches = Partial<Record<
@@ -41,6 +42,8 @@ const swatchDefinitions = [
     ['DarkMuted', 'Gedämpft dunkel'],
     ['LightMuted', 'Gedämpft hell'],
 ] as const;
+
+export const MAX_EXTRACTED_IMAGE_COLORS = 9;
 
 const expandHex = (hex: string) => {
     const normalized = hex.trim().toLowerCase();
@@ -64,11 +67,20 @@ export const colorContrastRatio = (left: string, right: string) => {
 const firstHex = (swatches: ImagePaletteSwatches, ids: (keyof ImagePaletteSwatches)[], fallback: string) =>
     ids.map((id) => swatches[id]?.hex).find(Boolean)?.toLowerCase() ?? fallback;
 
-export const createPublisherImagePalette = (swatches: ImagePaletteSwatches): PublisherImagePalette => {
-    const colors = swatchDefinitions.flatMap(([id, label]) => {
+export const createPublisherImagePalette = (
+    swatches: ImagePaletteSwatches,
+    extractedColors: ImagePaletteSwatchLike[] = [],
+): PublisherImagePalette => {
+    const semanticColors = swatchDefinitions.flatMap(([id, label]) => {
         const hex = swatches[id]?.hex?.toLowerCase();
         return hex ? [{ id, label, hex }] : [];
     }).filter((color, index, entries) => entries.findIndex(({ hex }) => hex === color.hex) === index);
+    const quantizedColors = [...extractedColors]
+        .sort((left, right) => (right.population ?? 0) - (left.population ?? 0))
+        .map(({ hex }, index) => ({ id: `Extracted-${index + 1}`, label: `Bildfarbe ${index + 1}`, hex: hex.toLowerCase() }))
+        .filter((color, index, entries) => /^#[0-9a-f]{6}$/.test(color.hex) &&
+            entries.findIndex(({ hex }) => hex === color.hex) === index);
+    const colors = (quantizedColors.length ? quantizedColors : semanticColors).slice(0, MAX_EXTRACTED_IMAGE_COLORS);
     const primary = firstHex(swatches, ['Vibrant', 'Muted', 'DarkVibrant', 'LightVibrant'], '#69a7e8');
     const background = firstHex(swatches, ['DarkMuted', 'DarkVibrant', 'Muted', 'Vibrant'], primary);
     const imageForeground = firstHex(

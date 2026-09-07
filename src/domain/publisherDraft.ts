@@ -27,10 +27,10 @@ import {
     TEXT_LAYOUT_ELEMENT_IDS,
 } from './layoutEditing';
 import type { EventTemplateOverrides } from './templateOverrides';
+import { isLayoutColorBinding } from './imagePalette';
 import type { TemplateId } from './templates';
 import { DOCUMENT_HEIGHT, DOCUMENT_WIDTH } from '../utils/stageDimensions';
 import { isPublisherIconName } from './publisherIcons';
-import { isLayoutColorBinding } from './imagePalette';
 import { normalizeLayoutGradient, type LayoutGradient } from './layoutGradient';
 
 export const PUBLISHER_DRAFT_VERSION = 1;
@@ -76,8 +76,15 @@ const parseLayoutGradient = (value: unknown): LayoutGradient | null => {
     const stops = value.stops.map((stop) => isRecord(stop) && typeof stop.id === 'string' && stop.id &&
         isFiniteNumber(stop.offset) && stop.offset >= 0 && stop.offset <= 1 &&
         typeof stop.color === 'string' && isHexColor(stop.color) &&
-        isFiniteNumber(stop.opacity) && stop.opacity >= 0 && stop.opacity <= 1
-        ? { id: stop.id, offset: stop.offset, color: stop.color, opacity: stop.opacity }
+        isFiniteNumber(stop.opacity) && stop.opacity >= 0 && stop.opacity <= 1 &&
+        (stop.colorBinding === undefined || isLayoutColorBinding(stop.colorBinding))
+        ? {
+            id: stop.id,
+            offset: stop.offset,
+            color: stop.color,
+            opacity: stop.opacity,
+            ...(isLayoutColorBinding(stop.colorBinding) ? { colorBinding: { ...stop.colorBinding } } : {}),
+        }
         : null);
     if (stops.some((stop) => !stop) || new Set(stops.map((stop) => stop!.id)).size !== stops.length) return null;
     return normalizeLayoutGradient({
@@ -442,13 +449,14 @@ export const parsePublisherLayoutState = (
     const parsedOrder = order.filter((elementId): elementId is LayoutElementId =>
         typeof elementId === 'string' && validElementIds.has(elementId as LayoutElementId));
     const remainingElementIds = allElementIds.filter((elementId) => !deleted.includes(elementId));
+    const visibleParsedOrder = parsedOrder.filter((elementId) => !deleted.includes(elementId));
     const orderIsValid = parsedOrder.length === order.length && new Set(parsedOrder).size === parsedOrder.length &&
-        (parsedOrder.length === remainingElementIds.length &&
-            remainingElementIds.every((elementId) => parsedOrder.includes(elementId)) ||
+        (visibleParsedOrder.length === remainingElementIds.length &&
+            remainingElementIds.every((elementId) => visibleParsedOrder.includes(elementId)) ||
             (deleted.length === 0 && parsedOrder.length === 3 &&
                 ['title', 'dateTime', 'location'].every((id) => parsedOrder.includes(id as LayoutElementId))));
-    const restoredOrder = parsedOrder.length === remainingElementIds.length
-        ? parsedOrder
+    const restoredOrder = visibleParsedOrder.length === remainingElementIds.length
+        ? visibleParsedOrder
         : [...createLayoutOrder().filter((id) => !deleted.includes(id) && !parsedOrder.includes(id)), ...parsedOrder];
     const styles = parseLayoutStyles(value.styles, templateId, customElements);
     const visualStyles = parseLayoutVisualStyles(value.visualStyles, templateId, customElements);

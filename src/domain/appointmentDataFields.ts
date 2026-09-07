@@ -26,6 +26,9 @@ export interface PublisherDataField {
     rawValue?: string;
     locale?: string;
     timeZone?: string;
+    sourceId?: string;
+    sourceLabel?: string;
+    editable?: boolean;
 }
 
 export const PUBLISHER_DATA_TRANSFER_TYPE = 'application/x-churchtools-publisher-field';

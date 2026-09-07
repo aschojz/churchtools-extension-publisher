@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
     faDatabase,
+    faFileExport,
     faObjectGroup,
     faRotateLeft,
     faRotateRight,
@@ -16,7 +17,6 @@ import DesignIconButton from '../design/DesignIconButton.vue';
 defineProps<{
     documentTitle: string;
     exportDisabled: boolean;
-    exportLabel: string;
     hasTemplate: boolean;
 }>();
 
@@ -42,7 +42,7 @@ const emit = defineEmits<{
             <DesignIconButton class="publisher-topbar__icon-button" label="Rückgängig" :disabled="!canUndoLayout" @click="emit('undo')"><FontAwesomeIcon :icon="faRotateLeft" aria-hidden="true" /></DesignIconButton>
             <DesignIconButton class="publisher-topbar__icon-button" label="Wiederholen" :disabled="!canRedoLayout" @click="emit('redo')"><FontAwesomeIcon :icon="faRotateRight" aria-hidden="true" /></DesignIconButton>
             <DesignIconButton class="publisher-topbar__icon-button" toggle label="Layout" :active="activeEditorTool === 'layout'" :disabled="!hasTemplate" @click="emit('activate', 'layout')"><FontAwesomeIcon :icon="faObjectGroup" aria-hidden="true" /></DesignIconButton>
-            <DesignButton class="publisher-topbar__export" :disabled="exportDisabled" @click="emit('export')">{{ exportLabel }}</DesignButton>
+            <DesignButton class="publisher-topbar__export" :disabled="exportDisabled" @click="emit('export')"><template #icon><FontAwesomeIcon :icon="faFileExport" aria-hidden="true" /></template>Exportieren</DesignButton>
         </div>
     </div>
 </template>

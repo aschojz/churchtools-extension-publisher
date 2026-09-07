@@ -7,6 +7,7 @@ import { watch } from 'vue';
 import type { EventTemplateProps } from '../../domain/EventTemplateProps';
 import type { PublisherDataValues } from '../../domain/appointmentDataFields';
 import type { SerializableLayoutState } from '../../domain/layoutHistory';
+import type { PublisherCanvasExportOptions } from '../../domain/publisherExport';
 import { pageShowsTemplateDecorations } from '../../domain/publisherPage';
 import type { TemplateId } from '../../domain/templates';
 import { usePublisherAppointmentsStore } from '../../stores/publisherAppointments';
@@ -61,6 +62,12 @@ const openAppointments = () => {
     appointmentStore.appointmentDialogOpen = true;
     editorStore.activeEditorTool = 'appointments';
 };
+const exportPage = async (pageId: string, options: PublisherCanvasExportOptions) => {
+    const template = pageTemplateRefs.get(pageId);
+    if (!template) throw new Error('Die Seite ist noch nicht bereit.');
+    return await template.exportImage(options);
+};
+defineExpose({ exportPage });
 </script>
 
 <template>

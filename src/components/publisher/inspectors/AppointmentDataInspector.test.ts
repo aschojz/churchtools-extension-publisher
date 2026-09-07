@@ -32,6 +32,21 @@ const mountInspector = () => {
 };
 
 describe('AppointmentDataInspector', () => {
+    it('shows linked sources before loading and requests them explicitly', async () => {
+        const wrapper = mountInspector();
+        usePublisherAppointmentsStore().relatedDataSources = [{
+            id: 'event', kind: 'event', entityId: 42, label: 'Event & Dienste', name: 'Sonntagsgottesdienst',
+            status: 'available', fieldCount: 0,
+        }];
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.get('.publisher-related-source').text()).toContain('Sonntagsgottesdienst');
+        expect(wrapper.get('.publisher-related-source').text()).toContain('Verknüpfung vorhanden');
+        await wrapper.findAll('button').find((button) => button.text() === 'Daten laden')!.trigger('click');
+
+        expect(wrapper.emitted('loadRelatedSource')).toEqual([['event']]);
+    });
+
     it('can reopen the appointment picker while an appointment is selected', async () => {
         const wrapper = mountInspector();
 

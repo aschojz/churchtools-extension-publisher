@@ -9,6 +9,8 @@ import {
     faPen,
     faPlus,
     faQrcode,
+    faRotate,
+    faUsers,
     faXmark,
 } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
@@ -20,6 +22,7 @@ import {
     type PublisherDataField,
 } from '../../../domain/appointmentDataFields';
 import type { ImageFocus } from '../../../domain/imageFocus';
+import type { PublisherRelatedDataSourceKind } from '../../../domain/appointmentRelatedData';
 import { usePublisherAppointmentsStore } from '../../../stores/publisherAppointments';
 import DesignButton from '../../design/DesignButton.vue';
 import DesignIconButton from '../../design/DesignIconButton.vue';
@@ -35,6 +38,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     insertField: [field: PublisherDataField];
     insertQrField: [field: PublisherDataField];
+    loadRelatedSource: [sourceId: PublisherRelatedDataSourceKind];
     openAppointments: [];
     resetField: [fieldId: string];
     resetImage: [];
@@ -43,11 +47,27 @@ const emit = defineEmits<{
     updateImage: [event: Event];
 }>();
 
-const { dataFields, selectedAppointmentKey } = storeToRefs(usePublisherAppointmentsStore());
+const { dataFields, relatedDataSources, selectedAppointmentKey } = storeToRefs(usePublisherAppointmentsStore());
 const editingFieldId = ref<string | null>(null);
 const editingValue = ref('');
 const editorInput = ref<HTMLInputElement | HTMLTextAreaElement | null>(null);
 const editingField = computed(() => dataFields.value.find(({ id }) => id === editingFieldId.value) ?? null);
+const fieldGroups = computed(() => {
+    const groups = new Map<string, { id: string; label: string; fields: PublisherDataField[] }>();
+    for (const field of dataFields.value) {
+        const id = field.sourceId ?? 'appointment';
+        const group = groups.get(id) ?? { id, label: field.sourceLabel ?? 'Termin', fields: [] };
+        group.fields.push(field);
+        groups.set(id, group);
+    }
+    return [...groups.values()];
+});
+
+const sourceButtonLabel = (status: string) => ({
+    loading: 'Wird geladen …',
+    loaded: 'Neu laden',
+    error: 'Erneut laden',
+} as Record<string, string>)[status] ?? 'Daten laden';
 
 const fieldSummary = (field: PublisherDataField) => {
     if (field.type === 'image') {
@@ -115,7 +135,31 @@ const startFieldDrag = (field: PublisherDataField, event: DragEvent) => {
                 <DesignButton size="compact" variant="secondary" @click="emit('openAppointments')">Anderen Termin wählen</DesignButton>
             </div>
             <p class="publisher-data-fields__hint">Ziehe ein Feld auf die Seite oder füge es über den Plus-Button mittig ein.</p>
-            <article v-for="field in dataFields" :key="field.id" class="publisher-data-field" :class="[`is-${field.type}`, field.formatType ? `is-${field.formatType}` : '']">
+
+            <section v-if="relatedDataSources.length" class="publisher-related-sources" aria-labelledby="publisher-related-sources-title">
+                <h3 id="publisher-related-sources-title">Verknüpfte Daten</h3>
+                <article v-for="source in relatedDataSources" :key="source.id" class="publisher-related-source" :class="`is-${source.status}`">
+                    <span class="publisher-related-source__icon"><FontAwesomeIcon :icon="source.kind === 'event' ? faCalendarDays : faUsers" aria-hidden="true" /></span>
+                    <div class="publisher-related-source__summary">
+                        <strong>{{ source.label }}</strong>
+                        <span>{{ source.name }}</span>
+                        <small v-if="source.status === 'loaded'">{{ source.fieldCount }} Variablen geladen</small>
+                        <small v-else-if="source.status === 'error'" class="publisher-related-source__error">{{ source.error }}</small>
+                        <small v-else-if="source.status === 'loading'">Daten werden geladen …</small>
+                        <small v-else>Verknüpfung vorhanden</small>
+                    </div>
+                    <DesignButton
+                        size="compact"
+                        variant="secondary"
+                        :disabled="source.status === 'loading'"
+                        @click="emit('loadRelatedSource', source.id)"
+                    ><FontAwesomeIcon v-if="source.status === 'loaded' || source.status === 'error'" :icon="faRotate" aria-hidden="true" />{{ sourceButtonLabel(source.status) }}</DesignButton>
+                </article>
+            </section>
+
+            <section v-for="group in fieldGroups" :key="group.id" class="publisher-data-field-group">
+                <h3 v-if="group.id !== 'appointment'">{{ group.label }}</h3>
+                <article v-for="field in group.fields" :key="field.id" class="publisher-data-field" :class="[`is-${field.type}`, field.formatType ? `is-${field.formatType}` : '']">
                 <div class="publisher-data-field__heading">
                     <span
                         class="publisher-data-field__drag"
@@ -133,12 +177,13 @@ const startFieldDrag = (field: PublisherDataField, event: DragEvent) => {
                         <p :title="field.value">{{ fieldSummary(field) }}</p>
                     </div>
                     <div class="publisher-data-field__actions">
-                        <DesignIconButton size="compact" :label="`${field.label} bearbeiten`" @click="openEditor(field)"><FontAwesomeIcon :icon="faPen" aria-hidden="true" /></DesignIconButton>
+                        <DesignIconButton v-if="field.editable !== false" size="compact" :label="`${field.label} bearbeiten`" @click="openEditor(field)"><FontAwesomeIcon :icon="faPen" aria-hidden="true" /></DesignIconButton>
                         <DesignIconButton size="compact" :label="`${field.label} auf der Seite einfügen`" @click="emit('insertField', field)"><FontAwesomeIcon :icon="faPlus" aria-hidden="true" /></DesignIconButton>
                         <DesignIconButton v-if="field.formatType === 'url'" size="compact" :label="`${field.label} als QR-Code einfügen`" @click="emit('insertQrField', field)"><FontAwesomeIcon :icon="faQrcode" aria-hidden="true" /></DesignIconButton>
                     </div>
                 </div>
-            </article>
+                </article>
+            </section>
             <p v-if="dataFields.length === 0" class="inspector-empty">Dieser Termin liefert keine verwendbaren Felder.</p>
         </div>
 

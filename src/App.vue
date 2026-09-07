@@ -6,6 +6,7 @@ import type EventTemplate from './components/EventTemplate.vue';
 import PublisherAppointmentPanel from './components/PublisherAppointmentPanel.vue';
 import PublisherEditorShell from './components/PublisherEditorShell.vue';
 import PublisherContextBar from './components/publisher/PublisherContextBar.vue';
+import PublisherExportDialog from './components/publisher/PublisherExportDialog.vue';
 import PublisherPageDialog from './components/publisher/PublisherPageDialog.vue';
 import PublisherPagesPanel from './components/publisher/PublisherPagesPanel.vue';
 import PublisherInspectorShell from './components/publisher/PublisherInspectorShell.vue';
@@ -17,6 +18,7 @@ import AppointmentDataInspector from './components/publisher/inspectors/Appointm
 import LayoutInspector from './components/publisher/inspectors/LayoutInspector.vue';
 import TemplateInspector from './components/publisher/inspectors/TemplateInspector.vue';
 import { useLayoutSelection } from './composables/useLayoutSelection';
+import { useAppointmentRelatedData } from './composables/useAppointmentRelatedData';
 import { usePublisherAppointments } from './composables/usePublisherAppointments';
 import { usePublisherWorkspaceZoom } from './composables/usePublisherWorkspaceZoom';
 import { resolveEditorShortcut } from './domain/editorShortcuts';
@@ -54,6 +56,12 @@ import {
 } from './domain/publisherDraftFile';
 import { createPublisherPage } from './domain/publisherPage';
 import {
+    createPublisherExportSettings,
+    publisherExportExtension,
+    updatePublisherExportSettings,
+    type PublisherPageExportSettings,
+} from './domain/publisherExport';
+import {
     applyTemplateOverrides,
     type EditableTemplateField,
     type EventTemplateOverrides,
@@ -77,6 +85,7 @@ const {
     previewZoomPercent, selectedLayoutElements, snapEnabled,
 } = storeToRefs(editorStore);
 const templateRef = shallowRef<InstanceType<typeof EventTemplate> | null>(null);
+const workspaceContentRef = shallowRef<InstanceType<typeof PublisherWorkspaceContent> | null>(null);
 const imageStatus = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle');
 const exportError = ref('');
 const exportSuccess = ref('');
@@ -119,11 +128,25 @@ const {
     selectedAppointmentKey,
     totalAppointmentCount,
 } = usePublisherAppointments(window.localStorage, draftIndexRevision, userLanguage, userTimeZone);
+const {
+    loadRelatedDataSource,
+    relatedDataFields,
+    relatedDataSources,
+} = useAppointmentRelatedData(
+    () => appointmentDetails.value ?? undefined,
+    () => selectedAppointmentKey.value,
+    userLanguage,
+    userTimeZone,
+);
 const pageDialogOpen = ref(false);
 const newPagePreset = ref('1920x1080');
 const newPageWidth = ref(1920);
 const newPageHeight = ref(1080);
 const pageCreationError = ref('');
+const exportDialogOpen = ref(false);
+const exportBusy = ref(false);
+const exportProgress = ref('');
+const exportSettings = ref<PublisherPageExportSettings[]>([]);
 const loadedDesignTemplates = loadPublisherDesignTemplates(window.localStorage);
 const designTemplates = ref<PublisherDesignTemplate[]>(loadedDesignTemplates ?? []);
 const selectedDesignTemplateId = ref('');
@@ -185,7 +208,7 @@ const addPage = () => {
         pageCreationError.value = 'Breite und Höhe müssen zwischen 64 und 8192 Pixeln liegen.';
         return;
     }
-    documentStore.addPage(width, height, selectedTemplateId.value, !selectedAppointmentKey.value);
+    documentStore.addPage(width, height, selectedTemplateId.value);
     pageDialogOpen.value = false;
     pageCreationError.value = '';
     draftRevision.value += 1;
@@ -212,9 +235,12 @@ const templateProps = computed(() => {
         ? { ...propsWithOverrides, imageUrl: replacementImageUrl.value }
         : propsWithOverrides;
 });
-const originalAppointmentDataFields = computed(() => appointmentDetails.value
-    ? createAppointmentDataFields(appointmentDetails.value, { locale: userLanguage, timeZone: userTimeZone })
-    : []);
+const originalAppointmentDataFields = computed(() => [
+    ...(appointmentDetails.value
+        ? createAppointmentDataFields(appointmentDetails.value, { locale: userLanguage, timeZone: userTimeZone })
+        : []),
+    ...relatedDataFields.value,
+]);
 const originalAppointmentDataValues = computed(() => Object.fromEntries(
     originalAppointmentDataFields.value.map(({ id, value }) => [id, value]),
 ));
@@ -237,25 +263,26 @@ const appointmentDataValues = computed(() => Object.fromEntries(
     ],
 ));
 watch(appointmentDataFields, (fields) => { appointmentStore.dataFields = fields; }, { immediate: true });
+watch(relatedDataSources, (sources) => { appointmentStore.relatedDataSources = sources; }, { immediate: true });
 const imagePaletteSources = computed<PublisherImagePaletteSource[]>(() => {
-    const sources: PublisherImagePaletteSource[] = appointmentDataFields.value
-        .filter(({ type, value }) => type === 'image' && value)
-        .map((field) => ({ id: `data:${field.id}`, label: field.label, source: field.value }));
-    if (templateProps.value.imageUrl && !sources.some(({ id }) => id === 'data:image')) {
-        sources.push({ id: 'data:image', label: 'Terminbild', source: templateProps.value.imageUrl });
-    }
+    const sources: PublisherImagePaletteSource[] = [];
     for (const page of pages.value) {
-        for (const layout of Object.values(page.layouts)) {
-            for (const element of layout?.customElements ?? []) {
-                if (element.kind !== 'image') continue;
-                const source = element.dataBinding
-                    ? publisherDataValue(appointmentDataValues.value, element.dataBinding)
-                    : element.imageSource ?? '';
-                if (!source) continue;
-                const id = element.dataBinding ? `data:${element.dataBinding}` : element.id;
-                if (!sources.some((candidate) => candidate.id === id)) {
-                    sources.push({ id, label: element.name, source });
-                }
+        const layout = page.layouts[page.templateId];
+        if (!layout) continue;
+        const visibleElementIds = new Set(layout.order.filter((elementId) => !layout.deleted.includes(elementId)));
+        if (visibleElementIds.has('image') && templateProps.value.imageUrl &&
+            !sources.some(({ id }) => id === 'data:image')) {
+            sources.push({ id: 'data:image', label: 'Terminbild', source: templateProps.value.imageUrl });
+        }
+        for (const element of layout.customElements ?? []) {
+            if (element.kind !== 'image' || !visibleElementIds.has(element.id)) continue;
+            const source = element.dataBinding
+                ? publisherDataValue(appointmentDataValues.value, element.dataBinding)
+                : element.imageSource ?? '';
+            if (!source) continue;
+            const id = element.dataBinding ? `data:${element.dataBinding}` : element.id;
+            if (!sources.some((candidate) => candidate.id === id)) {
+                sources.push({ id, label: element.name, source });
             }
         }
     }
@@ -266,10 +293,14 @@ const dynamicPaletteImageIds = computed(() => {
     for (const page of pages.value) {
         for (const layout of Object.values(page.layouts)) {
             if (!layout) continue;
-            Object.values(layout.styles).forEach((style) => style.colorBinding && ids.add(style.colorBinding.imageId));
+            Object.values(layout.styles).forEach((style) => {
+                if (style.colorBinding) ids.add(style.colorBinding.imageId);
+                style.colorGradient?.stops.forEach((stop) => stop.colorBinding && ids.add(stop.colorBinding.imageId));
+            });
             Object.values(layout.visualStyles).forEach((style) => {
                 if (style.fillBinding) ids.add(style.fillBinding.imageId);
                 if (style.strokeBinding) ids.add(style.strokeBinding.imageId);
+                style.fillGradient?.stops.forEach((stop) => stop.colorBinding && ids.add(stop.colorBinding.imageId));
             });
         }
     }
@@ -600,8 +631,11 @@ const persistCurrentDesignAsTemplate = (existing?: PublisherDesignTemplate) => {
             ? `Vorlage „${designTemplate.name}“ aktualisiert.`
             : `Vorlage „${designTemplate.name}“ gespeichert.`;
         designTemplateError.value = '';
-    } catch {
-        designTemplateError.value = 'Die Vorlage konnte nicht gespeichert werden.';
+    } catch (error) {
+        console.error('Vorlage konnte nicht gespeichert werden.', error);
+        designTemplateError.value = error instanceof Error
+            ? error.message
+            : 'Die Vorlage konnte nicht gespeichert werden.';
     }
 };
 
@@ -866,34 +900,67 @@ const importDraftFile = async (event: Event) => {
     }
 };
 
-const exportPng = async () => {
+const openExportDialog = () => {
+    exportSettings.value = createPublisherExportSettings(pages.value, exportSettings.value);
     exportError.value = '';
     exportSuccess.value = '';
+    exportProgress.value = '';
+    exportDialogOpen.value = true;
+};
+
+const updateExportPage = (pageId: string, change: Partial<Omit<PublisherPageExportSettings, 'pageId'>>) => {
+    exportSettings.value = updatePublisherExportSettings(exportSettings.value, pageId, change);
+};
+
+const exportPages = async () => {
+    const selectedSettings = exportSettings.value.filter(({ enabled }) => enabled);
+    if (!templateProps.value || selectedSettings.length === 0 || exportBusy.value) return;
+    exportError.value = '';
+    exportSuccess.value = '';
+    exportBusy.value = true;
 
     try {
-        const dataUrl = await templateRef.value?.exportPng();
-        if (!dataUrl || !templateProps.value) {
-            throw new Error('Die Vorschau ist noch nicht bereit.');
+        const { default: JSZip } = await import('jszip');
+        const zip = new JSZip();
+        const titleSlug = slugify(templateProps.value.title) || 'layout';
+        for (const [exportIndex, settings] of selectedSettings.entries()) {
+            const pageIndex = pages.value.findIndex(({ id }) => id === settings.pageId);
+            const page = pages.value[pageIndex];
+            if (!page) continue;
+            exportProgress.value = `Seite ${exportIndex + 1} von ${selectedSettings.length} wird gerendert …`;
+            const dataUrl = await workspaceContentRef.value?.exportPage(page.id, {
+                format: settings.format,
+                quality: settings.jpegQuality / 100,
+            });
+            if (!dataUrl) throw new Error(`Seite ${pageIndex + 1} ist noch nicht bereit.`);
+            const imageBlob = await (await fetch(dataUrl)).blob();
+            const exportedImage = await createImageBitmap(imageBlob);
+            const exportedSize = { width: exportedImage.width, height: exportedImage.height };
+            exportedImage.close();
+            if (exportedSize.width !== page.width || exportedSize.height !== page.height) {
+                throw new Error(`Seite ${pageIndex + 1} hat eine unerwartete Exportgröße: ${exportedSize.width} × ${exportedSize.height} Pixel.`);
+            }
+            const extension = publisherExportExtension(settings.format);
+            zip.file(
+                `seite-${pageIndex + 1}-${page.width}x${page.height}-${titleSlug}.${extension}`,
+                imageBlob,
+            );
         }
-
-        const pngBlob = await (await fetch(dataUrl)).blob();
-        const exportedImage = await createImageBitmap(pngBlob);
-        const exportedSize = { width: exportedImage.width, height: exportedImage.height };
-        exportedImage.close();
-
-        if (exportedSize.width !== activePage.value.width || exportedSize.height !== activePage.value.height) {
-            throw new Error(`Unerwartete Exportgröße: ${exportedSize.width} × ${exportedSize.height} Pixel.`);
-        }
-
-        const downloadUrl = URL.createObjectURL(pngBlob);
+        exportProgress.value = 'ZIP-Datei wird erstellt …';
+        const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+        const downloadUrl = URL.createObjectURL(zipBlob);
         const download = document.createElement('a');
         download.href = downloadUrl;
-        download.download = `publisher-${selectedAppointmentId.value ?? 'frei'}-seite-${pages.value.indexOf(activePage.value) + 1}-${slugify(templateProps.value.title) || 'layout'}.png`;
+        download.download = `publisher-${selectedAppointmentId.value ?? 'frei'}-${titleSlug}.zip`;
         download.click();
         window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
-        showExportSuccess(`PNG mit ${activePage.value.width} × ${activePage.value.height} Pixeln wurde erstellt.`);
+        exportDialogOpen.value = false;
+        showExportSuccess(`${selectedSettings.length} Seite${selectedSettings.length === 1 ? '' : 'n'} als ZIP exportiert.`);
     } catch (error) {
-        exportError.value = error instanceof Error ? error.message : 'Der PNG-Export ist fehlgeschlagen.';
+        exportError.value = error instanceof Error ? error.message : 'Der Export ist fehlgeschlagen.';
+    } finally {
+        exportBusy.value = false;
+        exportProgress.value = '';
     }
 };
 </script>
@@ -906,11 +973,10 @@ const exportPng = async () => {
         <template #topbar>
             <PublisherTopbar
                 :document-title="selectedAppointment?.appointment.base.title ?? 'Unbenannt'"
-                :export-disabled="!templateProps || imageStatus === 'loading'"
-                :export-label="imageStatus === 'loading' ? 'Bild wird geladen …' : 'Als PNG exportieren'"
+                :export-disabled="!templateProps"
                 :has-template="Boolean(templateProps)"
                 @activate="activateEditorToolById"
-                @export="exportPng"
+                @export="openExportDialog"
                 @redo="redoLayout"
                 @undo="undoLayout"
             />
@@ -964,8 +1030,21 @@ const exportPng = async () => {
             @update:preset="updateNewPagePreset"
         />
 
+        <PublisherExportDialog
+            :busy="exportBusy"
+            :error="exportError"
+            :open="exportDialogOpen"
+            :pages="pages"
+            :progress="exportProgress"
+            :settings="exportSettings"
+            @close="exportDialogOpen = false"
+            @submit="exportPages"
+            @update-page="updateExportPage"
+        />
+
         <section :ref="setWorkspaceElement" class="publisher-workspace" @wheel="handleWorkspaceWheel($event, Boolean(templateProps))">
             <PublisherWorkspaceContent
+                ref="workspaceContentRef"
                 :details-error="Boolean(appointmentDetailsError)"
                 :details-pending="appointmentDetailsArePending"
                 :data-values="appointmentDataValues"
@@ -1009,6 +1088,7 @@ const exportPng = async () => {
                     :replacement-url="replacementImageUrl"
                     @insert-field="insertAppointmentDataField"
                     @insert-qr-field="insertAppointmentQrField"
+                    @load-related-source="loadRelatedDataSource"
                     @open-appointments="appointmentDialogOpen = true"
                     @reset-field="resetTemplateOverride"
                     @reset-image="revokeReplacementImage()"

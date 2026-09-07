@@ -1,9 +1,12 @@
-- für das Bild wird im Moment das Thumbnail genutzt, hier gibt es eine möglichkeit über weitere Parameter exakt die gewünschte Bildgröße und Qualität zu bekommen
-- FA für icons verwenden
-- die Auswahl des Termins sollte in einen Dialog verschwinden
-- Template-Auswahl und Lokaler-Entwurf sollten nicht so viel platz verschwenden, das kann auch in einem Button/Dropdown verschwinden oder Dialog
-
-## Inhalte anpassen
-
-## Layout anpassen
-- die "Ebenen" wie zurzeit (Titelm Datum/Uhrzeit, Ort) sollte linksbündig auswählbr sein und nicht obendrüber
+- Vorlagen sollen nicht auf eine Seite beschränkt sein, sondern immer alle Seiten beinhalten. Beim Anwenden einer Vorlage werden immer genau die definierten Seiten und Größen der Vorlage genutzt. Ist bereits ein Termin ausgewählt bleibt er das und die Variablen werden entsprechend in das Template eingefügt
+- Verläufe sollen ein handle im canva bekommen, wodurch die Richtung und länge leichter bearbeitbar ist
+- wenn ein element komplett den canvas füllt, werden die handles abgeschnitten
+- wenn ich eine andere Seite fokusiere, verlieren alle anderen Elemente auf anderen Seiten ihren Fokus bzw select-status inkl handles
+- bei den Bild-Farben werden gerade drei speziell herausgestellt, das soll nicht mehr extra passieren sondern innerhalb der 9 Farbfelder werden die besonders ausgezeichnet. Dadurch ist es auch möglich die Primärfarbe usw manuell zu ändern. wie genau diese Auswahl stattfindet, weiß ich gerade auch noch nicht.
+- Die Standard-Farb-Felder sollten ein bisschen erweitert werden
+- Im ebenen-Inspektor soll es die Möglcihkeit geben "Filter"-Ebenen durch den Sticky-Footer hinzuzufügen, wie zb. Kontrast-Anpassungen, Farb-Veränderungen usw. Schau was Konva da bereits anbietet und genutzt werden kann. Die Reihenfolge der Buttons soll Effekte, Filter, Locken, Löschen sein
+- das ganze vorlagen-zeug soll aus der rechten Seitenleiste in einen Dialog wandern
+- die buttons im header rechts sollen umsoertiert werden: zuerst undo/redo, dann ein Trenner bzw etwas abstand, dann Datenquelle und LAyout; Trenner, Export
+- Ausrichten Popover: Icons von FA nutzen TBD; Einstiegspunkt vor undo/redo
+- Ebenen-Popover: ICons nutzen TBD; Einstiegspunkt vor undo/redo und vor ausrichten
+- Zurücksetzen als funktionaliät entfernen. Es reicht undo und ernneutes anwenden einer Vrolage
