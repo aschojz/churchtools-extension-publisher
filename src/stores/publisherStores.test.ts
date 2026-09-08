@@ -19,6 +19,7 @@ describe('publisher stores', () => {
 
         expect(appointments.appointmentDialogOpen).toBe(false);
         expect(editor.activeEditorTool).toBe('layout');
+        expect(editor.panToolEnabled).toBe(false);
         expect(document.pages).toHaveLength(1);
         expect(document.activePage.layouts.split?.deleted).toEqual(LAYOUT_ELEMENT_IDS);
         expect(document.activePage.layouts.split?.order).toEqual([]);

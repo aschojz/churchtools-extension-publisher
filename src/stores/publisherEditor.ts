@@ -22,6 +22,7 @@ const editorToolLabels: Record<EditorToolId, string> = {
 export const usePublisherEditorStore = defineStore('publisherEditor', () => {
     const activeEditorTool = ref<EditorToolId>('layout');
     const snapEnabled = ref(true);
+    const panToolEnabled = ref(false);
     const previewZoomPercent = ref(100);
     const availableLayoutElements = ref<LayoutElementId[]>([...LAYOUT_ELEMENT_IDS]);
     const layoutChanged = ref(false);
@@ -118,6 +119,7 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
         hasLayoutSelection,
         hasMultipleLayoutSelection,
         layoutChanged,
+        panToolEnabled,
         pageThumbnails,
         previewZoomPercent,
         selectedLayerPosition,

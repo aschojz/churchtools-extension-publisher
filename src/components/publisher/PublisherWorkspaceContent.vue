@@ -140,7 +140,7 @@ defineExpose({ exportPage });
     <div v-else class="publisher-workspace__canvas">
         <p v-if="imageStatus === 'error'" class="status-message status-message--warning publisher-workspace__message" role="status">Das Veranstaltungsbild konnte nicht geladen werden. Die Fallback-Fläche wird verwendet.</p>
         <p v-if="exportError" class="status-message status-message--error publisher-workspace__message" role="alert">{{ exportError }}</p>
-        <article v-for="page in pages" :key="page.id" class="publisher-artboard" :class="{ 'is-active': isActive(page.id) }" @dragenter="activatePage(page.id)" @mousedown.capture="activatePage(page.id)">
+        <article v-for="page in pages" :key="page.id" class="publisher-artboard" :class="{ 'is-active': isActive(page.id) }" :data-page-id="page.id" @dragenter="activatePage(page.id)" @mousedown.capture="activatePage(page.id)">
             <header><span>{{ page.name }}</span><strong>{{ page.width }} × {{ page.height }} px</strong></header>
             <EventTemplate
                 :ref="(instance) => setPageTemplateRef(page.id, instance)"

@@ -56,6 +56,7 @@ npx playwright install chromium
 - Neue Dokumente und Seiten starten leer und transparent.
 - Ein Terminwechsel ersetzt nur den Datenkontext und niemals das Layout.
 - Seiten dürfen unterschiedliche Größen besitzen und liegen untereinander auf einer gemeinsamen zoombaren Arbeitsfläche.
+- Die Arbeitsfläche lässt sich über das Handwerkzeug oder temporär mit der Leertaste verschieben; aktive Seite, Auswahl und 100-Prozent-Ansicht können direkt zentriert werden.
 - Seiten besitzen echte Canvas-Vorschauen und können benannt, dupliziert sowie per Drag-and-drop sortiert werden.
 - Bilder werden im Cover-Modus zugeschnitten; Icons und QR-Codes bleiben proportional.
 - Vorlagen speichern das vollständige mehrseitige Dokument und behalten dynamische Daten- und Farbbindungen.

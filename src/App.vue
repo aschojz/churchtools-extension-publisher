@@ -14,6 +14,7 @@ import PublisherInspectorShell from './components/publisher/PublisherInspectorSh
 import PublisherToolRail from './components/publisher/PublisherToolRail.vue';
 import PublisherTopbar from './components/publisher/PublisherTopbar.vue';
 import PublisherWorkspaceContent from './components/publisher/PublisherWorkspaceContent.vue';
+import PublisherZoomControls from './components/publisher/PublisherZoomControls.vue';
 import AppointmentInspector from './components/publisher/inspectors/AppointmentInspector.vue';
 import AppointmentDataInspector from './components/publisher/inspectors/AppointmentDataInspector.vue';
 import LayoutInspector from './components/publisher/inspectors/LayoutInspector.vue';
@@ -85,7 +86,7 @@ const recoveredDocument = loadPublisherRecovery(window.localStorage);
 const { activePage, activePageId, draftLayouts, imageFocusByTemplate, pages, selectedTemplateId } = storeToRefs(documentStore);
 const {
     activeEditorTool, canRedoLayout, canUndoLayout, hasLayoutSelection,
-    previewZoomPercent, selectedLayoutElements, snapEnabled,
+    panToolEnabled, previewZoomPercent, selectedLayoutElements, selectedLayoutGeometry, snapEnabled,
 } = storeToRefs(editorStore);
 const templateRef = shallowRef<InstanceType<typeof EventTemplate> | null>(null);
 const workspaceContentRef = shallowRef<InstanceType<typeof PublisherWorkspaceContent> | null>(null);
@@ -103,9 +104,28 @@ const showToast = (message: string, tone: 'info' | 'success' = 'info') => {
 };
 const templateOverrides = ref<EventTemplateOverrides>(recoveredDocument?.draft.templateOverrides ?? {});
 const {
+    fitWorkspacePage,
+    fitWorkspaceSelection,
+    handleWorkspacePointerDown,
+    handleWorkspacePointerMove,
     handleWorkspaceWheel,
+    isPanning,
+    panReady,
     setWorkspaceElement,
+    showActualSize,
+    stopWorkspacePan,
 } = usePublisherWorkspaceZoom();
+const activePageSize = () => ({ width: activePage.value.width, height: activePage.value.height });
+const fitActivePage = () => fitWorkspacePage(activePage.value.id, activePageSize());
+const fitActiveSelection = () => {
+    if (!selectedLayoutGeometry.value) return;
+    return fitWorkspaceSelection(activePage.value.id, selectedLayoutGeometry.value, activePageSize());
+};
+const showWorkspaceActualSize = () => showActualSize(
+    activePage.value.id,
+    activePageSize(),
+    selectedLayoutGeometry.value,
+);
 const draftRevision = ref(0);
 const draftStatus = ref('');
 const draftError = ref('');
@@ -1076,7 +1096,17 @@ const exportPages = async () => {
             @update-page="updateExportPage"
         />
 
-        <section :ref="setWorkspaceElement" class="publisher-workspace" @wheel="handleWorkspaceWheel($event, Boolean(templateProps))">
+        <section
+            :ref="setWorkspaceElement"
+            class="publisher-workspace"
+            :class="{ 'is-pan-ready': panReady, 'is-panning': isPanning }"
+            @wheel="handleWorkspaceWheel($event, Boolean(templateProps))"
+            @pointerdown.capture="handleWorkspacePointerDown($event, Boolean(templateProps))"
+            @pointermove="handleWorkspacePointerMove"
+            @pointerup="stopWorkspacePan"
+            @pointercancel="stopWorkspacePan"
+            @lostpointercapture="stopWorkspacePan"
+        >
             <PublisherWorkspaceContent
                 ref="workspaceContentRef"
                 :details-error="Boolean(appointmentDetailsError)"
@@ -1170,11 +1200,16 @@ const exportPages = async () => {
                 <span>{{ `${templateProps.title || 'Leere Seite'} · ${activePage.name} · ${activePage.width} × ${activePage.height} px` }}</span>
                 <span v-if="hasLayoutSelection">{{ selectedLayoutElements.length }} Element{{ selectedLayoutElements.length === 1 ? '' : 'e' }} ausgewählt</span>
                 <span class="publisher-statusbar__storage" :class="`is-${storageStatus}`" :title="storageMessage" role="status">{{ storageStatusLabel }}</span>
-                <label class="publisher-statusbar__zoom" for="preview-zoom">
-                    <span class="sr-only">Zoom</span>
-                    <input id="preview-zoom" v-model.number="previewZoomPercent" type="range" min="25" max="400" step="5" aria-label="Zoom" />
-                    <output for="preview-zoom">{{ Math.round(previewZoomPercent) }} %</output>
-                </label>
+                <PublisherZoomControls
+                    :can-fit-selection="Boolean(selectedLayoutGeometry)"
+                    :pan-active="panReady"
+                    :zoom="previewZoomPercent"
+                    @fit-page="fitActivePage"
+                    @fit-selection="fitActiveSelection"
+                    @show-actual-size="showWorkspaceActualSize"
+                    @toggle-pan="panToolEnabled = !panToolEnabled"
+                    @update:zoom="previewZoomPercent = $event"
+                />
             </div>
         </template>
     </PublisherEditorShell>

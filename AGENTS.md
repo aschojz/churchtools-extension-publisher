@@ -46,12 +46,14 @@ Es gibt aktuell keinen Lint-, Format- oder Visual-Regression-Runner. Playwright 
 - `EventTemplate.vue` soll Render- und Interaktionsadapter sein. Neue größere Verhaltenseinheiten als Composables oder spezialisierte Canvas-Komponenten auslagern.
 - Gruppenhierarchie und Ebenenbaum verwenden dasselbe Modell. Eine Änderung im Ebenen-Inspector muss unmittelbar den Canvas-Szenengraphen beziehungsweise dessen Renderreihenfolge ändern.
 - Gruppeneffekte dürfen nicht stillschweigend als Einzeleffekte auf alle Kinder kopiert werden. Ein visueller Effekt auf eine Gruppe erfordert einen echten gemeinsamen Konva-Container oder eine zwischengerenderte Komposition.
+- Transformer-Griffe und Auswahlkonturen bleiben unabhängig vom Dokumentzoom in einer konstanten, filigranen Bildschirmgröße. Randgriffe werden nach innen dargestellt und behalten eine ausreichend große unsichtbare Trefferfläche.
 
 ### Verbindliche Produktinvarianten
 
 - Die erste Seite und neu angelegte Seiten sind leer und transparent. Eingebaute Layouts werden nur durch eine ausdrückliche Vorlagenaktion angewendet.
 - Eine Terminauswahl ändert ausschließlich den Datenkontext. Sie ersetzt, löscht oder wechselt weder Seiten noch Layout noch Vorlage.
 - Seiten dürfen unterschiedliche Größen zwischen 64 und 8192 Pixeln besitzen und werden auf der Arbeitsfläche untereinander dargestellt.
+- Alle Seiten teilen eine Zoomstufe. Temporäres Verschieben per Leertaste und die Ansichten „Seite einpassen“, „Auswahl einpassen“ und „100 %“ dürfen weder Dokumentgeometrie noch Auswahl verändern.
 - Bilder werden im Cover-Modus zugeschnitten und nicht verzerrt. QR-Codes und Icons behalten ihr Seitenverhältnis. Linien haben keine Füllung und werden nur über Länge, Konturstärke und Drehung verändert.
 - Dynamische Text- und Farbbindungen speichern die Variable beziehungsweise das Farb-Token plus Fallback. Aufgelöste Terminwerte oder analysierte Farben werden nicht destruktiv in die Vorlage geschrieben.
 - Vorlagen müssen alle Seiten, Seitengrößen, Ebenen, Gruppen, Bindungen, Effekte und Bildfokusse enthalten. Keine neuen Funktionen auf ein Einzelseiten-Vorlagenmodell zuschneiden.

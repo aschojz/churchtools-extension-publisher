@@ -342,6 +342,14 @@ const stageConfig = computed(() => ({
 const templateDefinition = computed(() => scaledTemplateDefinitions.value[props.templateId]);
 const imageIsVisible = computed(() =>
     imageStatus.value === 'loaded' && !deletedElements.value[props.templateId].includes('image'));
+const selectedElementTouchesTopEdge = computed(() => {
+    if (selectedGroupId.value || selectedElements.value.length !== 1 || !selectedElement.value) return false;
+    const elementId = selectedElement.value;
+    const baseFrame = templateElementFrames.value[props.templateId][elementId];
+    const offset = layoutOffsets.value[props.templateId][elementId];
+    const rotation = layoutRotations.value[props.templateId][elementId] % 360;
+    return rotation === 0 && (baseFrame.y + offset.y) * previewScale.value < 24;
+});
 const transformerConfig = computed(() => ({
     rotateEnabled: Boolean(selectedGroupId.value) || selectedElements.value.length === 1,
     flipEnabled: false,
@@ -358,10 +366,23 @@ const transformerConfig = computed(() => ({
     anchorFill: '#ffffff',
     anchorStroke: '#2479c5',
     anchorSize: 7,
+    anchorStrokeWidth: 1,
+    anchorCornerRadius: 1.5,
     borderStroke: '#2479c5',
     borderStrokeWidth: 1,
     anchorStyleFunc: (anchor: Konva.Rect) => {
-        anchor.hitStrokeWidth(18);
+        anchor.hitStrokeWidth(22);
+        if (!selectedGroupId.value && selectedElements.value.length === 1 && selectedElement.value &&
+            layoutRotations.value[props.templateId][selectedElement.value] % 360 === 0) {
+            const stage = anchor.getStage();
+            const position = anchor.getAbsolutePosition();
+            const edgeThreshold = anchor.width() / 2 + anchor.strokeWidth();
+            const anchorName = anchor.name();
+            if (anchorName.includes('left') && position.x <= edgeThreshold) anchor.offsetX(0);
+            if (anchorName.includes('right') && stage && stage.width() - position.x <= edgeThreshold) anchor.offsetX(anchor.width());
+            if (anchorName.includes('top') && position.y <= edgeThreshold) anchor.offsetY(0);
+            if (anchorName.includes('bottom') && stage && stage.height() - position.y <= edgeThreshold) anchor.offsetY(anchor.height());
+        }
         anchor.off('.publisher-autofit');
         anchor.on('mousedown.publisher-autofit', (event) => {
             if ('detail' in event.evt && event.evt.detail >= 2) {
@@ -374,7 +395,7 @@ const transformerConfig = computed(() => ({
         });
         anchor.on('dblclick.publisher-autofit dbltap.publisher-autofit', handleTransformerDoubleClick);
     },
-    rotateAnchorOffset: 18,
+    rotateAnchorOffset: selectedElementTouchesTopEdge.value ? -18 : 18,
     rotationSnaps: props.snapEnabled
         ? [-180, -165, -150, -135, -120, -105, -90, -75, -60, -45, -30, -15, 0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180]
         : [],

@@ -247,6 +247,17 @@
         var(--color-workspace);
 }
 
+.publisher-workspace.is-pan-ready {
+    cursor: grab;
+    touch-action: none;
+}
+
+.publisher-workspace.is-panning,
+.publisher-workspace.is-panning * {
+    cursor: grabbing !important;
+    user-select: none;
+}
+
 .publisher-workspace__document-title {
     position: sticky;
     z-index: 1;
@@ -1631,8 +1642,8 @@ textarea {
 
 .publisher-statusbar__zoom {
     display: flex;
-    min-width: 210px;
-    gap: 10px;
+    min-width: 190px;
+    gap: 8px;
     align-items: center;
     justify-content: flex-end;
 }
@@ -1645,6 +1656,19 @@ textarea {
 .publisher-statusbar__zoom output {
     width: 48px;
     text-align: right;
+}
+
+.publisher-zoom-controls {
+    display: flex;
+    min-width: 0;
+    gap: 4px;
+    align-items: center;
+}
+
+.publisher-zoom-controls > .design-button {
+    min-height: 28px;
+    padding-inline: 7px;
+    white-space: nowrap;
 }
 
 .publisher-statusbar__storage {

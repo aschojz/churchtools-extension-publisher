@@ -34,7 +34,7 @@ Diese Umsetzung beseitigt nicht alle nachfolgenden Findings. Insbesondere ein of
 | Domain-Modell | mittel bis gut | Seiten, Layouts und rekursive Gruppen besitzen gemeinsame serialisierbare Modelle; einige ältere Spezialpfade und der große Canvas-Orchestrator bleiben. |
 | Zustandsmanagement | mittel bis gut | Pinia ist die kanonische Quelle für Dokument, Historie und seitengebundene Auswahl; lokale UI-Zustände bleiben bewusst in Komponenten. |
 | Persistenz | mittel bis gut | Dokumente und terminneutrale Vorlagen verwenden eine austauschbare CCM-Repository-Schicht; `localStorage` enthält nur eine Recovery-Kopie. Der offizielle Assetpfad ist noch offen. |
-| Canvas-Interaktion | mittel | Echte rekursive Gruppen und Browser-Regressionstests stabilisieren die Kernpfade; weitere Handle-, Zoom- und DnD-Szenarien fehlen noch. |
+| Canvas-Interaktion | mittel bis gut | Echte rekursive Gruppen, konstante Transformer-Griffe, Panning und Fit-Ansichten stabilisieren die Kernpfade; weitere komplexe Pointer- und DnD-Szenarien fehlen noch. |
 | UI-Konsistenz | mittel | Design-Komponenten und ein konsistenter Grundaufbau existieren, einzelne Glyphen, Dialoge, Tabs und Responsive-Verhalten weichen ab. |
 | Barrierefreiheit | ausbaufähig | Viele Beschriftungen sind vorhanden; Canvas, Drag-and-drop, Tabs und modale Fokusführung sind nicht vollständig zugänglich. |
 | Testabdeckung | mittel bis gut | 38 Vitest-Dateien mit 199 Tests sowie sieben grüne Playwright-Kernflüsse; visuelle und breitere Interaktionsregressionen fehlen noch. |
@@ -219,8 +219,8 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 ### Stabilisiert – Kritische Canvas-Flows hatten keine Browserabdeckung
 
-**Status:** Playwright und eine erste kritische Chromium-Suite sind eingerichtet; Handle-, Zoom-, Export- und visuelle Regressionen sollten als nächste Fälle ergänzt werden.
-**Evidenz:** 38 Vitest-Dateien mit 199 Tests sowie sieben Playwright-Flows sind vorhanden. `PublisherPagesPanel` besitzt nun einen direkten Komponententest; für `EventTemplate.vue`, `App.vue`, `PublisherWorkspaceContent.vue`, `TemplateInspector.vue`, `LayoutEffectsDialog.vue` und die editierbaren Canvas-Elemente fehlen weiterhin gezielte isolierte beziehungsweise visuelle Tests.
+**Status:** Playwright und eine erste kritische Chromium-Suite sind eingerichtet; reine Zoomberechnung und Statusleisten-Steuerung besitzen Komponententests. Pointer-Gesten für Randhandles, Panning, Export und visuelle Regressionen sollten noch ergänzt werden.
+**Evidenz:** `PublisherZoomControls` und die Fit-Berechnung sind isoliert testbar. Sieben Playwright-Flows sind vorhanden. Für `EventTemplate.vue`, `App.vue`, `PublisherWorkspaceContent.vue`, `TemplateInspector.vue`, `LayoutEffectsDialog.vue` und die editierbaren Canvas-Elemente fehlen weiterhin gezielte isolierte beziehungsweise visuelle Tests.
 
 **Auswirkung:** Genau die gemeldeten Fehler – Handles am Rand, Gruppendrag und Snapping, Trackpad-Zoom, Seitenwechsel, Canvas-/Ebenenhierarchie, Export mit realen Bildern – liegen außerhalb der verlässlichen Tests. jsdom simuliert Konva-Geometrie und Pointergesten nicht ausreichend.
 
@@ -424,12 +424,12 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Für die nachträgliche Größenänderung zuerst ausdrücklich zwischen „Inhalt beibehalten“, „proportional skalieren“ und „an neue Seite anpassen“ unterscheiden. Mehrfachauswahl erst mit einem konkreten seitenübergreifenden Anwendungsfall ergänzen.
 
-### P3 – Canvas-Navigation ist für große Dokumente unvollständig
+### P3 – Canvas-Navigation ist teilweise ausgebaut
 
-**Status:** UX-Lücke.  
-**Beobachtung:** Zoom und Scrollen funktionieren, aber es fehlen Hand-/Pan-Werkzeug, „Seite einpassen“, „Auswahl einpassen“, 100-Prozent-Sprung, Mini-Navigator, Lineale und Hilfslinien. Verlaufsausrichtung besitzt nur Zahlenfelder, keine Handles auf dem Canvas.
+**Status:** Kernnavigation umgesetzt, Komfortfunktionen offen.
+**Beobachtung:** Zoom und Scrollen werden jetzt durch ein dauerhaftes Handwerkzeug, temporäres Panning per Leertaste, „Seite einpassen“, „Auswahl einpassen“ und einen 100-Prozent-Sprung ergänzt. Die Befehle zentrieren den relevanten Dokumentpunkt, ohne Dokumentgeometrie zu verändern. Transformer-Griffe und -Konturen bleiben in Bildschirmkoordinaten konstant; Griffe an geraden Seitenrändern werden nach innen gesetzt und besitzen eine größere Trefferfläche. Mini-Navigator, Lineale und Hilfslinien fehlen weiterhin. Verlaufsausrichtung besitzt nur Zahlenfelder, keine Handles auf dem Canvas.
 
-**Empfehlung:** Fit-to-page und temporäres Panning per Leertaste priorisieren. Danach Gradientenhandles sowie optionale Lineale und Hilfslinien ergänzen.
+**Empfehlung:** Als nächsten direkten Canvas-Ausbau Gradientenhandles umsetzen. Mini-Navigator, Lineale und Hilfslinien erst nach einem konkreten Arbeitsablauf priorisieren.
 
 ### P3 – Effekte decken Konva-Filter noch nicht ab
 
