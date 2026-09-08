@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { churchtoolsClient } from '@churchtools/churchtools-client';
 import { storeToRefs } from 'pinia';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 
@@ -33,27 +34,24 @@ import type { ImageFocus } from './domain/imageFocus';
 import type { LayoutCustomElementKind, LayoutTextMode } from './domain/layoutEditing';
 import type { PublisherIconName } from './domain/publisherIcons';
 import { cloneLayoutState, type SerializableLayoutState } from './domain/layoutHistory';
-import { validateLocalImage } from './domain/localImageOverride';
 import {
-    deletePublisherDraft,
-    loadPublisherDraft,
     PUBLISHER_DRAFT_VERSION,
-    savePublisherDraft,
     type PublisherDraft,
 } from './domain/publisherDraft';
 import {
-    deletePublisherDesignTemplate,
-    loadPublisherDesignTemplates,
     MAX_PUBLISHER_DESIGN_TEMPLATE_NAME_LENGTH,
-    savePublisherDesignTemplate,
     type PublisherDesignTemplate,
 } from './domain/publisherDesignTemplate';
 import {
-    belongsToAppointment,
-    createPublisherDraftFile,
-    parsePublisherDraftFile,
-    serializePublisherDraftFile,
-} from './domain/publisherDraftFile';
+    appointmentKeyFromReference,
+    appointmentReferenceFromKey,
+    createMemoryPublisherRepository,
+    createPublisherRecordId,
+    PublisherRepositoryError,
+    type PublisherDocumentRecord,
+    type PublisherRepositoryErrorCode,
+} from './domain/publisherRepository';
+import { loadPublisherRecovery, savePublisherRecovery } from './domain/publisherRecovery';
 import { clonePublisherPage, createBlankPublisherPage, createPublisherPage } from './domain/publisherPage';
 import {
     createPublisherExportSettings,
@@ -68,6 +66,7 @@ import {
     withTemplateOverride,
 } from './domain/templateOverrides';
 import type { TemplateId } from './domain/templates';
+import { createCcmPublisherRepository } from './infrastructure/ccmPublisherRepository';
 import { usePublisherDocumentStore } from './stores/publisherDocument';
 import { usePublisherEditorStore, type EditorToolId } from './stores/publisherEditor';
 import { usePublisherAppointmentsStore } from './stores/publisherAppointments';
@@ -79,6 +78,10 @@ const documentStore = usePublisherDocumentStore();
 const editorStore = usePublisherEditorStore();
 const appointmentStore = usePublisherAppointmentsStore();
 const imagePaletteStore = usePublisherImagePalettesStore();
+const publisherRepository = import.meta.env.VITE_E2E === 'true'
+    ? createMemoryPublisherRepository()
+    : createCcmPublisherRepository(churchtoolsClient, import.meta.env.VITE_KEY);
+const recoveredDocument = loadPublisherRecovery(window.localStorage);
 const { activePage, activePageId, draftLayouts, imageFocusByTemplate, pages, selectedTemplateId } = storeToRefs(documentStore);
 const {
     activeEditorTool, canRedoLayout, canUndoLayout, hasLayoutSelection,
@@ -88,31 +91,40 @@ const templateRef = shallowRef<InstanceType<typeof EventTemplate> | null>(null);
 const workspaceContentRef = shallowRef<InstanceType<typeof PublisherWorkspaceContent> | null>(null);
 const imageStatus = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle');
 const exportError = ref('');
-const exportSuccess = ref('');
-let exportSuccessTimeout: ReturnType<typeof setTimeout> | null = null;
-const showExportSuccess = (message: string) => {
-    if (exportSuccessTimeout) clearTimeout(exportSuccessTimeout);
-    exportSuccess.value = message;
-    exportSuccessTimeout = setTimeout(() => {
-        exportSuccess.value = '';
-        exportSuccessTimeout = null;
+const toast = ref<{ message: string; tone: 'info' | 'success' } | null>(null);
+let toastTimeout: ReturnType<typeof setTimeout> | null = null;
+const showToast = (message: string, tone: 'info' | 'success' = 'info') => {
+    if (toastTimeout) clearTimeout(toastTimeout);
+    toast.value = { message, tone };
+    toastTimeout = setTimeout(() => {
+        toast.value = null;
+        toastTimeout = null;
     }, 3500);
 };
-const templateOverrides = ref<EventTemplateOverrides>({});
-const replacementImageUrl = ref<string | null>(null);
-const replacementImageName = ref('');
-const replacementImageError = ref('');
+const templateOverrides = ref<EventTemplateOverrides>(recoveredDocument?.draft.templateOverrides ?? {});
 const {
     handleWorkspaceWheel,
     setWorkspaceElement,
 } = usePublisherWorkspaceZoom();
-let zoomSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 const draftRevision = ref(0);
 const draftStatus = ref('');
 const draftError = ref('');
-const hasLocalDraft = ref(false);
 const restoringDraft = ref(false);
-const draftIndexRevision = ref(0);
+const documents = ref<PublisherDocumentRecord[]>([]);
+const designTemplates = ref<PublisherDesignTemplate[]>([]);
+const activeDocumentId = ref(recoveredDocument?.id ?? createPublisherRecordId());
+const activeDocumentRevision = ref(recoveredDocument?.revision ?? 0);
+const activeDocumentCreatedAt = ref(recoveredDocument?.createdAt ?? new Date().toISOString());
+const documentName = ref(recoveredDocument?.name ?? 'Unbenanntes Dokument');
+type StorageStatus = 'conflict' | 'dirty' | 'error' | 'loading' | 'offline' | 'permission' | 'saved' | 'saving';
+const storageStatus = ref<StorageStatus>('loading');
+const storageMessage = ref('ChurchTools-Speicher wird geladen …');
+let autosaveTimeout: ReturnType<typeof setTimeout> | null = null;
+let saveInFlight = false;
+let saveQueued = false;
+const appointmentDocumentKeys = computed(() => new Set(
+    documents.value.map(({ appointment }) => appointmentKeyFromReference(appointment)).filter(Boolean),
+));
 const {
     appointmentCalendarOptions,
     appointmentDetails,
@@ -127,7 +139,7 @@ const {
     selectedAppointmentId,
     selectedAppointmentKey,
     totalAppointmentCount,
-} = usePublisherAppointments(window.localStorage, draftIndexRevision, userLanguage, userTimeZone);
+} = usePublisherAppointments(appointmentDocumentKeys, userLanguage, userTimeZone);
 const {
     loadRelatedDataSource,
     relatedDataFields,
@@ -147,14 +159,10 @@ const exportDialogOpen = ref(false);
 const exportBusy = ref(false);
 const exportProgress = ref('');
 const exportSettings = ref<PublisherPageExportSettings[]>([]);
-const loadedDesignTemplates = loadPublisherDesignTemplates(window.localStorage);
-const designTemplates = ref<PublisherDesignTemplate[]>(loadedDesignTemplates ?? []);
 const selectedDesignTemplateId = ref('');
 const designTemplateName = ref('');
 const designTemplateStatus = ref('');
-const designTemplateError = ref(
-    loadedDesignTemplates === null ? 'Die gespeicherten Vorlagen konnten nicht gelesen werden.' : '',
-);
+const designTemplateError = ref('');
 const layoutStep = computed(() => (snapEnabled.value ? 20 : 5));
 interface EditorTool {
     id: EditorToolId;
@@ -221,13 +229,27 @@ const removePage = (pageId: string) => {
     saveCurrentDraft();
 };
 
+const duplicatePage = (pageId: string) => {
+    const duplicate = documentStore.duplicatePage(pageId);
+    if (!duplicate) return;
+    const sourceThumbnail = editorStore.pageThumbnails[pageId];
+    if (sourceThumbnail) editorStore.setPageThumbnail(duplicate.id, sourceThumbnail);
+    editorStore.activateCanvasPage(duplicate.id);
+    saveCurrentDraft();
+};
+
+const renamePage = (pageId: string, name: string) => {
+    if (documentStore.renamePage(pageId, name)) saveCurrentDraft();
+};
+
+const reorderPage = (pageId: string, targetPageId: string, placement: 'before' | 'after') => {
+    if (documentStore.movePage(pageId, targetPageId, placement)) saveCurrentDraft();
+};
+
 const templateProps = computed(() => {
-    const propsWithOverrides = applyTemplateOverrides(mappedTemplateProps.value ?? {
+    return applyTemplateOverrides(mappedTemplateProps.value ?? {
         title: '', date: '', time: '', location: '', imageUrl: null,
     }, templateOverrides.value);
-    return replacementImageUrl.value
-        ? { ...propsWithOverrides, imageUrl: replacementImageUrl.value }
-        : propsWithOverrides;
 });
 const originalAppointmentDataFields = computed(() => [
     ...(appointmentDetails.value
@@ -240,9 +262,7 @@ const originalAppointmentDataValues = computed(() => Object.fromEntries(
 ));
 const appointmentDataFields = computed(() => originalAppointmentDataFields.value.map((field) => ({
     ...field,
-    value: field.id === 'image' && replacementImageUrl.value
-        ? replacementImageUrl.value
-        : templateOverrides.value[field.id] ?? field.value,
+    value: templateOverrides.value[field.id] ?? field.value,
 })));
 const appointmentDataValues = computed(() => Object.fromEntries(
     [
@@ -307,7 +327,7 @@ watch([imagePaletteSources, dynamicPaletteImageIds], ([sources, boundImageIds]) 
     }
 }, { immediate: true, deep: true });
 const hasTemplateOverrides = computed(
-    () => Object.keys(templateOverrides.value).length > 0 || Boolean(replacementImageUrl.value),
+    () => Object.keys(templateOverrides.value).length > 0,
 );
 
 const activateEditorTool = async (tool: EditorTool) => {
@@ -354,21 +374,8 @@ const addLayoutQr = () => {
     activeEditorTool.value = 'layout';
 };
 
-const addLayoutImage = (file: File) => {
-    const validationError = validateLocalImage(file);
-    if (validationError) {
-        exportError.value = validationError;
-        return;
-    }
-    const reader = new FileReader();
-    reader.onerror = () => { exportError.value = 'Das Bild konnte nicht gelesen werden.'; };
-    reader.onload = () => {
-        if (typeof reader.result !== 'string') return;
-        templateRef.value?.addElement('image', { imageSource: reader.result, name: file.name });
-        activeEditorTool.value = 'layout';
-        exportError.value = '';
-    };
-    reader.readAsDataURL(file);
+const showImageUploadPlaceholder = () => {
+    showToast('Eigene Bilder können bald über ChurchTools hochgeladen werden.');
 };
 
 const closeAppointmentDialog = () => {
@@ -397,6 +404,7 @@ const currentPublisherDraft = (): PublisherDraft => ({
     updatedAt: new Date().toISOString(),
     pages: pages.value.map((page) => ({
         id: page.id,
+        name: page.name,
         width: page.width,
         height: page.height,
         templateId: page.templateId,
@@ -414,107 +422,109 @@ const currentPublisherDraft = (): PublisherDraft => ({
     activePageId: activePageId.value,
 });
 
-const saveCurrentDraft = () => {
-    if (!selectedAppointmentKey.value || restoringDraft.value) {
-        return;
-    }
+const currentPublisherDocument = (): PublisherDocumentRecord => {
+    const now = new Date().toISOString();
+    return {
+        version: 1,
+        id: activeDocumentId.value,
+        name: documentName.value.trim() || 'Unbenanntes Dokument',
+        revision: activeDocumentRevision.value,
+        appointment: appointmentReferenceFromKey(selectedAppointmentKey.value),
+        draft: currentPublisherDraft(),
+        createdAt: activeDocumentCreatedAt.value,
+        updatedAt: now,
+    };
+};
 
+const updateDocumentList = (document: PublisherDocumentRecord) => {
+    documents.value = [document, ...documents.value.filter(({ id }) => id !== document.id)]
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+};
+
+const setStorageFailure = (error: unknown, fallback: string) => {
+    const code: PublisherRepositoryErrorCode = error instanceof PublisherRepositoryError ? error.code : 'unavailable';
+    storageStatus.value = code === 'invalid' || code === 'unavailable' ? 'error' : code;
+    storageMessage.value = error instanceof Error ? error.message : fallback;
+    draftError.value = storageMessage.value;
+};
+
+const persistCurrentDocument = async (): Promise<boolean> => {
+    if (restoringDraft.value) return false;
+    if (saveInFlight) {
+        saveQueued = true;
+        return false;
+    }
+    saveInFlight = true;
+    storageStatus.value = 'saving';
+    storageMessage.value = 'Dokument wird in ChurchTools gespeichert …';
     try {
-        const wasLocalDraft = hasLocalDraft.value;
-        savePublisherDraft(window.localStorage, selectedAppointmentKey.value, currentPublisherDraft());
-        hasLocalDraft.value = true;
-        if (!wasLocalDraft) {
-            draftIndexRevision.value += 1;
-        }
-        draftStatus.value = 'Lokaler Entwurf gespeichert.';
+        const saved = await publisherRepository.saveDocument(currentPublisherDocument());
+        activeDocumentRevision.value = saved.revision;
+        activeDocumentCreatedAt.value = saved.createdAt;
+        updateDocumentList(saved);
+        savePublisherRecovery(window.localStorage, saved);
+        storageStatus.value = 'saved';
+        storageMessage.value = 'In ChurchTools gespeichert.';
+        draftStatus.value = storageMessage.value;
         draftError.value = '';
-    } catch {
-        draftError.value = 'Der lokale Entwurf konnte nicht gespeichert werden.';
-    }
-};
-
-const revokeReplacementImage = (defer = true) => {
-    const previousUrl = replacementImageUrl.value;
-    replacementImageUrl.value = null;
-    replacementImageName.value = '';
-    replacementImageError.value = '';
-
-    if (previousUrl) {
-        if (defer) {
-            void nextTick(() => URL.revokeObjectURL(previousUrl));
-        } else {
-            URL.revokeObjectURL(previousUrl);
+        return true;
+    } catch (error) {
+        setStorageFailure(error, 'Das Dokument konnte nicht gespeichert werden.');
+        return false;
+    } finally {
+        saveInFlight = false;
+        if (saveQueued) {
+            saveQueued = false;
+            void persistCurrentDocument();
         }
     }
 };
 
-const updateReplacementImage = (event: Event) => {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) {
-        return;
+const saveCurrentDraft = () => {
+    if (restoringDraft.value) return;
+    const recovery = currentPublisherDocument();
+    try {
+        savePublisherRecovery(window.localStorage, recovery);
+    } catch {
+        // ChurchTools remains the source of truth; recovery is best effort only.
     }
-
-    const validationError = validateLocalImage(file);
-    if (validationError) {
-        replacementImageError.value = validationError;
-        return;
-    }
-
-    const previousUrl = replacementImageUrl.value;
-    replacementImageUrl.value = URL.createObjectURL(file);
-    replacementImageName.value = file.name;
-    replacementImageError.value = '';
-    exportError.value = '';
-    exportSuccess.value = '';
-    if (previousUrl) {
-        void nextTick(() => URL.revokeObjectURL(previousUrl));
-    }
+    storageStatus.value = 'dirty';
+    storageMessage.value = 'Ungespeicherte Änderungen.';
+    if (autosaveTimeout) clearTimeout(autosaveTimeout);
+    autosaveTimeout = setTimeout(() => {
+        autosaveTimeout = null;
+        void persistCurrentDocument();
+    }, 800);
 };
 
 watch(selectedAppointmentKey, () => {
+    if (restoringDraft.value) return;
     restoringDraft.value = true;
     exportError.value = '';
-    exportSuccess.value = '';
+    toast.value = null;
     imageStatus.value = 'idle';
-    revokeReplacementImage();
-    try {
-        const draft = selectedAppointmentKey.value
-            ? loadPublisherDraft(window.localStorage, selectedAppointmentKey.value)
-            : null;
-        templateOverrides.value = draft?.templateOverrides ?? {};
-        hasLocalDraft.value = Boolean(draft);
-        draftStatus.value = selectedAppointmentKey.value
-            ? 'Termindaten aktualisiert. Das aktuelle Layout wurde beibehalten.'
-            : '';
-        draftError.value = '';
-    } catch {
-        templateOverrides.value = {};
-        hasLocalDraft.value = false;
-        draftError.value = 'Gespeicherte Terminanpassungen konnten nicht geladen werden. Das Layout wurde beibehalten.';
+    templateOverrides.value = {};
+    if (documentName.value === 'Unbenanntes Dokument' && selectedAppointment.value?.appointment.base.title) {
+        documentName.value = selectedAppointment.value.appointment.base.title;
     }
+    draftStatus.value = selectedAppointmentKey.value
+        ? 'Termindaten aktualisiert. Das aktuelle Layout wurde beibehalten.'
+        : 'Terminbezug entfernt. Das aktuelle Layout wurde beibehalten.';
+    draftError.value = '';
     void nextTick(() => {
         restoringDraft.value = false;
+        saveCurrentDraft();
     });
 });
 
 watch(selectedTemplateId, () => {
     exportError.value = '';
-    exportSuccess.value = '';
+    toast.value = null;
     saveCurrentDraft();
 });
 
 watch(snapEnabled, saveCurrentDraft);
-watch(previewZoomPercent, () => {
-    if (zoomSaveTimeout) {
-        clearTimeout(zoomSaveTimeout);
-    }
-    zoomSaveTimeout = setTimeout(() => {
-        zoomSaveTimeout = null;
-        saveCurrentDraft();
-    }, 300);
-});
+watch(previewZoomPercent, saveCurrentDraft);
 
 const updateTemplateOverride = (field: EditableTemplateField, value: string) => {
     templateOverrides.value = withTemplateOverride(
@@ -524,7 +534,7 @@ const updateTemplateOverride = (field: EditableTemplateField, value: string) => 
         value,
     );
     exportError.value = '';
-    exportSuccess.value = '';
+    toast.value = null;
     saveCurrentDraft();
 };
 
@@ -562,8 +572,92 @@ const resetTemplateOverride = (field: EditableTemplateField) => {
 
 const resetTemplateOverrides = () => {
     templateOverrides.value = {};
-    revokeReplacementImage();
     saveCurrentDraft();
+};
+
+const applyPublisherDraft = (draft: PublisherDraft) => {
+    templateOverrides.value = { ...draft.templateOverrides };
+    if (draft.pages?.length && draft.activePageId) {
+        const restoredPages = draft.pages.map((page, pageIndex) => ({
+            ...page,
+            name: page.name?.trim() || `Seite ${pageIndex + 1}`,
+            layouts: Object.fromEntries(Object.entries(page.layouts).map(([templateId, state]) => [
+                templateId,
+                state ? cloneLayoutState(state) : state,
+            ])),
+            imageFocus: {
+                split: { ...page.imageFocus.split },
+                poster: { ...page.imageFocus.poster },
+            },
+        }));
+        documentStore.replacePages(restoredPages, draft.activePageId);
+        editorStore.activateCanvasPage(draft.activePageId);
+    } else {
+        const restoredPage = createPublisherPage();
+        restoredPage.templateId = draft.selectedTemplateId;
+        restoredPage.layouts = Object.fromEntries(
+            Object.entries(draft.layouts).map(([templateId, state]) => [
+                templateId,
+                state ? cloneLayoutState(state) : state,
+            ]),
+        );
+        restoredPage.imageFocus = {
+            split: { ...draft.imageFocus.split },
+            poster: { ...draft.imageFocus.poster },
+        };
+        documentStore.replacePages([restoredPage], restoredPage.id);
+        editorStore.activateCanvasPage(restoredPage.id);
+    }
+    snapEnabled.value = draft.snapEnabled;
+    previewZoomPercent.value = draft.previewZoomPercent;
+    draftRevision.value += 1;
+};
+
+const openStoredDocument = async (document: PublisherDocumentRecord) => {
+    if (document.id !== activeDocumentId.value && storageStatus.value === 'dirty' &&
+        !await persistCurrentDocument()) return;
+    if (autosaveTimeout) {
+        clearTimeout(autosaveTimeout);
+        autosaveTimeout = null;
+    }
+    restoringDraft.value = true;
+    activeDocumentId.value = document.id;
+    activeDocumentRevision.value = document.revision;
+    activeDocumentCreatedAt.value = document.createdAt;
+    documentName.value = document.name;
+    selectedAppointmentKey.value = appointmentKeyFromReference(document.appointment);
+    applyPublisherDraft(document.draft);
+    savePublisherRecovery(window.localStorage, document);
+    storageStatus.value = 'saved';
+    storageMessage.value = 'Dokument aus ChurchTools geöffnet.';
+    draftStatus.value = storageMessage.value;
+    draftError.value = '';
+    void nextTick(() => {
+        restoringDraft.value = false;
+    });
+};
+
+const createNewDocument = async (skipSave = false) => {
+    if (!skipSave && storageStatus.value === 'dirty' && !await persistCurrentDocument()) return;
+    restoringDraft.value = true;
+    const page = createBlankPublisherPage();
+    documentStore.replacePages([page], page.id);
+    editorStore.activateCanvasPage(page.id);
+    templateOverrides.value = {};
+    selectedAppointmentKey.value = '';
+    activeDocumentId.value = createPublisherRecordId();
+    activeDocumentRevision.value = 0;
+    activeDocumentCreatedAt.value = new Date().toISOString();
+    documentName.value = 'Unbenanntes Dokument';
+    snapEnabled.value = true;
+    previewZoomPercent.value = 100;
+    draftRevision.value += 1;
+    storageStatus.value = 'dirty';
+    storageMessage.value = 'Neues, noch nicht gespeichertes Dokument.';
+    void nextTick(() => {
+        restoringDraft.value = false;
+        saveCurrentDraft();
+    });
 };
 
 const updatePageDraftLayout = (pageId: string, templateId: TemplateId, state: SerializableLayoutState) => {
@@ -588,7 +682,7 @@ const applyStandardTemplate = (templateId: TemplateId) => {
     });
 };
 
-const persistCurrentDesignAsTemplate = (existing?: PublisherDesignTemplate) => {
+const persistCurrentDesignAsTemplate = async (existing?: PublisherDesignTemplate) => {
     const name = (existing?.name ?? designTemplateName.value).trim();
     if (pages.value.length === 0) {
         designTemplateError.value = 'Das aktuelle Dokument enthält keine Seite.';
@@ -610,15 +704,18 @@ const persistCurrentDesignAsTemplate = (existing?: PublisherDesignTemplate) => {
     };
 
     try {
-        designTemplates.value = savePublisherDesignTemplate(window.localStorage, designTemplate);
-        selectedDesignTemplateId.value = designTemplate.id;
+        const saved = await publisherRepository.saveTemplate(designTemplate);
+        designTemplates.value = [saved, ...designTemplates.value.filter(({ id }) => id !== saved.id)]
+            .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+        selectedDesignTemplateId.value = saved.id;
         designTemplateName.value = '';
         designTemplateStatus.value = existing
-            ? `Vorlage „${designTemplate.name}“ aktualisiert.`
-            : `Vorlage „${designTemplate.name}“ gespeichert.`;
+            ? `Vorlage „${saved.name}“ in ChurchTools aktualisiert.`
+            : `Vorlage „${saved.name}“ in ChurchTools gespeichert.`;
         designTemplateError.value = '';
     } catch (error) {
         console.error('Vorlage konnte nicht gespeichert werden.', error);
+        setStorageFailure(error, 'Die Vorlage konnte nicht gespeichert werden.');
         designTemplateError.value = error instanceof Error
             ? error.message
             : 'Die Vorlage konnte nicht gespeichert werden.';
@@ -642,45 +739,31 @@ const applyDesignTemplate = (designTemplate: PublisherDesignTemplate) => {
     });
 };
 
-const removeDesignTemplate = (designTemplate: PublisherDesignTemplate) => {
+const removeDesignTemplate = async (designTemplate: PublisherDesignTemplate) => {
     try {
-        designTemplates.value = deletePublisherDesignTemplate(window.localStorage, designTemplate.id);
+        await publisherRepository.deleteTemplate(designTemplate.id);
+        designTemplates.value = designTemplates.value.filter(({ id }) => id !== designTemplate.id);
         if (selectedDesignTemplateId.value === designTemplate.id) {
             selectedDesignTemplateId.value = '';
         }
         designTemplateStatus.value = `Vorlage „${designTemplate.name}“ gelöscht.`;
         designTemplateError.value = '';
-    } catch {
-        designTemplateError.value = 'Die Vorlage konnte nicht gelöscht werden.';
+    } catch (error) {
+        setStorageFailure(error, 'Die Vorlage konnte nicht gelöscht werden.');
+        designTemplateError.value = storageMessage.value;
     }
 };
 
-const deleteLocalDraft = () => {
-    if (!selectedAppointmentKey.value) {
-        return;
-    }
-
-    restoringDraft.value = true;
+const deleteStoredDocument = async (document: PublisherDocumentRecord) => {
     try {
-        deletePublisherDraft(window.localStorage, selectedAppointmentKey.value);
-        templateOverrides.value = {};
-        const resetPage = createBlankPublisherPage();
-        documentStore.replacePages([resetPage], resetPage.id);
-        editorStore.activateCanvasPage(resetPage.id);
-        snapEnabled.value = true;
-        previewZoomPercent.value = 100;
-        hasLocalDraft.value = false;
-        draftIndexRevision.value += 1;
-        draftStatus.value = 'Lokaler Entwurf gelöscht.';
+        await publisherRepository.deleteDocument(document.id);
+        documents.value = documents.value.filter(({ id }) => id !== document.id);
+        draftStatus.value = `Dokument „${document.name}“ gelöscht.`;
         draftError.value = '';
-        revokeReplacementImage();
-        draftRevision.value += 1;
-    } catch {
-        draftError.value = 'Der lokale Entwurf konnte nicht gelöscht werden.';
+        if (activeDocumentId.value === document.id) void createNewDocument(true);
+    } catch (error) {
+        setStorageFailure(error, 'Das Dokument konnte nicht gelöscht werden.');
     }
-    void nextTick(() => {
-        restoringDraft.value = false;
-    });
 };
 
 const isTextEntryTarget = (target: EventTarget | null) =>
@@ -735,14 +818,77 @@ const handleEditorShortcut = (event: KeyboardEvent) => {
     }
 };
 
+const storageStatusLabel = computed(() => ({
+    conflict: 'Speicherkonflikt',
+    dirty: 'Ungespeichert',
+    error: 'Speicherfehler',
+    loading: 'Speicher wird geladen',
+    offline: 'Offline · lokal gesichert',
+    permission: 'Keine Speicherberechtigung',
+    saved: 'In ChurchTools gespeichert',
+    saving: 'Speichert …',
+})[storageStatus.value]);
+
+const loadPublisherStorage = async () => {
+    storageStatus.value = 'loading';
+    storageMessage.value = 'Dokumente und Vorlagen werden aus ChurchTools geladen …';
+    try {
+        const [loadedDocuments, loadedTemplates] = await Promise.all([
+            publisherRepository.listDocuments(),
+            publisherRepository.listTemplates(),
+        ]);
+        documents.value = loadedDocuments;
+        designTemplates.value = loadedTemplates;
+        const remoteActive = loadedDocuments.find(({ id }) => id === activeDocumentId.value);
+        if (recoveredDocument && remoteActive && remoteActive.revision > recoveredDocument.revision) {
+            storageStatus.value = 'conflict';
+            storageMessage.value = 'Für das wiederhergestellte Dokument liegt in ChurchTools eine neuere Version vor.';
+        } else if (recoveredDocument) {
+            storageStatus.value = 'dirty';
+            storageMessage.value = 'Wiederhergestellter Stand wird gespeichert …';
+            saveCurrentDraft();
+        } else {
+            storageStatus.value = 'dirty';
+            storageMessage.value = 'Neues, noch nicht gespeichertes Dokument.';
+        }
+        draftError.value = '';
+    } catch (error) {
+        setStorageFailure(error, 'Der ChurchTools-Speicher konnte nicht geladen werden.');
+    }
+};
+
+const handleOnline = () => { void loadPublisherStorage(); };
+const handleOffline = () => {
+    storageStatus.value = 'offline';
+    storageMessage.value = 'Offline. Änderungen sind lokal zur Wiederherstellung gesichert.';
+};
+
+const saveDocumentNow = () => {
+    if (autosaveTimeout) {
+        clearTimeout(autosaveTimeout);
+        autosaveTimeout = null;
+    }
+    void persistCurrentDocument();
+};
+
+const updateDocumentName = (value: string) => {
+    documentName.value = value;
+    saveCurrentDraft();
+};
+
 onMounted(() => {
     window.addEventListener('keydown', handleEditorShortcut);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    if (recoveredDocument) openStoredDocument(recoveredDocument);
+    void loadPublisherStorage();
 });
 onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleEditorShortcut);
-    if (zoomSaveTimeout) clearTimeout(zoomSaveTimeout);
-    if (exportSuccessTimeout) clearTimeout(exportSuccessTimeout);
-    revokeReplacementImage(false);
+    window.removeEventListener('online', handleOnline);
+    window.removeEventListener('offline', handleOffline);
+    if (autosaveTimeout) clearTimeout(autosaveTimeout);
+    if (toastTimeout) clearTimeout(toastTimeout);
 });
 
 const updateImageFocus = (field: keyof ImageFocus, event: Event) => {
@@ -759,7 +905,7 @@ const updateImageFocus = (field: keyof ImageFocus, event: Event) => {
         },
     };
     exportError.value = '';
-    exportSuccess.value = '';
+    toast.value = null;
     saveCurrentDraft();
 };
 
@@ -769,7 +915,7 @@ const resetImageFocus = () => {
         [selectedTemplateId.value]: { x: 50, y: 50, zoom: 100 },
     };
     exportError.value = '';
-    exportSuccess.value = '';
+    toast.value = null;
     saveCurrentDraft();
 };
 
@@ -782,111 +928,10 @@ const slugify = (value: string) =>
         .replace(/^-|-$/g, '')
         .slice(0, 80);
 
-const exportDraftFile = () => {
-    if (!selectedAppointmentKey.value || !selectedAppointmentId.value) {
-        return;
-    }
-
-    try {
-        const file = createPublisherDraftFile(
-            selectedAppointmentKey.value,
-            currentPublisherDraft(),
-        );
-        const blob = new Blob([serializePublisherDraftFile(file)], { type: 'application/json' });
-        const downloadUrl = URL.createObjectURL(blob);
-        const download = document.createElement('a');
-        download.href = downloadUrl;
-        download.download = `publisher-entwurf-${selectedAppointmentId.value}.json`;
-        download.click();
-        window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
-        draftStatus.value = 'Entwurf als JSON exportiert.';
-        draftError.value = '';
-    } catch {
-        draftError.value = 'Der Entwurf konnte nicht exportiert werden.';
-    }
-};
-
-const importDraftFile = async (event: Event) => {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file || !selectedAppointmentKey.value) {
-        return;
-    }
-    if (file.size > 1024 * 1024) {
-        draftError.value = 'Die Entwurfsdatei darf höchstens 1 MB groß sein.';
-        return;
-    }
-
-    try {
-        const imported = parsePublisherDraftFile(await file.text());
-        if (!imported) {
-            throw new Error('invalid');
-        }
-        if (!belongsToAppointment(imported, selectedAppointmentKey.value)) {
-            draftError.value = 'Die Entwurfsdatei gehört zu einem anderen Kalendertermin.';
-            return;
-        }
-
-        restoringDraft.value = true;
-        const wasLocalDraft = hasLocalDraft.value;
-        savePublisherDraft(window.localStorage, selectedAppointmentKey.value, imported.draft);
-        templateOverrides.value = { ...imported.draft.templateOverrides };
-        if (imported.draft.pages?.length && imported.draft.activePageId) {
-            const importedPages = imported.draft.pages.map((page) => ({
-                ...page,
-                layouts: Object.fromEntries(Object.entries(page.layouts).map(([templateId, state]) => [
-                    templateId,
-                    state ? cloneLayoutState(state) : state,
-                ])),
-                imageFocus: {
-                    split: { ...page.imageFocus.split },
-                    poster: { ...page.imageFocus.poster },
-                },
-            }));
-            documentStore.replacePages(importedPages, imported.draft.activePageId);
-            editorStore.activateCanvasPage(imported.draft.activePageId);
-        } else {
-            const importedPage = createPublisherPage();
-            importedPage.templateId = imported.draft.selectedTemplateId;
-            importedPage.layouts = Object.fromEntries(
-                Object.entries(imported.draft.layouts).map(([templateId, state]) => [
-                    templateId,
-                    state ? cloneLayoutState(state) : state,
-                ]),
-            );
-            importedPage.imageFocus = {
-                split: { ...imported.draft.imageFocus.split },
-                poster: { ...imported.draft.imageFocus.poster },
-            };
-            documentStore.replacePages([importedPage], importedPage.id);
-            editorStore.activateCanvasPage(importedPage.id);
-        }
-        snapEnabled.value = imported.draft.snapEnabled;
-        previewZoomPercent.value = imported.draft.previewZoomPercent;
-        hasLocalDraft.value = true;
-        if (!wasLocalDraft) {
-            draftIndexRevision.value += 1;
-        }
-        draftStatus.value = 'Entwurf aus JSON importiert.';
-        draftError.value = '';
-        exportError.value = '';
-        exportSuccess.value = '';
-        revokeReplacementImage();
-        draftRevision.value += 1;
-    } catch {
-        draftError.value = 'Die Entwurfsdatei ist ungültig oder nicht kompatibel.';
-    } finally {
-        void nextTick(() => {
-            restoringDraft.value = false;
-        });
-    }
-};
-
 const openExportDialog = () => {
     exportSettings.value = createPublisherExportSettings(pages.value, exportSettings.value);
     exportError.value = '';
-    exportSuccess.value = '';
+    toast.value = null;
     exportProgress.value = '';
     exportDialogOpen.value = true;
 };
@@ -899,7 +944,7 @@ const exportPages = async () => {
     const selectedSettings = exportSettings.value.filter(({ enabled }) => enabled);
     if (!templateProps.value || selectedSettings.length === 0 || exportBusy.value) return;
     exportError.value = '';
-    exportSuccess.value = '';
+    toast.value = null;
     exportBusy.value = true;
 
     try {
@@ -925,7 +970,7 @@ const exportPages = async () => {
             }
             const extension = publisherExportExtension(settings.format);
             zip.file(
-                `seite-${pageIndex + 1}-${page.width}x${page.height}-${titleSlug}.${extension}`,
+                `${String(pageIndex + 1).padStart(2, '0')}-${slugify(page.name) || `seite-${pageIndex + 1}`}-${page.width}x${page.height}-${titleSlug}.${extension}`,
                 imageBlob,
             );
         }
@@ -938,7 +983,7 @@ const exportPages = async () => {
         download.click();
         window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
         exportDialogOpen.value = false;
-        showExportSuccess(`${selectedSettings.length} Seite${selectedSettings.length === 1 ? '' : 'n'} als ZIP exportiert.`);
+        showToast(`${selectedSettings.length} Seite${selectedSettings.length === 1 ? '' : 'n'} als ZIP exportiert.`, 'success');
     } catch (error) {
         exportError.value = error instanceof Error ? error.message : 'Der Export ist fehlgeschlagen.';
     } finally {
@@ -951,11 +996,11 @@ const exportPages = async () => {
 <template>
     <PublisherEditorShell>
         <Transition name="publisher-toast">
-            <div v-if="exportSuccess" class="publisher-toast publisher-toast--success" role="status">{{ exportSuccess }}</div>
+            <div v-if="toast" class="publisher-toast" :class="`publisher-toast--${toast.tone}`" role="status">{{ toast.message }}</div>
         </Transition>
         <template #topbar>
             <PublisherTopbar
-                :document-title="selectedAppointment?.appointment.base.title ?? 'Unbenannt'"
+                :document-title="documentName"
                 :export-disabled="!templateProps"
                 :has-template="Boolean(templateProps)"
                 @activate="activateEditorToolById"
@@ -985,11 +1030,17 @@ const exportPages = async () => {
         </template>
 
         <template #tools>
-            <PublisherToolRail :disabled="!templateProps" @add="addLayoutElement" @add-icon="addLayoutIcon" @add-image="addLayoutImage" @add-qr="addLayoutQr" @add-text="addLayoutText" />
+            <PublisherToolRail :disabled="!templateProps" @add="addLayoutElement" @add-icon="addLayoutIcon" @add-image="showImageUploadPlaceholder" @add-qr="addLayoutQr" @add-text="addLayoutText" />
         </template>
 
         <template #left>
-            <PublisherPagesPanel :preview-title="templateProps?.title || null" @add="pageDialogOpen = true" @remove="removePage" />
+            <PublisherPagesPanel
+                @add="pageDialogOpen = true"
+                @duplicate="duplicatePage"
+                @remove="removePage"
+                @rename="renamePage"
+                @reorder="reorderPage"
+            />
         </template>
 
         <PublisherAppointmentPanel
@@ -1045,39 +1096,45 @@ const exportPages = async () => {
             <PublisherInspectorShell>
                 <TemplateInspector
                     v-if="activeEditorTool === 'templates'"
+                    :active-document-id="activeDocumentId"
                     v-model:name="designTemplateName"
                     :design-templates="designTemplates"
+                    :document-name="documentName"
+                    :documents="documents"
                     :draft-error="draftError"
                     :draft-status="draftStatus"
                     :error="designTemplateError"
-                    :has-local-draft="hasLocalDraft"
                     :selected-design-template-id="selectedDesignTemplateId"
                     :selected-template-id="selectedTemplateId"
+                    :storage-message="storageMessage"
+                    :storage-status="storageStatus"
                     :status="designTemplateStatus"
                     @apply-design="applyDesignTemplate"
                     @apply-standard="applyStandardTemplate"
                     @delete-design="removeDesignTemplate"
-                    @delete-draft="deleteLocalDraft"
-                    @export-draft="exportDraftFile"
-                    @import-draft="importDraftFile"
+                    @delete-document="deleteStoredDocument"
+                    @new-document="createNewDocument"
+                    @open-document="openStoredDocument"
+                    @save-document="saveDocumentNow"
                     @save-design="persistCurrentDesignAsTemplate"
+                    @update:document-name="updateDocumentName"
                 />
                 <AppointmentDataInspector
                     v-else-if="activeEditorTool === 'data'"
-                    :error="replacementImageError"
+                    error=""
                     :focus="imageFocusByTemplate[selectedTemplateId]"
                     :overridden-fields="Object.keys(templateOverrides) as EditableTemplateField[]"
-                    :replacement-name="replacementImageName"
-                    :replacement-url="replacementImageUrl"
+                    replacement-name=""
+                    :replacement-url="null"
                     @insert-field="insertAppointmentDataField"
                     @insert-qr-field="insertAppointmentQrField"
                     @load-related-source="loadRelatedDataSource"
                     @open-appointments="appointmentDialogOpen = true"
                     @reset-field="resetTemplateOverride"
-                    @reset-image="revokeReplacementImage()"
+                    @reset-image="resetTemplateOverride('image')"
                     @update-field="updateTemplateOverride"
                     @update-focus="updateImageFocus"
-                    @update-image="updateReplacementImage"
+                    @update-image="showImageUploadPlaceholder"
                 />
                 <LayoutInspector
                     v-else-if="activeEditorTool === 'layout'"
@@ -1110,8 +1167,9 @@ const exportPages = async () => {
 
         <template #statusbar>
             <div class="publisher-statusbar">
-                <span>{{ `${templateProps.title || 'Leere Seite'} · Seite ${pages.indexOf(activePage) + 1} · ${activePage.width} × ${activePage.height} px` }}</span>
+                <span>{{ `${templateProps.title || 'Leere Seite'} · ${activePage.name} · ${activePage.width} × ${activePage.height} px` }}</span>
                 <span v-if="hasLayoutSelection">{{ selectedLayoutElements.length }} Element{{ selectedLayoutElements.length === 1 ? '' : 'e' }} ausgewählt</span>
+                <span class="publisher-statusbar__storage" :class="`is-${storageStatus}`" :title="storageMessage" role="status">{{ storageStatusLabel }}</span>
                 <label class="publisher-statusbar__zoom" for="preview-zoom">
                     <span class="sr-only">Zoom</span>
                     <input id="preview-zoom" v-model.number="previewZoomPercent" type="range" min="25" max="400" step="5" aria-label="Zoom" />

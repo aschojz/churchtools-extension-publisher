@@ -14,6 +14,7 @@ import {
     clonePublisherPage,
     createBlankPublisherPage,
     createStandardPublisherLayout,
+    MAX_PUBLISHER_PAGE_NAME_LENGTH,
     type PublisherPage,
 } from '../domain/publisherPage';
 import type { TemplateId } from '../domain/templates';
@@ -129,11 +130,60 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
     };
 
     const addPage = (width: number, height: number, templateId: TemplateId) => {
-        const page = createBlankPublisherPage(width, height, templateId);
+        const pageNumbers = pages.value
+            .map(({ name }) => /^Seite (\d+)$/.exec(name)?.[1])
+            .map(Number)
+            .filter(Number.isFinite);
+        const page = createBlankPublisherPage(
+            width,
+            height,
+            templateId,
+            `Seite ${Math.max(0, ...pageNumbers) + 1}`,
+        );
         pages.value = [...pages.value, page];
         activePageId.value = page.id;
         revision.value += 1;
         return page;
+    };
+
+    const duplicatePage = (pageId: string) => {
+        const pageIndex = pages.value.findIndex(({ id }) => id === pageId);
+        if (pageIndex < 0) return null;
+        const source = pages.value[pageIndex]!;
+        const duplicate = clonePublisherPage(source, true);
+        duplicate.name = `${source.name.slice(0, MAX_PUBLISHER_PAGE_NAME_LENGTH - 6)} Kopie`;
+        pages.value = [
+            ...pages.value.slice(0, pageIndex + 1),
+            duplicate,
+            ...pages.value.slice(pageIndex + 1),
+        ];
+        activePageId.value = duplicate.id;
+        revision.value += 1;
+        return duplicate;
+    };
+
+    const renamePage = (pageId: string, name: string) => {
+        const page = pageById(pageId);
+        const normalizedName = name.trim().slice(0, MAX_PUBLISHER_PAGE_NAME_LENGTH);
+        if (!page || !normalizedName || page.name === normalizedName) return false;
+        page.name = normalizedName;
+        revision.value += 1;
+        return true;
+    };
+
+    const movePage = (pageId: string, targetPageId: string, placement: 'before' | 'after') => {
+        const sourceIndex = pages.value.findIndex(({ id }) => id === pageId);
+        const targetIndex = pages.value.findIndex(({ id }) => id === targetPageId);
+        if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return false;
+        const reordered = [...pages.value];
+        const [page] = reordered.splice(sourceIndex, 1);
+        let insertionIndex = reordered.findIndex(({ id }) => id === targetPageId);
+        if (placement === 'after') insertionIndex += 1;
+        reordered.splice(insertionIndex, 0, page!);
+        if (reordered.every(({ id }, index) => id === pages.value[index]?.id)) return false;
+        pages.value = reordered;
+        revision.value += 1;
+        return true;
     };
 
     const removePage = (pageId: string) => {
@@ -176,6 +226,7 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         addPage,
         commitPageLayout,
         draftLayouts,
+        duplicatePage,
         ensurePageLayout,
         getPageLayoutHistory,
         histories,
@@ -183,6 +234,7 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         pageById,
         pages,
         redoPageLayout,
+        renamePage,
         removePage,
         replaceActivePageTemplate,
         replacePageLayout,
@@ -192,6 +244,7 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         resetPageLayoutHistory,
         revision,
         selectedTemplateId,
+        movePage,
         undoPageLayout,
     };
 });

@@ -35,6 +35,7 @@ Es gibt aktuell keinen Lint-, Format- oder Visual-Regression-Runner. Playwright 
 - Dokument, Seiten, aktive Seite und persistierbarer Layoutzustand gehören in Pinia beziehungsweise in pure Domain-Modelle hinter Store-Actions.
 - Neue Features dürfen keinen weiteren parallelen Zustand in `App.vue`, Inspector-Komponenten und `EventTemplate.vue` anlegen.
 - Canvas-Nodes sind eine Projektion des serialisierbaren Zustands, nicht dessen Quelle der Wahrheit.
+- Seiten-Thumbnails sind abgeleiteter UI-Zustand. Sie werden klein aus dem aktuellen Szenengraphen gerendert und weder in Dokumenten noch Vorlagen persistiert.
 - Komponenten lesen gemeinsamen Zustand möglichst direkt aus Stores und rufen fachliche Actions auf. Props und Emits bleiben für lokale, wiederverwendbare UI-Komponenten und echte Komponenten-Grenzen reserviert.
 - Direkte Mutationen wie `pages.value = ...` außerhalb des zuständigen Stores vermeiden. Dokumentoperationen als benannte Store-Actions implementieren.
 - Auswahlzustand muss eindeutig einer Seite zugeordnet sein. Beim Seitenwechsel dürfen auf inaktiven Seiten weder Auswahlrahmen noch Handles zurückbleiben.
@@ -63,7 +64,10 @@ Es gibt aktuell keinen Lint-, Format- oder Visual-Regression-Runner. Playwright 
 - Parser dürfen neue optionale Werte nicht versehentlich verwerfen. Besonders Gruppenrotation, verschachtelte Gruppen, Bindungen, Verläufe und Effekte in Roundtrip-Tests absichern.
 - Einen beschädigten Eintrag isolieren; nicht wegen einer fehlerhaften Vorlage die gesamte Bibliothek unlesbar machen.
 - Alle geladenen und gespeicherten Zustände tief kopieren. Keine Vue-Proxies oder Konva-Nodes persistieren.
-- Große Bild-Data-URLs nicht in `localStorage` ablegen. Für persistente lokale Assets IndexedDB beziehungsweise Blob-/Asset-Referenzen verwenden.
+- Große Bild-Data-URLs nicht in Dokumenten oder `localStorage` ablegen. Persistente Bilder benötigen künftig eine offizielle ChurchTools-Asset-ID beziehungsweise stabile Asset-Referenz.
+- Dokumente und terminneutrale Vorlagen werden über `PublisherRepository` persistiert. ChurchTools/CCM-spezifische Endpunkte bleiben im Infrastrukturadapter und dürfen nicht in Store-, Canvas- oder Inspector-Komponenten durchsickern.
+- `publisher_documents` speichert Dokumente mit optionaler Terminreferenz; `publisher_templates` speichert ausschließlich terminneutrale Vorlagen. `localStorage` ist nur für eine einzelne Recovery-Kopie vorgesehen.
+- Eigene Bild-Uploads bleiben deaktiviert, bis ein offizieller ChurchTools-Assetpfad feststeht. Keine Wiki-Seite als versteckten Dateicontainer einführen, ohne diese Architekturentscheidung ausdrücklich neu zu bewerten.
 - Limits zwischen Import, Upload und Speicherung müssen zueinander passen und in der UI erklärt werden.
 
 ## Daten und ChurchTools-API

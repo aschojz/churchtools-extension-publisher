@@ -44,7 +44,7 @@ const emit = defineEmits<{
     resetImage: [];
     updateField: [fieldId: string, value: string];
     updateFocus: [field: keyof ImageFocus, event: Event];
-    updateImage: [event: Event];
+    updateImage: [];
 }>();
 
 const { dataFields, relatedDataSources, selectedAppointmentKey } = storeToRefs(usePublisherAppointmentsStore());
@@ -211,7 +211,7 @@ const startFieldDrag = (field: PublisherDataField, event: DragEvent) => {
                 <template v-else>
                     <div class="publisher-data-dialog__image">
                         <img :src="editingField.value" alt="Vorschau des Terminbilds" />
-                        <label class="design-button design-button--secondary">Bild ersetzen<input hidden type="file" accept="image/jpeg,image/png,image/webp" @change="emit('updateImage', $event)" /></label>
+                        <DesignButton variant="secondary" @click="emit('updateImage')">Bild ersetzen</DesignButton>
                     </div>
                     <p v-if="replacementName" class="local-image-override__selection" role="status">{{ replacementName }}</p>
                     <p v-if="error" class="local-image-override__error" role="alert">{{ error }}</p>

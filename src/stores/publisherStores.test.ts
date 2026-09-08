@@ -36,6 +36,23 @@ describe('publisher stores', () => {
         expect(document.activePage.layouts.split?.order).toEqual([]);
     });
 
+    it('renames, duplicates and reorders complete pages', () => {
+        const document = usePublisherDocumentStore();
+        const firstPageId = document.activePageId;
+        document.renamePage(firstPageId, 'Begrüßung');
+        const secondPage = document.addPage(600, 600, 'split');
+        const duplicate = document.duplicatePage(firstPageId)!;
+
+        expect(duplicate).toMatchObject({ name: 'Begrüßung Kopie', width: 1920, height: 1080 });
+        expect(duplicate.id).not.toBe(firstPageId);
+        expect(duplicate.layouts.split).not.toBe(document.pageById(firstPageId)?.layouts.split);
+        expect(document.pages.map(({ id }) => id)).toEqual([firstPageId, duplicate.id, secondPage.id]);
+
+        expect(document.movePage(secondPage.id, firstPageId, 'before')).toBe(true);
+        expect(document.pages.map(({ id }) => id)).toEqual([secondPage.id, firstPageId, duplicate.id]);
+        expect(document.activePageId).toBe(duplicate.id);
+    });
+
     it('applies a standard seed through the same serializable page layout model', () => {
         const document = usePublisherDocumentStore();
         document.addPage(600, 600, 'split');
@@ -93,6 +110,16 @@ describe('publisher stores', () => {
         expect(colors.lastUsedColor).toBe('#000005');
         expect(colors.recentColors.filter((color) => color === '#000005')).toHaveLength(1);
         expect(colors.recentColors).not.toContain('#000000');
+    });
+
+    it('keeps only current derived page thumbnails', () => {
+        const editor = usePublisherEditorStore();
+        editor.setPageThumbnail('page-1', 'data:image/png;base64,one');
+        editor.setPageThumbnail('page-2', 'data:image/png;base64,two');
+
+        editor.retainPageThumbnails(['page-2']);
+
+        expect(editor.pageThumbnails).toEqual({ 'page-2': 'data:image/png;base64,two' });
     });
 
     it('removes palettes and analysis state for removed image sources', () => {

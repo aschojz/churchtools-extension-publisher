@@ -36,11 +36,11 @@ const settingsFor = (pageId: string) => props.settings.find((entry) => entry.pag
             </header>
 
             <div class="publisher-export-dialog__pages">
-                <article v-for="(page, pageIndex) in pages" :key="page.id" class="publisher-export-page" :class="{ 'is-disabled': !settingsFor(page.id).enabled }">
+                <article v-for="page in pages" :key="page.id" class="publisher-export-page" :class="{ 'is-disabled': !settingsFor(page.id).enabled }">
                     <label class="publisher-export-page__toggle">
                         <input type="checkbox" :checked="settingsFor(page.id).enabled" :disabled="busy" @change="emit('updatePage', page.id, { enabled: ($event.target as HTMLInputElement).checked })" />
                         <span><FontAwesomeIcon :icon="faImage" aria-hidden="true" /></span>
-                        <strong>Seite {{ pageIndex + 1 }}</strong>
+                        <strong>{{ page.name }}</strong>
                         <small>{{ page.width }} × {{ page.height }} px</small>
                     </label>
                     <label class="inspector-field">Format

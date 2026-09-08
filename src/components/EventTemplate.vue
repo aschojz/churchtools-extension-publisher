@@ -145,6 +145,7 @@ const emit = defineEmits<{
     historyChange: [canUndo: boolean, canRedo: boolean];
     layoutChange: [changed: boolean];
     layoutStateChange: [templateId: TemplateId, state: SerializableLayoutState];
+    renderContentChange: [];
     availableElementsChange: [elementIds: LayoutElementId[]];
     layerPositionChange: [position: number, total: number];
     selectionChange: [elementId: LayoutElementId | null];
@@ -701,6 +702,7 @@ const loadCustomImage = (element: LayoutCustomElement) => {
     if (/^https?:\/\//i.test(source)) nextImage.crossOrigin = 'anonymous';
     nextImage.onload = () => {
         customImageNodes.value = { ...customImageNodes.value, [element.id]: nextImage };
+        emit('renderContentChange');
     };
     nextImage.src = source;
 };
@@ -741,6 +743,7 @@ const loadCustomQr = async (element: LayoutCustomElement) => {
         imageNode.onload = () => {
             if (qrRenderRevisions.get(element.id) === revision) {
                 customQrNodes.value = { ...customQrNodes.value, [element.id]: imageNode };
+                emit('renderContentChange');
             }
         };
         imageNode.src = source;
@@ -2749,6 +2752,7 @@ watch(() => props.dataValues, () => {
 }, { deep: true });
 watch(() => imagePaletteStore.revision, () => {
     reloadCurrentCustomQrs();
+    emit('renderContentChange');
     void syncTransformer();
 });
 watch(() => props.draftId, restoreDraftLayouts, { immediate: true });
@@ -2828,6 +2832,28 @@ const exportImage = async ({ format, quality }: PublisherCanvasExportOptions) =>
     }
 };
 
+const renderThumbnail = async (maxWidth = 176, maxHeight = 120) => {
+    await document.fonts.ready;
+    await nextTick();
+    if (isExporting.value) return null;
+    const stage = stageRef.value?.getNode();
+    if (!stage || stage.width() <= 0 || stage.height() <= 0) return null;
+
+    try {
+        isExporting.value = true;
+        await nextTick();
+        await syncTransformer();
+        stage.draw();
+        const pixelRatio = Math.min(1, maxWidth / stage.width(), maxHeight / stage.height());
+        return stage.toDataURL({ pixelRatio, mimeType: 'image/png' });
+    } finally {
+        isExporting.value = false;
+        await nextTick();
+        await syncTransformer();
+        stage.draw();
+    }
+};
+
 defineExpose({
     addElement,
     alignSelectedElement,
@@ -2845,6 +2871,7 @@ defineExpose({
     redoLayout,
     resetLayout,
     resetSelectedElement,
+    renderThumbnail,
     resizeSelectedElement,
     rotateSelectedElement,
     setSelectedElementGeometry,

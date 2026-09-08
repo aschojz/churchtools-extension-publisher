@@ -44,7 +44,7 @@ const createTemplate = (id = 'template-1'): PublisherDesignTemplate => ({
     name: 'Sonntagsfolie',
     pages: [
         {
-            id: 'page-1', width: 1920, height: 1080, templateId: 'split',
+            id: 'page-1', name: 'Titel', width: 1920, height: 1080, templateId: 'split',
             layouts: { split: createLayout() },
             imageFocus: {
                 split: { x: 35, y: 65, zoom: 125 },
@@ -52,7 +52,7 @@ const createTemplate = (id = 'template-1'): PublisherDesignTemplate => ({
             },
         },
         {
-            id: 'page-2', width: 600, height: 600, templateId: 'split',
+            id: 'page-2', name: 'Quadrat', width: 600, height: 600, templateId: 'split',
             layouts: { split: createLayout() },
             imageFocus: {
                 split: { x: 50, y: 50, zoom: 100 },

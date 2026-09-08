@@ -17,8 +17,9 @@ Ein Dokument kann mehrere Seiten mit unterschiedlichen Abmessungen enthalten –
 ## Highlights
 
 - mehrseitige Dokumente mit frei wählbaren Seitengrößen
+- echte Seitenvorschauen, Seitennamen, Duplizieren und frei sortierbare Seiten
 - transparenter Canvas für freie Designs ohne vorherige Terminauswahl
-- wiederverwendbare Layouts und lokale Designvorlagen
+- wiederverwendbare, terminneutrale Designvorlagen in ChurchTools
 - dynamische ChurchTools-Termindaten über Platzhalter
 - nachladbare Daten aus verknüpften Events, Diensten und Anmeldegruppen
 - Grafiktext und Rahmentext mit umfangreichen Zeichen- und Absatzoptionen
@@ -36,7 +37,7 @@ Ein Dokument kann mehrere Seiten mit unterschiedlichen Abmessungen enthalten –
 
 1. Starte mit einer leeren Seite oder wende eine vorhandene Vorlage an.
 2. Lege weitere Seiten in den gewünschten Größen an.
-3. Füge Texte, Bilder, Formen, Icons, Linien oder QR-Codes hinzu.
+3. Füge Texte, Bilder aus ChurchTools-Daten, Formen, Icons, Linien oder QR-Codes hinzu.
 4. Wähle einen ChurchTools-Termin und ziehe die verfügbaren Datenfelder auf den Canvas oder setze sie als Platzhalter in Texte ein.
 5. Lade bei Bedarf verknüpfte Event-, Dienst- oder Anmeldegruppendaten nach.
 6. Ordne Ebenen und Gruppen, passe Farben und Effekte an und exportiere die gewünschten Seiten.
@@ -86,8 +87,9 @@ Der Export behält die exakten Pixelmaße der jeweiligen Seite bei. PNG erhält 
 - Der Publisher liest nur ChurchTools-Daten, die der angemeldete Nutzer sehen darf.
 - Die Auswahl oder Bearbeitung im Publisher verändert den ursprünglichen ChurchTools-Termin nicht.
 - Verknüpfte Daten werden nur auf Wunsch nachgeladen.
-- Eigene Ersatzbilder werden lokal im Browser verarbeitet und nicht in den ChurchTools-Termin hochgeladen.
-- Entwürfe und Designvorlagen werden lokal im Browser gespeichert. Es gibt derzeit keine Cloud-Synchronisation zwischen Geräten oder Nutzern.
+- Eigene Bild-Uploads sind noch nicht aktiviert; vorhandene ChurchTools-Terminbilder und Bildvariablen können verwendet werden.
+- Dokumente werden mit einer eigenen ID und optionalem Terminbezug im Custom Module gespeichert.
+- Designvorlagen werden terminneutral im Custom Module gespeichert. Im Browser liegt nur eine Recovery-Kopie des zuletzt bearbeiteten Dokuments.
 
 ## Voraussetzungen
 
@@ -97,7 +99,7 @@ Der Export behält die exakten Pixelmaße der jeweiligen Seite bei. PNG erhält 
 
 ## Aktueller Entwicklungsstand
 
-Der Publisher befindet sich im Beta-Stadium. Die Kernfunktionen für Mehrseitenlayout, dynamische Termindaten und PNG-/JPEG-Export sind vorhanden. Insbesondere die vollständige mehrseitige Speicherung von Vorlagen, mobile Bedienung, gemeinschaftliche Cloud-Synchronisation, PDF-/SVG-Export und erweiterte Anpassungsfilter sind noch nicht Bestandteil des zugesicherten Funktionsumfangs.
+Der Publisher befindet sich im Beta-Stadium. Die Kernfunktionen für Mehrseitenlayout, dynamische Termindaten, CCM-gespeicherte Dokumente und Vorlagen sowie PNG-/JPEG-Export sind vorhanden. Eigene Bild-Uploads, mobile Bedienung, PDF-/SVG-Export und erweiterte Anpassungsfilter sind noch nicht Bestandteil des zugesicherten Funktionsumfangs.
 
 ## Kategorie und Suchbegriffe
 

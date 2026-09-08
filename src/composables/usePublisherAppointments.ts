@@ -1,17 +1,15 @@
 import type { AppointmentCalculatedWithIncludes } from '@churchtools/api-types';
 import { useAppointmentQuery, useCalendarsQuery } from '@churchtools/vue-query';
 import { storeToRefs } from 'pinia';
-import { computed, watch, type Ref } from 'vue';
+import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue';
 
 import { isAppointmentWithinDays, matchesAppointmentFilters } from '../domain/appointmentFilters';
 import { mapAppointmentToTemplateProps } from '../domain/mapAppointmentToTemplateProps';
-import { findPublisherDraftAppointmentKeys } from '../domain/publisherDraft';
 import { usePublisherAppointmentsStore } from '../stores/publisherAppointments';
 import { useAppointmentsQuery } from './useAppointmentsQuery';
 
 export const usePublisherAppointments = (
-    storage: Storage,
-    draftIndexRevision: Ref<number>,
+    appointmentDocumentKeys: MaybeRefOrGetter<ReadonlySet<string>>,
     locale: string,
     timeZone?: string,
 ) => {
@@ -35,14 +33,7 @@ export const usePublisherAppointments = (
         left.appointment.calculated.startDate.localeCompare(right.appointment.calculated.startDate)));
     const sortedCalendars = computed(() => [...(calendars.value ?? [])].sort((left, right) =>
         left.nameTranslated.localeCompare(right.nameTranslated, locale)));
-    const draftAppointmentKeys = computed(() => {
-        draftIndexRevision.value;
-        try {
-            return findPublisherDraftAppointmentKeys(storage, sortedAppointments.value.map(appointmentKey));
-        } catch {
-            return new Set<string>();
-        }
-    });
+    const draftAppointmentKeys = computed(() => toValue(appointmentDocumentKeys));
     const filteredAppointments = computed(() => sortedAppointments.value.filter(({ appointment }) => {
         const matchesTextAndCalendar = matchesAppointmentFilters({
             title: appointment.base.title,
@@ -78,7 +69,7 @@ export const usePublisherAppointments = (
     };
     const appointmentPanelOptions = computed(() => filteredAppointments.value.map((appointment) => {
         const { base } = appointment.appointment;
-        const draftLabel = draftAppointmentKeys.value.has(appointmentKey(appointment)) ? ' — Entwurf' : '';
+        const draftLabel = draftAppointmentKeys.value.has(appointmentKey(appointment)) ? ' — Dokument' : '';
         return {
             key: appointmentKey(appointment),
             label: `${base.title} — ${formatAppointmentDate(appointment)} — ${base.calendar.nameTranslated}${draftLabel}`,
@@ -89,7 +80,7 @@ export const usePublisherAppointments = (
     })));
 
     watch(
-        [appointmentSearch, selectedCalendarFilter, selectedAppointmentRange, onlyAppointmentsWithDraft, draftIndexRevision],
+        [appointmentSearch, selectedCalendarFilter, selectedAppointmentRange, onlyAppointmentsWithDraft, draftAppointmentKeys],
         () => {
             if (selectedAppointmentKey.value && !filteredAppointments.value.some(
                 (appointment) => appointmentKey(appointment) === selectedAppointmentKey.value,

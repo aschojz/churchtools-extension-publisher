@@ -8,11 +8,15 @@ Eine vollständige Produktbeschreibung steht in [EXTENSION_STORE.md](EXTENSION_S
 
 - Vue 3, TypeScript und Pinia
 - Konva und `vue-konva` für Szenengraph, Interaktion und Export
-- TanStack Vue Query und ChurchTools-Client für Termindaten
+- TanStack Vue Query und ChurchTools-Client für Termin- und CCM-Daten
 - Vitest für Domain-, Store- und Komponententests
 - Playwright für kritische Browser-Interaktionen
 
 Der `PublisherDocumentStore` ist die kanonische Quelle für Seiten, Layoutzustände und Historien. Der `PublisherEditorStore` hält Werkzeug-, Zoom- und seitengebundene Auswahlzustände. Canvas-Gruppen werden rekursiv als echte Konva-Gruppen gerendert; persistierte Daten enthalten ausschließlich serialisierbare Domain-Werte und keine Konva-Nodes.
+
+Dokumente und terminneutrale Vorlagen werden über ein `PublisherRepository` gespeichert. Der produktive Adapter nutzt zwei Custom-Data-Kategorien des Publisher-CCM-Moduls: `publisher_documents` und `publisher_templates`. Dokumente besitzen eine eigene UUID und können optional auf einen Termin verweisen; Vorlagen enthalten nie einen Terminbezug. `localStorage` hält nur den zuletzt bearbeiteten Stand als Recovery-Kopie und ist nicht mehr die Vorlagen- oder Dokumentquelle.
+
+Eigene Bild-Uploads sind bis zu einem offiziellen ChurchTools-Speicherpfad bewusst deaktiviert. Die Einstiegspunkte bleiben sichtbar und erklären den kommenden Funktionsumfang per Toast. Bereits vorhandene ChurchTools-Terminbilder und Bildvariablen können weiterhin verwendet werden.
 
 ## Lokale Entwicklung
 
@@ -52,7 +56,10 @@ npx playwright install chromium
 - Neue Dokumente und Seiten starten leer und transparent.
 - Ein Terminwechsel ersetzt nur den Datenkontext und niemals das Layout.
 - Seiten dürfen unterschiedliche Größen besitzen und liegen untereinander auf einer gemeinsamen zoombaren Arbeitsfläche.
+- Seiten besitzen echte Canvas-Vorschauen und können benannt, dupliziert sowie per Drag-and-drop sortiert werden.
 - Bilder werden im Cover-Modus zugeschnitten; Icons und QR-Codes bleiben proportional.
 - Vorlagen speichern das vollständige mehrseitige Dokument und behalten dynamische Daten- und Farbbindungen.
+- Vorlagen sind terminneutral; nur gespeicherte Dokumente dürfen optional einen Terminbezug besitzen.
+- ChurchTools ist die Quelle für Dokumente und Vorlagen, der Browser hält lediglich eine Recovery-Kopie.
 - Gruppenhierarchie, Ebenen-Inspector und Canvas verwenden denselben rekursiven Szenengraphen.
 - PNG- und JPEG-Ausgaben werden pro Seite konfiguriert und gemeinsam als ZIP exportiert.

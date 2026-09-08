@@ -20,20 +20,12 @@ import DesignIconButton from '../design/DesignIconButton.vue';
 defineProps<{ disabled: boolean }>();
 const emit = defineEmits<{
     add: [kind: Exclude<LayoutCustomElementKind, 'image' | 'text'>];
-    addImage: [file: File];
+    addImage: [];
     addIcon: [iconName: PublisherIconName];
     addQr: [];
     addText: [mode: LayoutTextMode];
 }>();
-const imageInput = ref<HTMLInputElement | null>(null);
 const iconMenuOpen = ref(false);
-const chooseImage = () => imageInput.value?.click();
-const handleImage = (event: Event) => {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (file) emit('addImage', file);
-    input.value = '';
-};
 const chooseIcon = (iconName: PublisherIconName) => {
     emit('addIcon', iconName);
     iconMenuOpen.value = false;
@@ -54,7 +46,7 @@ const chooseIcon = (iconName: PublisherIconName) => {
             :icon="faParagraph"
             @click="emit('addText', 'frame')"
         />
-        <DesignIconButton label="Bild hinzufügen" :disabled="disabled" :icon="faImage" @click="chooseImage" />
+        <DesignIconButton label="Bild hinzufügen" :disabled="disabled" :icon="faImage" @click="emit('addImage')" />
         <span class="publisher-toolrail__separator" aria-hidden="true" />
         <DesignIconButton
             label="Quadrat hinzufügen"
@@ -98,13 +90,5 @@ const chooseIcon = (iconName: PublisherIconName) => {
                 <FontAwesomeIcon :icon="item.icon" aria-hidden="true" />
             </button>
         </div>
-        <input
-            ref="imageInput"
-            hidden
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            :disabled="disabled"
-            @change="handleImage"
-        />
     </div>
 </template>

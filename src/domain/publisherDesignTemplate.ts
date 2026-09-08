@@ -1,5 +1,5 @@
 import { createImageFocusByTemplate } from './imageFocus';
-import { clonePublisherPage, type PublisherPage } from './publisherPage';
+import { clonePublisherPage, MAX_PUBLISHER_PAGE_NAME_LENGTH, type PublisherPage } from './publisherPage';
 import {
     isPublisherFiniteNumber,
     isPublisherRecord,
@@ -42,8 +42,9 @@ const parseTemplateMetadata = (value: Record<string, unknown>) => {
     };
 };
 
-const parseTemplatePage = (value: unknown): PublisherPage | null => {
+const parseTemplatePage = (value: unknown, pageIndex: number): PublisherPage | null => {
     if (!isPublisherRecord(value) || typeof value.id !== 'string' || !value.id ||
+        (value.name !== undefined && (typeof value.name !== 'string' || !value.name.trim() || value.name.length > MAX_PUBLISHER_PAGE_NAME_LENGTH)) ||
         !isPublisherFiniteNumber(value.width) || !isPublisherFiniteNumber(value.height) ||
         value.width < 64 || value.height < 64 || value.width > 8192 || value.height > 8192 ||
         !isTemplateId(value.templateId) || !isPublisherRecord(value.layouts)) return null;
@@ -60,6 +61,7 @@ const parseTemplatePage = (value: unknown): PublisherPage | null => {
     }
     return {
         id: value.id,
+        name: typeof value.name === 'string' ? value.name.trim() : `Seite ${pageIndex + 1}`,
         width: Math.round(value.width),
         height: Math.round(value.height),
         templateId: value.templateId,
@@ -68,15 +70,15 @@ const parseTemplatePage = (value: unknown): PublisherPage | null => {
     };
 };
 
-const parseDesignTemplate = (value: unknown): PublisherDesignTemplate | null => {
+export const parsePublisherDesignTemplate = (value: unknown): PublisherDesignTemplate | null => {
     if (!isPublisherRecord(value)) return null;
     const metadata = parseTemplateMetadata(value);
     if (!metadata || !Array.isArray(value.pages) || value.pages.length === 0 ||
         value.pages.length > MAX_PUBLISHER_DESIGN_TEMPLATE_PAGES || typeof value.activePageId !== 'string') return null;
     const pages: PublisherPage[] = [];
     const pageIds = new Set<string>();
-    for (const candidate of value.pages) {
-        const page = parseTemplatePage(candidate);
+    for (const [pageIndex, candidate] of value.pages.entries()) {
+        const page = parseTemplatePage(candidate, pageIndex);
         if (!page || pageIds.has(page.id)) return null;
         pageIds.add(page.id);
         pages.push(page);
@@ -100,6 +102,7 @@ const parseLegacyDesignTemplate = (value: unknown): PublisherDesignTemplate | nu
         ...metadata,
         pages: [{
             id: pageId,
+            name: 'Seite 1',
             width: 1920,
             height: 1080,
             templateId: value.baseTemplateId,
@@ -116,7 +119,7 @@ export const parsePublisherDesignTemplateLibrary = (value: string | null): Publi
         const parsed: unknown = JSON.parse(value);
         if (!isPublisherRecord(parsed) || (parsed.version !== 1 && parsed.version !== PUBLISHER_DESIGN_TEMPLATE_LIBRARY_VERSION) ||
             !Array.isArray(parsed.templates) || parsed.templates.length > MAX_PUBLISHER_DESIGN_TEMPLATES) return null;
-        const parseEntry = parsed.version === 1 ? parseLegacyDesignTemplate : parseDesignTemplate;
+        const parseEntry = parsed.version === 1 ? parseLegacyDesignTemplate : parsePublisherDesignTemplate;
         const templates: PublisherDesignTemplate[] = [];
         const ids = new Set<string>();
         for (const candidate of parsed.templates) {
@@ -152,7 +155,7 @@ export const savePublisherDesignTemplate = (
     storage: Pick<Storage, 'getItem' | 'setItem'>,
     template: PublisherDesignTemplate,
 ) => {
-    const parsedTemplate = parseDesignTemplate(template);
+    const parsedTemplate = parsePublisherDesignTemplate(template);
     const templates = loadPublisherDesignTemplates(storage);
     if (!parsedTemplate) throw new Error('Das aktuelle Dokument enthält ungültige Vorlagendaten.');
     if (!templates) throw new Error('Die gespeicherte Vorlagenbibliothek ist ungültig.');

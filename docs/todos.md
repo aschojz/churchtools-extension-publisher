@@ -1,7 +1,6 @@
-- Vorlagen sollen nicht auf eine Seite beschränkt sein, sondern immer alle Seiten beinhalten. Beim Anwenden einer Vorlage werden immer genau die definierten Seiten und Größen der Vorlage genutzt. Ist bereits ein Termin ausgewählt bleibt er das und die Variablen werden entsprechend in das Template eingefügt
 - Verläufe sollen ein handle im canva bekommen, wodurch die Richtung und länge leichter bearbeitbar ist
+- Eigene Bild-Uploads wieder aktivieren, sobald ein offizieller CCM-/ChurchTools-Assetpfad mit stabilen IDs und passenden Berechtigungen verfügbar ist
 - wenn ein element komplett den canvas füllt, werden die handles abgeschnitten
-- wenn ich eine andere Seite fokusiere, verlieren alle anderen Elemente auf anderen Seiten ihren Fokus bzw select-status inkl handles
 - bei den Bild-Farben werden gerade drei speziell herausgestellt, das soll nicht mehr extra passieren sondern innerhalb der 9 Farbfelder werden die besonders ausgezeichnet. Dadurch ist es auch möglich die Primärfarbe usw manuell zu ändern. wie genau diese Auswahl stattfindet, weiß ich gerade auch noch nicht.
 - Die Standard-Farb-Felder sollten ein bisschen erweitert werden
 - Im ebenen-Inspektor soll es die Möglcihkeit geben "Filter"-Ebenen durch den Sticky-Footer hinzuzufügen, wie zb. Kontrast-Anpassungen, Farb-Veränderungen usw. Schau was Konva da bereits anbietet und genutzt werden kann. Die Reihenfolge der Buttons soll Effekte, Filter, Locken, Löschen sein

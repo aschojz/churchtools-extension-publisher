@@ -34,6 +34,7 @@ import type { TemplateId } from './templates';
 import { DOCUMENT_HEIGHT, DOCUMENT_WIDTH } from '../utils/stageDimensions';
 import { isPublisherIconName } from './publisherIcons';
 import { normalizeLayoutGradient, type LayoutGradient } from './layoutGradient';
+import { MAX_PUBLISHER_PAGE_NAME_LENGTH } from './publisherPage';
 
 export const PUBLISHER_DRAFT_VERSION = 1;
 export const publisherDraftStorageKey = (appointmentKey: string) =>
@@ -54,6 +55,7 @@ export interface PublisherDraft {
 
 export interface PublisherDraftPage {
     id: string;
+    name?: string;
     width: number;
     height: number;
     templateId: TemplateId;
@@ -542,6 +544,7 @@ export const parsePublisherImageFocus = (value: unknown): ImageFocusByTemplate |
 
 const parseDraftPage = (value: unknown): PublisherDraftPage | null => {
     if (!isRecord(value) || typeof value.id !== 'string' || !value.id ||
+        (value.name !== undefined && (typeof value.name !== 'string' || !value.name.trim() || value.name.length > MAX_PUBLISHER_PAGE_NAME_LENGTH)) ||
         !isFiniteNumber(value.width) || !isFiniteNumber(value.height) ||
         value.width < 64 || value.height < 64 || value.width > 8192 || value.height > 8192 ||
         (value.templateId !== 'split' && value.templateId !== 'poster') || !isRecord(value.layouts)) {
@@ -564,6 +567,7 @@ const parseDraftPage = (value: unknown): PublisherDraftPage | null => {
     }
     return {
         id: value.id,
+        ...(typeof value.name === 'string' ? { name: value.name.trim() } : {}),
         width: Math.round(value.width),
         height: Math.round(value.height),
         templateId: value.templateId,

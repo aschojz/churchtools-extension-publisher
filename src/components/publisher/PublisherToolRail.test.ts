@@ -11,6 +11,7 @@ describe('PublisherToolRail', () => {
 
         await wrapper.get('[aria-label="Grafiktext hinzufügen"]').trigger('click');
         await wrapper.get('[aria-label="Rahmentext hinzufügen"]').trigger('click');
+        await wrapper.get('[aria-label="Bild hinzufügen"]').trigger('click');
         await wrapper.get('[aria-label="Kreis hinzufügen"]').trigger('click');
         await wrapper.get('[aria-label="Strich hinzufügen"]').trigger('click');
         await wrapper.get('[aria-label="Font-Awesome-Icon hinzufügen"]').trigger('click');
@@ -18,6 +19,7 @@ describe('PublisherToolRail', () => {
         await wrapper.get('[aria-label="QR-Code hinzufügen"]').trigger('click');
 
         expect(wrapper.emitted('addText')).toEqual([['graphic'], ['frame']]);
+        expect(wrapper.emitted('addImage')).toEqual([[]]);
         expect(wrapper.emitted('add')).toEqual([['circle'], ['line']]);
         expect(wrapper.emitted('addIcon')).toEqual([['church']]);
         expect(wrapper.emitted('addQr')).toEqual([[]]);
@@ -27,6 +29,6 @@ describe('PublisherToolRail', () => {
         const wrapper = mount(PublisherToolRail, { props: { disabled: true } });
 
         expect(wrapper.findAll('button').every((button) => button.attributes('disabled') !== undefined)).toBe(true);
-        expect(wrapper.get('input[type="file"]').attributes('disabled')).toBeDefined();
+        expect(wrapper.get('[aria-label="Bild hinzufügen"]').attributes('disabled')).toBeDefined();
     });
 });

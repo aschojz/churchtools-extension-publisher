@@ -1,18 +1,22 @@
 <script setup lang="ts">
 import { MAX_PUBLISHER_DESIGN_TEMPLATE_NAME_LENGTH, type PublisherDesignTemplate } from '../../../domain/publisherDesignTemplate';
+import type { PublisherDocumentRecord } from '../../../domain/publisherRepository';
 import { TEMPLATE_OPTIONS, type TemplateId } from '../../../domain/templates';
 import DesignButton from '../../design/DesignButton.vue';
-import DesignFileButton from '../../design/DesignFileButton.vue';
 
 defineProps<{
+    activeDocumentId: string;
     designTemplates: PublisherDesignTemplate[];
+    documentName: string;
+    documents: PublisherDocumentRecord[];
     draftError: string;
     draftStatus: string;
     error: string;
-    hasLocalDraft: boolean;
     name: string;
     selectedDesignTemplateId: string;
     selectedTemplateId: TemplateId;
+    storageMessage: string;
+    storageStatus: string;
     status: string;
 }>();
 
@@ -20,10 +24,12 @@ const emit = defineEmits<{
     applyDesign: [template: PublisherDesignTemplate];
     applyStandard: [templateId: TemplateId];
     deleteDesign: [template: PublisherDesignTemplate];
-    deleteDraft: [];
-    exportDraft: [];
-    importDraft: [event: Event];
+    deleteDocument: [document: PublisherDocumentRecord];
+    newDocument: [];
+    openDocument: [document: PublisherDocumentRecord];
+    saveDocument: [];
     saveDesign: [template?: PublisherDesignTemplate];
+    'update:documentName': [value: string];
     'update:name': [value: string];
 }>();
 </script>
@@ -52,8 +58,29 @@ const emit = defineEmits<{
             <p v-else class="inspector-empty">Noch keine eigenen Vorlagen gespeichert.</p>
         </div>
         <div class="inspector-section">
-            <h3>Lokaler Entwurf</h3><p>Änderungen werden automatisch in diesem Browser gespeichert.</p><p v-if="draftStatus" class="local-draft__status" role="status">{{ draftStatus }}</p><p v-if="draftError" class="local-draft__error" role="alert">{{ draftError }}</p>
-            <div class="inspector-action-stack"><DesignButton variant="secondary" @click="emit('exportDraft')">Entwurf herunterladen</DesignButton><DesignFileButton class="local-draft__import" accept="application/json,.json" @change="emit('importDraft', $event)">Entwurf importieren</DesignFileButton><DesignButton variant="secondary" :disabled="!hasLocalDraft" @click="emit('deleteDraft')">Entwurf löschen</DesignButton></div>
+            <h3>Dokumente</h3><p>Dokumente werden automatisch in ChurchTools gespeichert und können optional mit einem Termin verbunden sein.</p>
+            <form class="design-template-create" @submit.prevent="emit('saveDocument')">
+                <label class="inspector-field">Dokumentname<input :value="documentName" maxlength="80" placeholder="Unbenanntes Dokument" @input="emit('update:documentName', ($event.target as HTMLInputElement).value)" /></label>
+                <DesignButton type="submit" :disabled="storageStatus === 'saving'">Jetzt speichern</DesignButton>
+                <DesignButton variant="secondary" :disabled="storageStatus === 'saving'" @click="emit('newDocument')">Neues Dokument</DesignButton>
+            </form>
+            <p class="local-draft__status" role="status">{{ storageMessage }}</p>
+            <p v-if="draftStatus && draftStatus !== storageMessage" class="local-draft__status" role="status">{{ draftStatus }}</p>
+            <p v-if="draftError" class="local-draft__error" role="alert">{{ draftError }}</p>
+            <div v-if="documents.length" class="design-template-list" aria-label="Gespeicherte Dokumente">
+                <article v-for="document in documents" :key="document.id" :class="{ 'is-active': activeDocumentId === document.id }">
+                    <div>
+                        <strong>{{ document.name }}</strong>
+                        <small>{{ document.appointment ? `Termin ${document.appointment.appointmentId} · ${document.appointment.occurrenceStart}` : 'Ohne Termin' }}</small>
+                    </div>
+                    <span v-if="activeDocumentId === document.id" class="design-template-list__active">Geöffnet</span>
+                    <div class="design-template-list__actions">
+                        <DesignButton variant="secondary" size="compact" :disabled="storageStatus === 'saving' || activeDocumentId === document.id" @click="emit('openDocument', document)">Öffnen</DesignButton>
+                        <DesignButton variant="danger" size="compact" @click="emit('deleteDocument', document)">Löschen</DesignButton>
+                    </div>
+                </article>
+            </div>
+            <p v-else class="inspector-empty">Noch keine Dokumente in ChurchTools gespeichert.</p>
         </div>
     </section>
 </template>

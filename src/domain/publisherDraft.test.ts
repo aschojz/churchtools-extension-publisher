@@ -167,6 +167,7 @@ describe('publisher draft', () => {
         draft.pages = [
             {
                 id: 'page-full-hd',
+                name: 'Hauptfolie',
                 width: 1920,
                 height: 1080,
                 templateId: 'split',
@@ -175,6 +176,7 @@ describe('publisher draft', () => {
             },
             {
                 id: 'page-square',
+                name: 'Social Media',
                 width: 600,
                 height: 600,
                 templateId: 'poster',
@@ -183,6 +185,7 @@ describe('publisher draft', () => {
             },
             {
                 id: 'page-banner',
+                name: 'Website-Banner',
                 width: 1920,
                 height: 300,
                 templateId: 'split',

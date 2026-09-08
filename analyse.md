@@ -1,12 +1,12 @@
 # Technische und konzeptionelle Analyse des ChurchTools Publisher
 
-Stand: 7. September 2026  
-Untersuchter Stand: Audit auf Basis von Commit `66affa4`, Fundament-Umsetzung auf Basis von `a02005c`
-Status: Audit plus Umsetzung der vier priorisierten Fundamente
+Stand: 8. September 2026
+Untersuchter Stand: Audit auf Basis von Commit `66affa4`, Fundament-Umsetzung auf Basis von `a02005c`, CCM-Persistenz auf Basis von `1bacd72`
+Status: Audit plus Umsetzung der priorisierten Architektur- und Persistenzgrundlagen
 
 ## Kurzfazit
 
-Der Publisher ist kein kleiner Prototyp mehr, auch wenn README und Teile des Datenmodells ihn noch so behandeln. Er ist bereits ein umfangreicher Mehrseiten-Editor mit eigener Szenenlogik, Hierarchie, Auto-Layout, Datenbindungen, dynamischen Farben, Effekten, lokaler Persistenz und Export-Pipeline. Die fachliche Breite ist gut erkennbar und viele pure Domain-Funktionen sind ordentlich getestet.
+Der Publisher ist kein kleiner Prototyp mehr, auch wenn Teile des Datenmodells noch aus dieser Phase stammen. Er ist bereits ein umfangreicher Mehrseiten-Editor mit eigener Szenenlogik, Hierarchie, Auto-Layout, Datenbindungen, dynamischen Farben, Effekten, CCM-Persistenz und Export-Pipeline. Die fachliche Breite ist gut erkennbar und viele pure Domain-Funktionen sind ordentlich getestet.
 
 Die zuvor größten strukturellen Risiken wurden mit den vier Fundamenten gezielt reduziert: Der persistierbare Dokumentzustand und die Auswahl besitzen nun kanonische Stores, Vorlagen bilden vollständige Mehrseitendokumente ab und Gruppen werden als echte Canvas-Knoten gerendert. Die verbleibenden Hauptrisiken liegen in der Größe des Canvas-Orchestrators, der Speicherung großer Bild-Assets, der Barrierefreiheit komplexer Interaktionen und der noch schmalen visuellen Regressionstest-Abdeckung.
 
@@ -24,7 +24,7 @@ Vor einem weiteren größeren Feature-Ausbau wurden vier Fundamente stabilisiert
 3. **Rekursiver Canvas-Szenengraph:** `LayoutGroup` wird rekursiv als echter Konva-Gruppenknoten gerendert. Gruppendrag bewegt einen Container und schreibt erst am Ende die Kindgeometrie zurück. Gruppenrotation ist persistierbar. Schatten, Unschärfe, Deckkraft und Mischmodus können am kompositierten Gruppenknoten liegen, ohne die Effekte auf Kinder zu kopieren.
 4. **Browser-Regressionstests:** Playwright mit Chromium ist eingerichtet. Die erste Suite prüft leeren Start, frei dimensionierte leere Seiten, seitengebundene Auswahl, Gruppenziel/-effekte und den Roundtrip einer mehrseitigen Dokumentvorlage.
 
-Diese Umsetzung beseitigt nicht alle nachfolgenden Findings. Insbesondere Asset-Persistenz in IndexedDB, Thumbnails und weitere visuelle Regressionstests bleiben eigenständige Ausbauschritte.
+Diese Umsetzung beseitigt nicht alle nachfolgenden Findings. Insbesondere ein offizieller ChurchTools-Assetpfad und weitere visuelle Regressionstests bleiben eigenständige Ausbauschritte.
 
 ## Bewertungsübersicht
 
@@ -33,13 +33,13 @@ Diese Umsetzung beseitigt nicht alle nachfolgenden Findings. Insbesondere Asset-
 | Funktionsumfang | stark | Mehrere Seitengrößen, Canvas-Elemente, Termindaten, Bindungen, Gruppen, Auto-Layout, Farben, Effekte und Export sind vorhanden. |
 | Domain-Modell | mittel bis gut | Seiten, Layouts und rekursive Gruppen besitzen gemeinsame serialisierbare Modelle; einige ältere Spezialpfade und der große Canvas-Orchestrator bleiben. |
 | Zustandsmanagement | mittel bis gut | Pinia ist die kanonische Quelle für Dokument, Historie und seitengebundene Auswahl; lokale UI-Zustände bleiben bewusst in Komponenten. |
-| Persistenz | mittel | Mehrseitige Vorlagen nutzen Version 2 mit Migration und Fehlerisolation; große Bild-Data-URLs in `localStorage` bleiben problematisch. |
+| Persistenz | mittel bis gut | Dokumente und terminneutrale Vorlagen verwenden eine austauschbare CCM-Repository-Schicht; `localStorage` enthält nur eine Recovery-Kopie. Der offizielle Assetpfad ist noch offen. |
 | Canvas-Interaktion | mittel | Echte rekursive Gruppen und Browser-Regressionstests stabilisieren die Kernpfade; weitere Handle-, Zoom- und DnD-Szenarien fehlen noch. |
 | UI-Konsistenz | mittel | Design-Komponenten und ein konsistenter Grundaufbau existieren, einzelne Glyphen, Dialoge, Tabs und Responsive-Verhalten weichen ab. |
 | Barrierefreiheit | ausbaufähig | Viele Beschriftungen sind vorhanden; Canvas, Drag-and-drop, Tabs und modale Fokusführung sind nicht vollständig zugänglich. |
-| Testabdeckung | mittel bis gut | 35 Vitest-Dateien mit 191 Tests sowie fünf grüne Playwright-Kernflüsse; visuelle und breitere Interaktionsregressionen fehlen noch. |
-| Build und Performance | mittel | Build funktioniert; Hauptchunk und mehrere synchrone Vollzustandsoperationen werden bei größeren Dokumenten problematisch. |
-| Sicherheit und Datenschutz | mittel | Kein Server-Schreibpfad, aber Abhängigkeitswarnungen und potenziell clientseitig eingebettete Dev-Zugangsdaten. |
+| Testabdeckung | mittel bis gut | 38 Vitest-Dateien mit 199 Tests sowie sieben grüne Playwright-Kernflüsse; visuelle und breitere Interaktionsregressionen fehlen noch. |
+| Build und Performance | mittel | Build funktioniert; der Hauptchunk und mehrere synchrone Vollzustandsoperationen werden bei größeren Dokumenten problematisch. |
+| Sicherheit und Datenschutz | mittel | CCM-Schreibzugriffe liegen hinter einem Repository-Adapter; Rechte- und Konfliktverhalten müssen noch an einer echten ChurchTools-Instanz validiert werden. Abhängigkeitswarnungen bleiben offen. |
 | Dokumentation und Release-Reife | mittel | README, `AGENTS.md`, Audit und Store-Beschreibung sind aktualisiert; Versionierung, Changelog und Releaseprozess bleiben prototypisch. |
 
 ## Untersuchungsumfang
@@ -72,7 +72,7 @@ Ein lokaler Smoke-Test wurde mit leerem Dokument und einer eingebauten Standardv
 ### Elemente
 
 - Grafiktext und Rahmentext
-- lokale Bilder sowie bildgebundene Terminfelder
+- bildgebundene Terminfelder; eigene Upload-Einstiege sind bis zum ChurchTools-Assetpfad als „Kommt noch“ markiert
 - Rechteck, Kreis, Dreieck und Linie
 - Font-Awesome-Icons
 - QR-Codes mit Datenbindung
@@ -98,8 +98,8 @@ Ein lokaler Smoke-Test wurde mit leerem Dokument und einer eingebauten Standardv
 - Linkwerte als QR-Code
 - verknüpfte Events und Anmeldegruppen werden angezeigt und auf Wunsch nachgeladen
 - Dienste eines Events werden über Stammdaten lesbar benannt und als Personenliste bereitgestellt
-- zwei eingebaute Standardlayouts und lokale benutzerdefinierte Designvorlagen
-- lokale, terminbezogene Entwürfe sowie JSON-Import und -Export
+- zwei eingebaute Standardlayouts und terminneutrale, über CCM gespeicherte Designvorlagen
+- über CCM gespeicherte Dokumente mit optionalem Terminbezug und lokaler Recovery-Kopie
 
 ### Ausgabe
 
@@ -136,14 +136,14 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** `rotation` validieren, normalisieren und in `parseLayoutGroups()` übernehmen. Roundtrip-Tests für tief verschachtelte Gruppen mit Rotation in Draft und Designvorlage ergänzen. Da dies ein persistiertes Schema betrifft, Migration und Versionsstrategie festlegen.
 
-### P0 – Große lokale Bilder passen nicht zum Persistenzmodell
+### Vorläufig behoben – Große lokale Bilder passten nicht zum Persistenzmodell
 
-**Status:** im Code bestätigt; der konkrete Speicherausfall hängt vom Browserlimit ab.  
-**Evidenz:** Eigene Canvas-Bilder dürfen bis zu 20 MB groß sein und werden als Data-URL in das Layoutelement geschrieben (`src/domain/localImageOverride.ts:1-18`, `src/App.vue:363-377`). Entwürfe und Vorlagen serialisieren das gesamte Layout synchron nach `localStorage` (`src/App.vue:423-439`, `src/domain/publisherDesignTemplate.ts:94-123`). Der JSON-Import akzeptiert dagegen höchstens 1 MB (`src/App.vue:827-837`).
+**Status:** Neue eigene Bild-Uploads sind deaktiviert und durch einen erklärenden Toast ersetzt. Dokumente und Vorlagen werden über CCM gespeichert; `localStorage` enthält nur noch die letzte Recovery-Kopie. Ein offizieller ChurchTools-Assetpfad bleibt offen.
+**Evidenz:** Werkzeugleiste und Termindaten behalten die sichtbaren Bildaktionen, senden aber keine Datei mehr an einen `FileReader`; beide zeigen denselben Hinweis auf den kommenden ChurchTools-Upload. Der produktive Speicherpfad liegt hinter `PublisherRepository`, während `publisherRecovery.ts` genau ein Dokument lokal vorhält.
 
-**Auswirkung:** Bereits ein einziges zugelassenes Bild kann die übliche `localStorage`-Quota überschreiten. Speichern schlägt dann nur mit einer allgemeinen UI-Meldung fehl. Gleichzeitig kann ein exportierter Entwurf wegen seines enthaltenen Bildes größer als das eigene Importlimit werden. Verlaufssnapshots vervielfachen zusätzlich den Speicherbedarf im RAM.
+**Auswirkung:** Neu erzeugte Dokumente enthalten keine lokalen Bild-Data-URLs mehr. Bis ein offizieller Assetpfad existiert, können nur bereits in ChurchTools verfügbare Terminbilder und Bildvariablen eingesetzt werden.
 
-**Empfehlung:** Bilder in IndexedDB als Blob beziehungsweise optimiertes Asset speichern und im Dokument nur eine Asset-ID halten. Vorher Bilddimensionen decodieren, gegebenenfalls verlustarm verkleinern und ein reales Speicherbudget anzeigen. Upload-, Draft- und Importlimits vereinheitlichen. Quota-Fehler als solche benennen.
+**Empfehlung:** Den Upload erst wieder aktivieren, wenn CCM beziehungsweise eine andere offizielle ChurchTools-Domain stabile Asset-IDs, Berechtigungen und abrufbare Export-URLs anbietet. Die Wiki-Files-API nicht ohne bewusste Entscheidung als technischen Container zweckentfremden.
 
 ### Stabilisiert – Pinia war nicht die kanonische Editorquelle
 
@@ -190,14 +190,14 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Eingebaute Layouts als Seed-Einträge desselben Dokumentvorlagenmodells behandeln. Eine leere Seite besitzt einen leeren Root-Szenengraphen, keine gelöschten unsichtbaren Standardknoten.
 
-### P1 – Entwurfsmodell widerspricht der terminunabhängigen Arbeitsweise
+### Behoben – Entwurfsmodell widersprach der terminunabhängigen Arbeitsweise
 
-**Status:** im Code bestätigt; teilweise bewusste Produktentscheidung.  
-**Evidenz:** `saveCurrentDraft()` speichert ausschließlich mit ausgewähltem Termin (`src/App.vue:423-426`). Der Start ohne Termin ist möglich, wird aber nicht automatisch persistiert. Beim Terminwechsel wird aus einem gefundenen Entwurf nur `templateOverrides` übernommen; Seiten und Layout werden ausdrücklich beibehalten (`src/App.vue:482-505`).
+**Status:** Dokumente besitzen eine eigene UUID, werden auch ohne Termin gespeichert und referenzieren einen Termin nur optional. Das Öffnen eines Dokuments ist eine eigene, explizite Aktion.
+**Evidenz:** `PublisherDocumentRecord` enthält eine eigene UUID und eine nullable `PublisherAppointmentReference`. Der CCM-Adapter speichert Dokumente in `publisher_documents`, Vorlagen separat in `publisher_templates`; die Oberfläche bietet explizites Öffnen und einen Termin kann sie wieder lösen.
 
-**Auswirkung:** Freie Dokumente können unbemerkt verloren gehen. Gleichzeitig suggeriert „Entwurf pro Termin“, dass ein Termin seinen Dokumentstand wieder öffnet, obwohl der Wechsel dies absichtlich nicht tut. Der Filter „nur Termine mit Entwurf“ verstärkt diese Erwartung.
+**Auswirkung:** Freie und terminbezogene Dokumente folgen demselben Speicherpfad. Ein Terminwechsel aktualisiert weiterhin nur den Datenkontext und öffnet kein anderes Dokument.
 
-**Empfehlung:** Dokumente unabhängig vom Termin mit eigener Dokument-ID speichern. Ein Dokument referenziert optional einen Termin. Terminwechsel tauscht den Datenkontext, „Entwurf öffnen“ ist eine separate explizite Aktion. Autosave auch ohne Termin anbieten.
+**Empfehlung:** Bei der kommenden CCM-API besonders Einzelabruf, serverseitige Filter, Eigentümer/Berechtigungen und atomare Revisionsprüfung ergänzen; der Repository-Vertrag kann diese Fähigkeiten später aufnehmen.
 
 ### Behoben – Entwurf löschen erzeugte ein implizites Standardlayout
 
@@ -208,19 +208,19 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** ausschließlich eine zentrale `createBlankPage()`-Action verwenden. Löschen bestätigen, vom Zurücksetzen des aktuellen Dokuments trennen und idealerweise über Papierkorb/Undo wiederherstellbar machen.
 
-### P1 – Seitenvorschauen sind keine Vorschauen
+### Behoben – Seitenvorschauen waren keine Vorschauen
 
-**Status:** im lokalen Smoke-Test bestätigt.  
-**Evidenz:** `PublisherPagesPanel` erhält nur den globalen Termintitel. Die Karte zeigt abhängig davon einen stilisierten Titel oder „Leere Seite“, aber keinen Seiteninhalt (`src/components/publisher/PublisherPagesPanel.vue:10-12, 33-39`; `src/App.vue:1008-1010`). Nach Anwenden der Standardvorlage ohne Termin blieb die Vorschau „Leere Seite“, obwohl der Canvas Inhalt hatte.
+**Status:** behoben; jede gemountete Canvas-Seite erzeugt verzögert eine kleine, nicht interaktive PNG-Vorschau ohne Auswahlrahmen oder Handles.
+**Evidenz:** `EventTemplate.renderThumbnail()` rastert den aktuellen Szenengraphen unabhängig von der Zoomstufe. `PublisherWorkspaceContent` aktualisiert die abgeleiteten Vorschauen seitenbezogen nach Layout-, Daten- und Bildänderungen. `PublisherPagesPanel` zeigt diese Vorschau auf dem transparenten Karomuster.
 
-**Auswirkung:** Bei mehreren Seiten können Karten identisch oder sachlich falsch aussehen. Navigation wird gerade bei unterschiedlichen Formaten und ähnlichen Seiten unsicher.
+**Auswirkung:** Seiten mit unterschiedlichen Inhalten und Formaten sind in der Übersicht direkt unterscheidbar. Die Data-URLs bleiben abgeleiteter UI-Zustand und werden nicht mit dem Dokument persistiert.
 
-**Empfehlung:** verzögert pro Seite ein kleines, nicht interaktives Thumbnail aus dem Szenengraphen rendern und nur nach Änderungen dieser Seite erneuern. Seiten zusätzlich benennbar, duplizierbar und per Drag-and-drop sortierbar machen.
+**Umsetzung:** Seitennamen, tiefes Duplizieren und Reihenfolge sind Store-Actions. Die Sortierung funktioniert per Drag-and-drop sowie über Pfeiltasten am Drag-Handle; Namen, Reihenfolge und Duplikate werden mit Dokumenten und Vorlagen gespeichert.
 
 ### Stabilisiert – Kritische Canvas-Flows hatten keine Browserabdeckung
 
 **Status:** Playwright und eine erste kritische Chromium-Suite sind eingerichtet; Handle-, Zoom-, Export- und visuelle Regressionen sollten als nächste Fälle ergänzt werden.
-**Evidenz:** 35 Vitest-Dateien mit 184 Tests sind vorhanden, aber keine direkten Tests für `EventTemplate.vue`, `App.vue`, `PublisherWorkspaceContent.vue`, `PublisherPagesPanel.vue`, `TemplateInspector.vue`, `LayoutEffectsDialog.vue` oder die editierbaren Canvas-Elemente. Es gibt keinen E2E-, visuellen Regression- oder Accessibility-Runner.
+**Evidenz:** 38 Vitest-Dateien mit 199 Tests sowie sieben Playwright-Flows sind vorhanden. `PublisherPagesPanel` besitzt nun einen direkten Komponententest; für `EventTemplate.vue`, `App.vue`, `PublisherWorkspaceContent.vue`, `TemplateInspector.vue`, `LayoutEffectsDialog.vue` und die editierbaren Canvas-Elemente fehlen weiterhin gezielte isolierte beziehungsweise visuelle Tests.
 
 **Auswirkung:** Genau die gemeldeten Fehler – Handles am Rand, Gruppendrag und Snapping, Trackpad-Zoom, Seitenwechsel, Canvas-/Ebenenhierarchie, Export mit realen Bildern – liegen außerhalb der verlässlichen Tests. jsdom simuliert Konva-Geometrie und Pointergesten nicht ausreichend.
 
@@ -274,11 +274,11 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 ### P2 – Verlaufshistorie und Autosave skalieren schlecht
 
 **Status:** aus Implementierung abgeleitet.  
-**Evidenz:** Bis zu 50 vollständige Layoutzustände werden tief kopiert. Gleichheit wird synchron über `JSON.stringify` geprüft (`src/domain/layoutHistory.ts:79-94`). Fast jede Layoutänderung klont die Seite und serialisiert anschließend das gesamte mehrseitige Dokument synchron in `localStorage` (`src/App.vue:575-582, 423-439`).
+**Evidenz:** Bis zu 50 vollständige Layoutzustände werden tief kopiert. Gleichheit wird synchron über `JSON.stringify` geprüft (`src/domain/layoutHistory.ts:79-94`). Autosave ist zwar auf 800 ms entprellt und asynchron, sendet aber weiterhin das vollständige mehrseitige Dokument an CCM und schreibt eine vollständige Recovery-Kopie.
 
-**Auswirkung:** Viele Elemente, verschachtelte Gruppen oder Data-URL-Bilder verursachen Ruckeln, hohen Speicherverbrauch und lange Main-Thread-Pausen. Draggesten können dadurch zusätzlich hakelig erscheinen.
+**Auswirkung:** Viele Elemente und verschachtelte Gruppen verursachen weiterhin unnötige Serialisierung, Netzwerkvolumen und Speicherverbrauch. Data-URL-Bilder werden nicht mehr neu erzeugt.
 
-**Empfehlung:** Commands oder strukturell geteilte Patches für Undo verwenden, Transaktionen am Ende einer Geste committen und Autosave entprellen. Persistenz asynchron nach IndexedDB verlagern. Performancebudgets mit großen Testdokumenten messen.
+**Empfehlung:** Commands oder strukturell geteilte Patches für Undo verwenden und serverseitig Patch-/Revisionsoperationen vorsehen. Performancebudgets mit großen Testdokumenten messen.
 
 ### P2 – Weitere destruktive Aktionen umgehen Undo und Bestätigung
 
@@ -417,12 +417,12 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** zuerst Exportpresets mit Seitenwahl, Format, Qualität und Namensschema speichern. PDF eignet sich für mehrseitige Dokumente, benötigt aber Tests für Fonts, Transparenz, Beschnitt und Rasterbilder. SVG ist bei Canvas-Filtern, QR, Bildern und Texteffekten kein verlustfreier Selbstläufer und sollte nicht ohne klar definierte Raster-Fallbacks beworben werden.
 
-### P3 – Seitenverwaltung ist minimal
+### Teilweise behoben – Seitenverwaltung
 
-**Status:** Funktionslücke.  
-**Beobachtung:** Seiten können angelegt, aktiviert und gelöscht werden. Namen, Duplizieren, Sortieren, Mehrfachauswahl und Seiteneinstellungen nach dem Anlegen fehlen; Löschen nutzt noch das Textglyph `×`.
+**Status:** Namen, echte Thumbnails, Duplizieren und Sortieren sind umgesetzt.
+**Beobachtung:** Seiten können angelegt, aktiviert, inline benannt, tief dupliziert, gelöscht und per Drag-and-drop oder Tastatur sortiert werden. Aktionen verwenden Font-Awesome-Icons. Mehrfachauswahl und eine nachträgliche Größenänderung fehlen weiterhin.
 
-**Empfehlung:** realistische Thumbnails zuerst, anschließend Name, Duplizieren, Reihenfolge und Größenänderung mit klarer Strategie zum Skalieren oder Beibehalten vorhandener Inhalte.
+**Empfehlung:** Für die nachträgliche Größenänderung zuerst ausdrücklich zwischen „Inhalt beibehalten“, „proportional skalieren“ und „an neue Seite anpassen“ unterscheiden. Mehrfachauswahl erst mit einem konkreten seitenübergreifenden Anwendungsfall ergänzen.
 
 ### P3 – Canvas-Navigation ist für große Dokumente unvollständig
 
@@ -495,7 +495,7 @@ Die Analyse soll nicht nur Defizite festhalten. Mehrere Grundlagen sind solide u
 2. Eingebaute Vorlagen in dasselbe Modell überführen.
 3. Bilder in IndexedDB/Asset-Store verschieben.
 4. Dokumentautosave ohne Termin und explizites Öffnen terminbezogener Entwürfe anbieten.
-5. echte Seiten-Thumbnails generieren.
+5. ~~Echte Seiten-Thumbnails generieren.~~ Umgesetzt, einschließlich Benennen, Duplizieren und Sortieren.
 
 ### Phase 4 – Gruppen, Effekte und Automation
 
@@ -529,10 +529,11 @@ Die Analyse soll nicht nur Defizite festhalten. Mehrere Grundlagen sind solide u
 
 Am untersuchten Stand:
 
-- `npm test`: 35 Dateien, 184 Tests erfolgreich
+- `npm test`: 38 Dateien, 199 Tests erfolgreich
+- `npm run test:e2e`: 7 Browsertests erfolgreich
 - `npm run typecheck`: erfolgreich
 - `npm run build`: erfolgreich
-- Vite meldet einen Hauptchunk von ungefähr 514 KB minifiziert beziehungsweise 160 KB gzip; Konva, ChurchTools, Vue und JSZip liegen in eigenen Chunks
+- Vite meldet einen Hauptchunk von ungefähr 538 KB minifiziert beziehungsweise 166 KB gzip; Konva, ChurchTools, Vue und JSZip liegen in eigenen Chunks
 - `npm audit --omit=dev`: 6 Meldungen, davon 1 hoch und 5 mittel
 
 Die Metriken sind Momentaufnahmen. Nach Änderungen an Abhängigkeiten oder Build-Splitting müssen sie neu erhoben werden.

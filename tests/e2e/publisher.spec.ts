@@ -79,3 +79,21 @@ test('saves and reapplies a complete multi-page document template', async ({ pag
     await expect(page.locator('.publisher-page-entry')).toHaveCount(2);
     await expect(page.locator('.publisher-page-entry').nth(1)).toContainText('600 × 600 px');
 });
+
+test('keeps image upload entry points visible and explains that upload is coming later', async ({ page }) => {
+    await page.getByRole('button', { name: 'Bild hinzufügen' }).click();
+
+    await expect(page.getByRole('status').filter({ hasText: 'Eigene Bilder können bald über ChurchTools hochgeladen werden.' }))
+        .toBeVisible();
+    await expect(page.locator('.publisher-toolrail input[type="file"]')).toHaveCount(0);
+});
+
+test('stores a document without an appointment and exposes the save state', async ({ page }) => {
+    await page.getByRole('button', { name: 'Vorlagen', exact: true }).click();
+    await page.getByLabel('Dokumentname').fill('Freie Grafik');
+    await page.getByRole('button', { name: 'Jetzt speichern' }).click();
+
+    const document = page.getByLabel('Gespeicherte Dokumente').locator('article').filter({ hasText: 'Freie Grafik' });
+    await expect(document).toContainText('Ohne Termin');
+    await expect(page.locator('.publisher-statusbar__storage')).toHaveText('In ChurchTools gespeichert');
+});

@@ -59,10 +59,8 @@ watch(
 );
 
 const confirmSelection = () => {
-    if (pendingAppointmentKey.value) {
-        selectedAppointmentKey.value = pendingAppointmentKey.value;
-        emit('close');
-    }
+    selectedAppointmentKey.value = pendingAppointmentKey.value;
+    emit('close');
 };
 
 const closeFromBackdrop = (event: MouseEvent) => {
@@ -135,7 +133,7 @@ const closeFromBackdrop = (event: MouseEvent) => {
                         <div class="appointment-picker__filter-actions">
                             <label class="appointment-picker__draft-filter">
                                 <input v-model="onlyAppointmentsWithDraft" type="checkbox" />
-                                Nur mit Entwurf
+                                Nur mit Dokument
                             </label>
                             <DesignButton
                                 v-if="hasAppointmentFilters"
@@ -155,7 +153,7 @@ const closeFromBackdrop = (event: MouseEvent) => {
                         v-model="pendingAppointmentKey"
                         :disabled="appointments.length === 0"
                     >
-                        <option value="">Bitte Termin auswählen</option>
+                        <option value="">Ohne Termin</option>
                         <option v-for="appointment in appointments" :key="appointment.key" :value="appointment.key">
                             {{ appointment.label }}
                         </option>
@@ -164,9 +162,9 @@ const closeFromBackdrop = (event: MouseEvent) => {
             </div>
             <footer class="publisher-appointment-panel__footer">
                 <DesignButton variant="secondary" @click="emit('close')">Abbrechen</DesignButton>
-                <DesignButton :disabled="!pendingAppointmentKey" @click="confirmSelection">
+                <DesignButton @click="confirmSelection">
                     <template #icon><FontAwesomeIcon :icon="faCalendarDays" aria-hidden="true" /></template>
-                    Termin verwenden
+                    Auswahl übernehmen
                 </DesignButton>
             </footer>
         </section>

@@ -14,8 +14,11 @@ import { cloneLayoutState } from './layoutHistory';
 import type { TemplateId } from './templates';
 import { BUILT_IN_TEMPLATE_DEFINITIONS, scaleTemplateDefinition, TEMPLATE_TEXT_BINDINGS } from './templateDefinition';
 
+export const MAX_PUBLISHER_PAGE_NAME_LENGTH = 80;
+
 export interface PublisherPage {
     id: string;
+    name: string;
     width: number;
     height: number;
     templateId: TemplateId;
@@ -82,8 +85,10 @@ export const createPublisherPage = (
     width = 1920,
     height = 1080,
     templateId: TemplateId = 'split',
+    name = 'Seite 1',
 ): PublisherPage => ({
     id: createPublisherPageId(),
+    name,
     width,
     height,
     templateId,
@@ -95,14 +100,16 @@ export const createBlankPublisherPage = (
     width = 1920,
     height = 1080,
     templateId: TemplateId = 'split',
+    name = 'Seite 1',
 ) => {
-    const page = createPublisherPage(width, height, templateId);
+    const page = createPublisherPage(width, height, templateId, name);
     page.layouts = { [templateId]: createBlankPublisherLayout(templateId, width, height) };
     return page;
 };
 
 export const clonePublisherPage = (page: PublisherPage, regenerateId = false): PublisherPage => ({
     id: regenerateId ? createPublisherPageId() : page.id,
+    name: page.name,
     width: page.width,
     height: page.height,
     templateId: page.templateId,

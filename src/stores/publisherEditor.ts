@@ -28,6 +28,7 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
     const canUndoLayout = ref(false);
     const canRedoLayout = ref(false);
     const activeCanvasPageId = ref<string | null>(null);
+    const pageThumbnails = ref<Record<string, string>>({});
     const selectedLayoutElement = ref<LayoutElementId | null>(null);
     const selectedLayoutElements = ref<LayoutElementId[]>([]);
     const selectedLayoutGeometry = ref<LayoutSelectionGeometry | null>(null);
@@ -91,6 +92,18 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
         selectedLayerTotal.value = total;
     };
 
+    const setPageThumbnail = (pageId: string, source: string) => {
+        if (!pageId || !source) return;
+        pageThumbnails.value = { ...pageThumbnails.value, [pageId]: source };
+    };
+
+    const retainPageThumbnails = (pageIds: Iterable<string>) => {
+        const retainedIds = new Set(pageIds);
+        pageThumbnails.value = Object.fromEntries(
+            Object.entries(pageThumbnails.value).filter(([pageId]) => retainedIds.has(pageId)),
+        );
+    };
+
     return {
         activeEditorTool,
         activeEditorToolLabel,
@@ -105,6 +118,7 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
         hasLayoutSelection,
         hasMultipleLayoutSelection,
         layoutChanged,
+        pageThumbnails,
         previewZoomPercent,
         selectedLayerPosition,
         selectedLayerTotal,
@@ -121,6 +135,8 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
         selectedLayoutVisualStyle,
         snapEnabled,
         setCanvasSelection,
+        setPageThumbnail,
+        retainPageThumbnails,
         updateLayerPosition,
         updateLayoutGrouping,
         updateLayoutHistory,
