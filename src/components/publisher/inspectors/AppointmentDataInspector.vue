@@ -13,11 +13,10 @@ import {
     faQrcode,
     faRotate,
     faUsers,
-    faXmark,
 } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { storeToRefs } from 'pinia';
-import { computed, nextTick, ref } from 'vue';
+import { computed, ref } from 'vue';
 
 import {
     PUBLISHER_DATA_TRANSFER_TYPE,
@@ -27,6 +26,7 @@ import type { ImageFocus } from '../../../domain/imageFocus';
 import type { PublisherRelatedDataSourceKind } from '../../../domain/appointmentRelatedData';
 import { usePublisherAppointmentsStore } from '../../../stores/publisherAppointments';
 import DesignButton from '../../design/DesignButton.vue';
+import DesignDialog from '../../design/DesignDialog.vue';
 import DesignIconButton from '../../design/DesignIconButton.vue';
 
 const props = defineProps<{
@@ -52,8 +52,9 @@ const emit = defineEmits<{
 const { dataFields, relatedDataSources, selectedAppointmentKey } = storeToRefs(usePublisherAppointmentsStore());
 const editingFieldId = ref<string | null>(null);
 const editingValue = ref('');
-const editorInput = ref<HTMLInputElement | HTMLTextAreaElement | null>(null);
 const editingField = computed(() => dataFields.value.find(({ id }) => id === editingFieldId.value) ?? null);
+const editorTitle = computed(() => editingField.value ? `${editingField.value.label} bearbeiten` : 'Termindaten bearbeiten');
+const editorDescription = computed(() => editingField.value?.placeholder ?? '');
 const fieldGroups = computed(() => {
     const groups = new Map<string, { id: string; label: string; fields: PublisherDataField[] }>();
     for (const field of dataFields.value) {
@@ -90,7 +91,6 @@ const fieldIcon = (field: PublisherDataField) => {
 const openEditor = (field: PublisherDataField) => {
     editingFieldId.value = field.id;
     editingValue.value = field.value;
-    void nextTick(() => editorInput.value?.focus());
 };
 
 const closeEditor = () => {
@@ -192,31 +192,33 @@ const startFieldDrag = (field: PublisherDataField, event: DragEvent) => {
             <p v-if="dataFields.length === 0" class="inspector-empty">Dieser Termin liefert keine verwendbaren Felder.</p>
         </div>
 
-        <div v-if="editingField" class="publisher-page-dialog-backdrop" @click.self="closeEditor" @keydown.esc="closeEditor">
-            <form class="publisher-page-dialog publisher-data-dialog" role="dialog" aria-modal="true" aria-labelledby="publisher-data-dialog-title" @submit.prevent="saveEditor">
-                <header>
-                    <div><h2 id="publisher-data-dialog-title">{{ editingField.label }} bearbeiten</h2><span>{{ editingField.placeholder }}</span></div>
-                    <DesignIconButton label="Dialog schließen" @click="closeEditor"><FontAwesomeIcon :icon="faXmark" aria-hidden="true" /></DesignIconButton>
-                </header>
-
+        <DesignDialog
+            :open="Boolean(editingField)"
+            :title="editorTitle"
+            :description="editorDescription"
+            panel-class="publisher-data-dialog"
+            @close="closeEditor"
+        >
+            <template #icon><FontAwesomeIcon :icon="editingField?.type === 'image' ? faImage : faPen" /></template>
+            <form v-if="editingField" id="publisher-data-dialog-form" class="publisher-data-dialog__form" @submit.prevent="saveEditor">
                 <template v-if="editingField.type === 'text'">
                     <label class="inspector-field" :for="`publisher-data-${editingField.id}`">
                         Wert
                         <textarea
                             v-if="editingField.multiline"
                             :id="`publisher-data-${editingField.id}`"
-                            ref="editorInput"
+                            data-dialog-initial-focus
                             v-model="editingValue"
                             rows="5"
                         />
-                        <input v-else :id="`publisher-data-${editingField.id}`" ref="editorInput" v-model="editingValue" />
+                        <input v-else :id="`publisher-data-${editingField.id}`" v-model="editingValue" data-dialog-initial-focus />
                     </label>
                 </template>
 
                 <template v-else>
                     <div class="publisher-data-dialog__image">
                         <img :src="editingField.value" alt="Vorschau des Terminbilds" />
-                        <DesignButton variant="secondary" @click="emit('updateImage')">Bild ersetzen</DesignButton>
+                        <DesignButton data-dialog-initial-focus variant="secondary" @click="emit('updateImage')">Bild ersetzen</DesignButton>
                     </div>
                     <p v-if="replacementName" class="local-image-override__selection" role="status">{{ replacementName }}</p>
                     <p v-if="error" class="local-image-override__error" role="alert">{{ error }}</p>
@@ -227,7 +229,8 @@ const startFieldDrag = (field: PublisherDataField, event: DragEvent) => {
                     </div>
                 </template>
 
-                <footer>
+            </form>
+            <template v-if="editingField" #footer>
                     <DesignButton
                         v-if="editingField.type === 'image' ? replacementUrl : overriddenFields.includes(editingField.id)"
                         variant="ghost"
@@ -236,10 +239,17 @@ const startFieldDrag = (field: PublisherDataField, event: DragEvent) => {
                         @click="resetEditor"
                     >Original wiederherstellen</DesignButton>
                     <DesignButton variant="secondary" @click="closeEditor">Abbrechen</DesignButton>
-                    <DesignButton v-if="editingField.type === 'text'" type="submit">Übernehmen</DesignButton>
+                    <DesignButton v-if="editingField.type === 'text'" type="submit" form="publisher-data-dialog-form">Übernehmen</DesignButton>
                     <DesignButton v-else @click="closeEditor">Fertig</DesignButton>
-                </footer>
-            </form>
-        </div>
+            </template>
+        </DesignDialog>
     </section>
 </template>
+
+<style scoped>
+.publisher-data-dialog__form {
+    display: grid;
+    padding: 18px;
+    gap: 16px;
+}
+</style>

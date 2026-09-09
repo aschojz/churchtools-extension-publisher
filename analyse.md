@@ -8,7 +8,7 @@ Status: Audit plus Umsetzung der priorisierten Architektur-, Persistenz-, Automa
 
 Der Publisher ist kein kleiner Prototyp mehr, auch wenn Teile des Datenmodells noch aus dieser Phase stammen. Er ist bereits ein umfangreicher Mehrseiten-Editor mit eigener Szenenlogik, Hierarchie, Auto-Layout, Datenbindungen, dynamischen Farben, Effekten, CCM-Persistenz und Export-Pipeline. Die fachliche Breite ist gut erkennbar und viele pure Domain-Funktionen sind ordentlich getestet.
 
-Die zuvor größten strukturellen Risiken wurden gezielt reduziert: Der persistierbare Dokumentzustand und die Auswahl besitzen kanonische Stores, Vorlagen bilden vollständige Mehrseitendokumente ab, Gruppen werden als echte Canvas-Knoten gerendert und persistierte Formate besitzen explizite Migrationen. Sichere Variablen-Pipelines und Repeat-Gruppen decken die erste Template-Automation ab; gemeinsame Popover/Tabs, Ebenentastatur und responsive Drawer stabilisieren die Bedienung. Häufige Canvas-Änderungen verwenden inzwischen kompakte Seiten-Layout-Einträge statt vollständiger Dokument-Snapshots. Die verbleibenden Hauptrisiken liegen in der Größe des Canvas-Orchestrators, dem noch offenen ChurchTools-Assetpfad, vollständigen Remote-Speichervorgängen und der schmalen visuellen Regressionstest-Abdeckung.
+Die zuvor größten strukturellen Risiken wurden gezielt reduziert: Der persistierbare Dokumentzustand und die Auswahl besitzen kanonische Stores, Vorlagen bilden vollständige Mehrseitendokumente ab, Gruppen werden als echte Canvas-Knoten gerendert und persistierte Formate besitzen explizite Migrationen. Sichere Variablen-Pipelines und Repeat-Gruppen decken die erste Template-Automation ab; gemeinsame Popover/Tabs, Ebenentastatur und responsive Drawer stabilisieren die Bedienung. Häufige Canvas-Änderungen verwenden inzwischen kompakte Seiten-Layout-Einträge statt vollständiger Dokument-Snapshots. Der erneute technische Audit zeigt allerdings vorrangige Restrisiken: Datenwechsel und Export können Auto-Layout-Geometrie persistieren, Terminfilter können den bestätigten Dokumentbezug löschen, der Recovery-Abgleich kann eigene Saves als Konflikt melden, die Remote-Revisionsprüfung ist nicht atomar und einzelne Canvas-Commands umgehen Sperren oder exportieren noch nicht vollständig geladene Assets. Danach folgen die Größe der Orchestratoren, der offene ChurchTools-Assetpfad und die schmale visuelle Regressionstest-Abdeckung.
 
 Vor einem weiteren größeren Feature-Ausbau wurden vier Fundamente stabilisiert:
 
@@ -345,35 +345,35 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Für echte Smartphone-Optimierung zusätzlich die Toolrail einklappbar machen und Touch-Ziele sowie komplexe Canvas-Gesten auf realen Geräten prüfen.
 
-### P2 – Modale Komponenten und Tabs sind nicht vollständig zugänglich
+### Weitgehend behoben – Modale Komponenten und Tabs waren nicht vollständig zugänglich
 
-**Status:** teilweise behoben.
-**Evidenz:** `DesignTabs` verknüpft Tabs und Panels, verwendet roving `tabindex` und unterstützt Pfeiltasten sowie Home/End. Neue und bereits umgestellte Modale verwenden `DesignDialog` mit Fokusfalle, initialem Fokus, Escape und Fokus-Rückgabe. Die Terminauswahl und einzelne ältere Spezialdialoge verwenden noch eigene Implementierungen.
+**Status:** gemeinsame Dialog- und Tabgrundlage umgesetzt; automatisierter Accessibility-Audit bleibt offen.
+**Evidenz:** `DesignTabs` verknüpft Tabs und Panels, verwendet roving `tabindex` und unterstützt Pfeiltasten sowie Home/End. Seitendialog, Terminauswahl, Termindaten-Editor, Export, Vorlagen, Variablen, Effekte, Filter und Bestätigungen verwenden nun `DesignDialog` mit Fokusfalle, explizitem initialen Fokus, Escape, Fokus-Rückgabe und einem sperrbaren Schließpfad für laufende Exporte. Effekte und Filter besitzen echte vertikale Tabs ohne verschachtelte interaktive Elemente.
 
-**Auswirkung:** Tastatur- und Screenreader-Nutzung ist inkonsistent; Fokus kann hinter einen offenen Dialog geraten oder nach Schließen verloren gehen.
+**Auswirkung:** Modale Fokusführung und Tastaturnavigation verhalten sich an den zentralen Oberflächen einheitlich. Popover wie Farbwähler und Ausrichtung bleiben bewusst eigenständige, nicht modale Overlays.
 
-**Empfehlung:** Verbliebene Spezialdialoge auf `DesignDialog` umstellen und anschließend mit axe-core sowie echter Tastaturnavigation testen.
+**Empfehlung:** Die gemeinsamen Primitive mit axe-core und vollständigen Tastaturdurchläufen im echten Host prüfen; neue Dialoge ausschließlich auf `DesignDialog` aufbauen.
 
-### Teilweise behoben – Ebenen-Drag-and-drop war nicht tastaturbedienbar
+### Behoben – Ebenen-Drag-and-drop war nicht tastaturbedienbar
 
 **Status:** die Kernaktionen sind tastaturbedienbar.
-**Beobachtung:** Pfeiltasten navigieren durch den sichtbaren Baum und öffnen oder schließen Gruppen. Auf dem Verschiebegriff ordnet Option/Alt + Pfeil oben/unten die Ebene um; Option/Alt + Pfeil rechts verschachtelt sie in die vorherige Gruppe. Das Lösen einer Gruppe ist über das tastaturbedienbare Ebenen-Popover erreichbar.
+**Beobachtung:** Pfeiltasten navigieren durch den sichtbaren Baum und öffnen oder schließen Gruppen. Auf dem Verschiebegriff ordnet Option/Alt + Pfeil oben/unten die Ebene um; Option/Alt + Pfeil rechts verschachtelt sie in die vorherige Gruppe und Option/Alt + Pfeil links zieht sie aus ihrer direkten Gruppe heraus. Das Lösen einer ganzen Gruppe ist zusätzlich über das tastaturbedienbare Ebenen-Popover erreichbar.
 
-**Auswirkung:** Navigation, Sortierung, Verschachtelung und das Lösen von Gruppen sind ohne präzise Zeigerbedienung erreichbar. Eine direkte Tastaturaktion „aus Untergruppe herausziehen“ und eine gesprochene Erfolgsmeldung fehlen noch.
+**Auswirkung:** Navigation, Sortierung, Verschachtelung und das Lösen von Gruppen sind ohne präzise Zeigerbedienung erreichbar. Jede erfolgreiche Tastaturverschiebung wird über eine höfliche Live-Region angesagt; Hierarchieänderungen laufen durch dieselbe Domain- und Undo-Pipeline wie Drag-and-drop.
 
-**Empfehlung:** Nach einer Tastaturverschiebung zusätzlich eine kurze Live-Region-Rückmeldung ausgeben und das direkte Herausziehen aus einer Untergruppe als eigenen Befehl ergänzen.
+**Empfehlung:** Die Tastenkombinationen im Host auf macOS und Windows mit Screenreader prüfen und bei Bedarf im sichtbaren Hilfezugang zusätzlich dokumentieren.
 
 ### P2 – Canvas-Inhalte besitzen keine semantische Alternative
 
 **Status:** konzeptionelle Lücke.  
-**Beobachtung:** Konva rendert in ein Canvas; Elemente und Auswahl sind dort für Screenreader nicht als bearbeitbare Objekte vorhanden. Der Ebenenbaum stellt Typ, sichtbaren Wert, Hierarchie, Auswahl, Sichtbarkeit und Sperrung semantisch dar und unterstützt Navigation sowie Kernaktionen per Tastatur, bildet Geometrie und alle Canvas-Gesten aber noch nicht vollständig ab.
+**Beobachtung:** Konva rendert in ein Canvas; Elemente und Auswahl sind dort für Screenreader nicht als bearbeitbare Objekte vorhanden. Der Ebenenbaum stellt Typ, sichtbaren Wert, Hierarchie, Auswahl, Sichtbarkeit und Sperrung über zugängliche Namen semantisch dar, unterstützt Navigation sowie Kernaktionen per Tastatur und meldet Umordnungen live. Geometrie und alle Canvas-Gesten bildet er aber noch nicht vollständig ab.
 
 **Empfehlung:** Ebenenbaum als zugängliche strukturelle Repräsentation ausbauen: Name/Wert, Typ per Icon plus zugänglichem Label, Zustand, Position, Auswahl, Umordnung und Inspector-Verknüpfung.
 
 ### P2 – Monolithische Dateien bremsen Änderungen
 
 **Status:** weiterhin relevant; die Canvas-Auswahl-, Transformations-, Gruppen- und Stilpfade sind inzwischen fachlich getrennt.
-**Evidenz:** `EventTemplate.vue` 1.872 Zeilen, `styles.css` 4.149, `App.vue` 1.278, `layoutEditing.ts` 1.114, `publisherDraft.ts` 715 und `LayoutInspector.vue` 509. In den UI-/Domain-Dateien existieren weiterhin zahlreiche direkte Hex-Farbwerte; Design-Tokens decken Abstände, Radien und Typografie nur teilweise ab.
+**Evidenz:** `EventTemplate.vue` 1.872 Zeilen, `styles.css` 4.083, `App.vue` 1.278, `layoutEditing.ts` 1.160, `publisherDraft.ts` 715 und `LayoutInspector.vue` 509. In den UI-/Domain-Dateien existieren weiterhin zahlreiche direkte Hex-Farbwerte; Design-Tokens decken Abstände, Radien und Typografie nur teilweise ab.
 
 **Auswirkung:** Fachgrenzen verschwimmen, Merge-Konflikte nehmen zu, Tests erfordern große Setups und kleine UI-Abweichungen entstehen leicht.
 
@@ -451,19 +451,234 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Bei großen Seiten und tief verschachtelten, mehrfach gefilterten Gruppen das Cache-Verhalten weiter beobachten und später mit definierten Performancebudgets absichern. Anpassungsebenen, die darunterliegende Ebenen beeinflussen, sind ausdrücklich nicht Teil dieses Modells.
 
-### P3 – Visuelle Details sind noch uneinheitlich
+### P3 – Visuelle Details sind noch punktuell uneinheitlich
 
 **Status:** lokaler UI- und Code-Audit.  
 **Beobachtungen:**
 
-- Der Dialog „Neue Seite“ verwendet beim Schließen noch ein Textglyph statt des gemeinsamen Font-Awesome-Icon-Buttons.
+- Alle echten Modaldialoge verwenden nun dieselbe Kopf-/Fußzeile und Font-Awesome-Icon-Aktionen; die letzte Textglyphe im Seitendialog ist entfernt.
 - Ebenen und Ausrichtung verwenden nun ein gemeinsames, teleportiertes Popover mit Outside-click, Escape, Fokus-Rückgabe und Viewport-Positionierung.
 - „Einrasten“ erklärt seine Wirkung per Tooltip. Der redundante Layout-Reset wurde zugunsten von Undo/Redo und erneutem Anwenden einer Vorlage entfernt.
 - Transformieren bleibt korrekt sichtbar und deaktiviert, könnte aber noch dichter sein.
 - Der Hauptcanvas ist bei festen Seitenleisten auf kleinen Desktopbreiten schnell stark beschnitten.
 - `index.html` deklariert die deutsche Dokumentsprache und überlässt den Dark Mode vollständig der Hostklasse `.dark`.
 
-**Empfehlung:** Den verbliebenen Dialog-Glyph ersetzen, den Transform-Inspector weiter verdichten und schmale Desktop- beziehungsweise Touch-Viewports auf realen Geräten prüfen. Die bereits gemeinsamen Popover-, Snapping-, Sprach- und Dark-Mode-Lösungen beibehalten.
+**Empfehlung:** Den Transform-Inspector weiter verdichten und schmale Desktop- beziehungsweise Touch-Viewports auf realen Geräten prüfen. Die gemeinsamen Dialog-, Popover-, Snapping-, Sprach- und Dark-Mode-Lösungen beibehalten.
+
+## Ergänzender technischer Rundumschlag
+
+Die folgende Nachanalyse konzentriert sich auf Fehler, duplizierte Logik, belastbare Abstraktionsgrenzen und die weitere Zerlegung großer Dateien. Sie ersetzt keine der Produktprioritäten oben, verschärft aber die technische Reihenfolge: Vor zusätzlicher Editorfunktionalität sollten zuerst die Datenkontext-, Speicher- und Projektionsfehler behoben werden.
+
+### P1 – Ein Datenwechsel kann persistierte Auto-Layout-Geometrie verändern
+
+**Status:** im Code bestätigt; verletzt eine zentrale Produktinvariante.
+**Evidenz:** Der Watcher auf `props.dataValues` in `EventTemplate.vue` misst Texte neu, führt `reflowAutoLayoutGroups()` aus und emittiert anschließend den resultierenden Layoutzustand. `reflowAutoLayoutGroups()` schreibt Größen und Offsets in den serialisierbaren Zustand. Auch `exportImage()` startet vor dem Rendern einen Reflow (`src/components/EventTemplate.vue:1506-1512`, `1540-1543`; `src/composables/useCanvasGroups.ts:81-108`).
+
+**Auswirkung:** Das Wechseln eines Termins kann Geometrie dauerhaft an dessen Textlängen anpassen und per Autosave sichern, obwohl der Termin ausschließlich den Datenkontext ändern darf. Diese Mutation erzeugt keinen passenden Historieneintrag und ist daher nicht zuverlässig über Undo rückgängig zu machen. Selbst ein Export kann Dokumentzustand verändern.
+
+**Empfehlung:** Dynamische Textmaße und Auto-Layout-Positionen als abgeleitete Renderprojektion berechnen. Der persistierte Gruppenprototyp enthält nur Regeln, Ausgangsgeometrie und explizite Nutzeränderungen. Datenwechsel, Thumbnail und Export verwenden dieselbe pure `projectLayout(document, dataContext)`-Funktion und schreiben nicht in den Store. Eine bewusste Nutzeraktion „Layout auf aktuellen Inhalt anwenden“ dürfte dagegen über eine benannte, undo-fähige Store-Action persistieren.
+
+### P1 – Terminfilter löschen die bestätigte Terminauswahl
+
+**Status:** im Code bestätigt; Dialog-Abbrechen schützt den Dokumentbezug nicht vollständig.
+**Evidenz:** `usePublisherAppointments()` beobachtet Suche, Kalender, Zeitraum und den Filter „nur mit Dokument“. Sobald der bestätigte Termin nicht mehr in `filteredAppointments` liegt, setzt der Watcher den globalen `selectedAppointmentKey` leer (`src/composables/usePublisherAppointments.ts:82-89`). `App.vue` reagiert darauf wie auf eine echte Terminänderung, leert Overrides und speichert den veränderten Dokumentbezug (`src/App.vue:534-551`).
+
+**Auswirkung:** Das bloße Filtern im Auswahldialog kann einen bereits gespeicherten Termin vom Dokument lösen. Ein anschließendes „Abbrechen“ stellt den ursprünglichen Bezug nicht wieder her.
+
+**Empfehlung:** Filter dürfen ausschließlich die sichtbare Optionsliste verändern. Der bestätigte Store-Wert bleibt erhalten, bis der Nutzer „Übernehmen“ oder „Termin lösen“ ausführt. Ein lokaler `pendingAppointmentKey` gehört in den Dialog; ein durch Filter verborgenes aktuelles Element darf als separater Bestandswert angezeigt werden.
+
+### P1 – Recovery-Abgleich kann nach erfolgreichem Speichern einen falschen Konflikt melden
+
+**Status:** im Code bestätigt.
+**Evidenz:** `recoveredDocument` wird beim Modulaufbau einmal aus `localStorage` gelesen (`src/App.vue:90`) und bei jedem späteren `loadPublisherStorage()` erneut als Vergleichsbasis verwendet. Nach einem erfolgreichen Recovery-Save wird zwar die Recovery-Kopie aktualisiert, die konstante Startreferenz aber nicht. Beim nächsten `online`-Ereignis gilt eine inzwischen regulär erhöhte Remote-Revision deshalb als „neuer als Recovery“ (`src/App.vue:907-935`).
+
+**Auswirkung:** Eine Sitzung kann ihren eigenen erfolgreichen Speichervorgang beim Reconnect als Fremdkonflikt interpretieren. Nach Dokumentwechseln vergleicht die Logik außerdem Start-Recovery und aktuellen Sitzungszustand über eine schwer nachvollziehbare Grenze.
+
+**Empfehlung:** Startup-Reconciliation genau einmal ausführen. Danach verwaltet eine Document-Session pro Dokument `baseRevision`, `lastSavedRevision` und `dirtySinceRevision`. Reconnect lädt nur Metadaten neu und vergleicht Remote gegen diese aktuelle Basis, nicht gegen einen eingefrorenen Startwert.
+
+### P1 – Die optimistische Revisionsprüfung im CCM-Adapter ist nicht atomar
+
+**Status:** Architekturgrenze der aktuellen Backend-API.
+**Evidenz:** `saveDocument()` liest zunächst die Sammlung, vergleicht die Revision clientseitig und schreibt danach per separatem Request. Zwei Clients können beide Revision N lesen und anschließend beide N+1 schreiben (`src/infrastructure/ccmPublisherRepository.ts:151-181`).
+
+**Auswirkung:** Der letzte Write gewinnt trotz scheinbarer Konfliktprüfung. Die Oberfläche darf dieses Verfahren nicht als belastbaren Schutz vor parallelem Überschreiben behandeln.
+
+**Empfehlung:** Repository-Vertrag und CCM-Endpunkt um atomare Compare-and-swap-Semantik erweitern, zum Beispiel `ETag`/`If-Match` oder eine serverseitig geprüfte erwartete Revision. Bis dahin den Schutz als Best-effort markieren und konfliktträchtige parallele Bearbeitung nicht versprechen.
+
+### P2 – Gespeicherte Termine außerhalb des Listenfensters verlieren ihren Datenkontext
+
+**Status:** im Code bestätigt.
+**Evidenz:** Termin-ID und Startdatum für den Detailabruf werden ausschließlich aus dem Treffer der geladenen Terminliste abgeleitet (`src/composables/usePublisherAppointments.ts:50-56`). Die Liste deckt einen beim Modulimport berechneten Einjahreszeitraum ab und besitzt in diesem Pfad keine Paginierung (`src/composables/useAppointmentsQuery.ts`).
+
+**Auswirkung:** Ein älteres oder weiter in der Zukunft liegendes Dokument kann seinen gespeicherten Terminbezug enthalten, aber keine Detaildaten und damit keine Variablen auflösen. Das beim Import erzeugte Bezugsdatum altert zudem in einer lange geöffneten Sitzung und UTC-Datumsbildung kann an Zeitzonengrenzen den lokalen Kalendertag verschieben.
+
+**Empfehlung:** Termin-ID und Datum direkt aus der persistierten `PublisherAppointmentReference` beziehungsweise dem validierten Key lesen und den Detailquery unabhängig von der Discovery-Liste aktivieren. Listenzeitraum, Pagination und lokale Datumsgrenzen gehören in einen expliziten Query-Parameter beziehungsweise eine kleine Date-Domainfunktion.
+
+### P2 – Bilder des inaktiven Standardlayouts können mit aktiver Geometrie geladen werden
+
+**Status:** aus dem Codepfad abgeleitet; ein gezielter Regressionstest fehlt.
+**Evidenz:** `reloadAllCustomImages()` iteriert Elemente aus `split` und `poster`. `loadCustomImage()` berechnet die Zielgröße jedoch über `elementFrame(element.id)`, das immer Frames, Offsets und Größen von `props.templateId` verwendet (`src/components/EventTemplate.vue:673-709`, `790-800`).
+
+**Auswirkung:** Existiert ein Bild nur im inaktiven Layout, kann dessen ID im aktiven Layout fehlen. Dann greift die Frameberechnung auf `undefined` zu; je nach Datenstand drohen Laufzeitfehler oder eine mit falscher Zielgröße angeforderte Bildvariante.
+
+**Empfehlung:** Entweder nur Assets des aktiven Layouts laden oder `templateId` als Pflichtparameter bis in Frameberechnung, Cache-Key und Request-Revision führen. Regressionstest: Bild nur in `poster`, aktives Layout `split`, danach Layoutwechsel und Export.
+
+### P1 – Gesperrte Elemente bleiben über Kontext-Commands veränderbar
+
+**Status:** im Code bestätigt.
+**Evidenz:** Transformationsgesten und viele Inspectoraktionen prüfen `selectionContainsLockedElement()`. Die Commands für Ausrichten, Verteilen und Ebenenreihenfolge in `EventTemplate.vue` sowie Gruppieren/Entgruppieren in `useCanvasGroups.ts` besitzen diese zentrale Guard dagegen nicht. Die Kontextleiste kennt den Lockzustand der Auswahl ebenfalls nicht (`src/components/EventTemplate.vue:1199-1310`; `src/composables/useCanvasGroups.ts:219-253`; `src/components/publisher/PublisherContextBar.vue`).
+
+**Auswirkung:** „Gesperrt“ schützt nicht zuverlässig vor Änderungen. Dieselbe Auswahl ist per Drag oder Inspector gesperrt, kann aber über eine andere Oberfläche geometrisch oder hierarchisch verändert werden.
+
+**Empfehlung:** Sperren auf Command-/Domain-Ebene erzwingen und die UI nur zusätzlich deaktivieren. Ein gemeinsames Selection-ViewModel liefert `containsLocked`, `canAlign`, `canDistribute`, `canReorder`, `canGroup` und `canUngroup`; jeder Command validiert seine Vorbedingungen selbst.
+
+### P1 – Export besitzt keine vollständige Asset-Barriere und keinen Rasterisierungs-Mutex
+
+**Status:** aus dem asynchronen Codepfad bestätigt.
+**Evidenz:** Custom Images und QR-Codes werden asynchron geladen beziehungsweise erzeugt. `exportImage()` wartet nur auf Fonts und prüft ausschließlich den Status des eingebauten Terminbilds (`src/components/EventTemplate.vue:673-745`, `1540-1595`). `renderThumbnail()` und `exportImage()` verändern denselben Stage, Transformer und `isExporting`; der Thumbnailpfad prüft den Zustand nur vor seinem Start (`src/components/EventTemplate.vue:1597-1617`). Zeitgesteuerte Thumbnail-Renders können deshalb mit einem Export überlappen.
+
+**Auswirkung:** Ein schneller Export kann Custom Images oder QR-Codes still auslassen. Parallel laufende Thumbnail- und Export-Finalizer können Stagegröße, Skalierung oder Editor-Chrome zum falschen Zeitpunkt wiederherstellen.
+
+**Empfehlung:** `useCanvasAssets` verwaltet pro `(templateId, elementId)` Promise, Status, Fehler und Revision. Ein `useCanvasRasterization` serialisiert Thumbnail/PNG/JPEG pro Stage, wartet auf alle für die aktuelle Projektion relevanten Assets und stellt Stagezustand in genau einer Transaktion wieder her. Assetfehler müssen im Exportdialog sichtbar und einer Seite zugeordnet sein.
+
+### P2 – Filter- und Effekt-Caches können veraltete Darstellungen zeigen
+
+**Status:** aus den Watch-Abhängigkeiten abgeleitet; visueller Regressionstest fehlt.
+**Evidenz:** `EditableTextElement.vue` und `EditableVisualElement.vue` invalidieren ihren Konva-Cache nur für ausgewählte Props. Textausrichtung, Dekorationsvarianten und einzelne Textvarianten beziehungsweise Gradient-, Crop-/Fokus- und weitere Shape-Eigenschaften fehlen in den jeweiligen Watch-Listen. Bei aktivem Blur oder Filter ist der Cache die sichtbare Ausgabe (`src/components/EditableTextElement.vue:63-78`; `src/components/EditableVisualElement.vue:64-78`).
+
+**Auswirkung:** Nach einer formal erfolgreichen Inspectoränderung kann ein gefiltertes Element bis zu einer anderen Invalidierung den alten visuellen Zustand zeigen; Export und Preview können dadurch voneinander abweichen.
+
+**Empfehlung:** Den duplizierten Effekt-, Filter- und Cache-Lifecycle aus Text-, Visual- und Gruppenelementen in `useKonvaRasterEffects` oder eine gemeinsame Canvas-Effect-Group extrahieren. Die Invalidierung sollte auf einer vollständigen `renderRevision` beziehungsweise klar berechneten Render-Signatur beruhen statt auf handgepflegten Teil-Watchern.
+
+### P2 – Speichervorgänge sind nicht an das gespeicherte Dokument gebunden
+
+**Status:** aus asynchronem Kontrollfluss bestätigt.
+**Evidenz:** `persistCurrentDocument()` erzeugt den Snapshot erst im Repository-Aufruf und schreibt dessen Antwort anschließend ungeprüft in globale aktive Revision, Erstellungsdatum, Recovery und Status (`src/App.vue:474-503`). Ein laufender Save besitzt keine festgehaltene Dokument-ID oder Session-Generation. Löschen beziehungsweise ein programmgesteuerter Dokumentwechsel kann währenddessen einen neuen aktiven Zustand erzeugen.
+
+**Auswirkung:** Eine verspätete Antwort eines alten Dokuments kann Metadaten oder Status des inzwischen aktiven Dokuments überschreiben. Die globale Kombination aus `saveInFlight` und `saveQueued` serialisiert Requests, aber nicht deren fachliche Zugehörigkeit.
+
+**Empfehlung:** Vor dem Request einen tiefen Snapshot mit `documentId`, erwarteter Revision und `sessionGeneration` erfassen. Die Antwort nur auf den aktiven Zustand anwenden, wenn diese Identität noch passt. Dokumentwechsel und Löschen müssen laufende Commands abwarten oder eine neue Generation eröffnen; die Persistenzwarteschlange gehört in einen getesteten Session-Service statt in `App.vue`.
+
+### P2 – Mehrfachauswahl formatiert visuelle Eigenschaften inkonsistent
+
+**Status:** im Code bestätigt.
+**Evidenz:** Textstil, statische Farbe, Farbbindung und Verlauf iterieren über alle passenden `selectedElements`. `setSelectedElementVisualStyle()` verwendet dagegen nur `selectedElement`, also faktisch das letzte beziehungsweise primäre Element (`src/composables/useCanvasElementStyles.ts:87-152`, `181-235`).
+
+**Auswirkung:** Bei mehreren ausgewählten Formen ändern Konturstärke oder einfache visuelle Stilfelder nur eine Form, während benachbarte Inspectoraktionen alle verändern. Das Verhalten ist für Nutzer nicht vorhersagbar.
+
+**Empfehlung:** Eine einheitliche Multi-Selection-Semantik festlegen. Bevorzugt werden kompatible Felder auf alle passenden Elemente angewandt; gemischte Werte zeigt der Inspector als Mixed-State. Alternativ müssen Einzelziel-Felder bei Mehrfachauswahl sichtbar deaktiviert sein. Beide Varianten benötigen Tests mit zwei Formen und einer gemischten Text-/Formauswahl.
+
+### P2 – Seitengrößen werden nur an der UI-Grenze erzwungen
+
+**Status:** im Code bestätigt.
+**Evidenz:** Der Dialog validiert 64 bis 8192 Pixel, `PublisherDocumentStore.addPage()` und die Seitenfactory akzeptieren jedoch beliebige Zahlen (`src/stores/publisherDocument.ts:146-163`; `src/domain/publisherPage.ts`). Parser prüfen dieselben Grenzwerte noch einmal mit Literalen in mehreren Modulen.
+
+**Auswirkung:** Tests, künftige Imports oder neue Aufrufer können nicht endliche, negative oder übergroße Seiten in einen eigentlich gültigen Dokumentzustand schreiben. Gleichzeitig können UI, Factory und Parser bei späteren Änderungen auseinanderlaufen.
+
+**Empfehlung:** Gemeinsame `MIN_PUBLISHER_PAGE_SIZE`, `MAX_PUBLISHER_PAGE_SIZE` und `parsePublisherPageSize()` im Domainmodell definieren. Store-Actions validieren immer selbst; die UI benutzt dieselbe Funktion nur für frühes Feedback.
+
+### P2 – Jede Seite ist gleichzeitig ein vollständiger Konva-Editor
+
+**Status:** Skalierungsrisiko im Renderpfad bestätigt.
+**Evidenz:** `PublisherWorkspaceContent.vue` mountet für jede Seite eine vollständige `EventTemplate`-Instanz. Damit existieren pro Seite Stage, Layer, Watcher, Assetloader, Transformerlogik und mögliche Filtercaches gleichzeitig (`src/components/publisher/PublisherWorkspaceContent.vue:130-186`). Persistenz erlaubt bis zu 50 Seiten mit Kantenlängen bis 8192 Pixel.
+
+**Auswirkung:** Der State-Benchmark ist zwar schnell, misst aber weder Canvas-Speicher noch Image-/Filtercaches. Viele oder große Seiten können Arbeit bei jedem Datenwechsel vervielfachen und erheblichen Browserheap belegen.
+
+**Empfehlung:** Nur aktive und optional benachbarte Seiten als Editor mounten. Übrige Seiten verwenden flüchtige UI-Thumbnails beziehungsweise einen leichten, bei Bedarf erzeugten Renderer; Export rendert Seiten nacheinander offscreen. Ein Browserbenchmark sollte Anzahl der Canvas-Elemente, Heap und Interaktionslatenz für 20 bis 50 Seiten messen.
+
+### P2 – Importparser begrenzen Struktur, aber nicht das gesamte Nutzdatenvolumen
+
+**Status:** im Code bestätigt.
+**Evidenz:** `imageSource` akzeptiert weiterhin Data-URLs ohne Zeichen- oder Bytebudget (`src/domain/publisherDraft.ts:137-145`). Template-Overrides besitzen hohe Einzelgrenzen, aber kein enges Gesamtbudget. Damit können alte oder importierte Daten die aktuelle UI-Sperre für eigene Uploads umgehen.
+
+**Auswirkung:** Ein formal gültiges Dokument kann Recovery-`localStorage`, CCM-Payload und Parse-/Clone-Pfade mit großen eingebetteten Bildbytes belasten oder überschreiten. Die Architekturregel „keine großen Data-URLs persistieren“ wird am externen Vertrag nicht erzwungen.
+
+**Empfehlung:** Neue Schemas erlauben nur stabile Assetreferenzen beziehungsweise explizit begrenzte Legacy-Data-URLs. Zusätzlich ein Gesamtbudget pro Dokument und aussagekräftige Validierungsfehler einführen; bestehende Altstände über eine versionierte Migration behandeln.
+
+### P2 – Das vollständige Dokumentaggregat ist weiterhin auf Store und `App.vue` verteilt
+
+**Status:** strukturelles Restrisiko trotz kanonischem Seitenzustand.
+**Evidenz:** Der Store besitzt Seiten, aktive Seite, Layoutrevision und Historie. `App.vue` hält zusätzlich Dokument-ID, Remote-Revision, Zeitstempel, Name, Terminbezug, Template-Overrides und Speicherzustand und baut daraus manuell ein `PublisherDraft` sowie einen `PublisherDocumentRecord` (`src/App.vue:406-454`). Writable Computeds im Store mutieren Template, Layoutsammlung und Bildfokus direkt, ohne benannte Action oder eigenen History-Eintrag (`src/stores/publisherDocument.ts:34-45`).
+
+**Auswirkung:** „Eine Quelle der Wahrheit“ gilt für das vollständige Dokument noch nicht. Neue Felder müssen an mehreren Capture-, Restore-, Save- und History-Stellen ergänzt werden. Manuelle `saveCurrentDraft()`-Aufrufe lassen sich leicht vergessen; Bildfokusänderungen sind beispielsweise speicherbar, aber nicht konsistent undo-fähig.
+
+**Empfehlung:** Der Document-Store besitzt das komplette geöffnete `PublisherDocument` inklusive lokaler Metadaten und fachlicher Actions. Remote-Revision und Requeststatus liegen in einer getrennten Document-Session. Pure Codecs übernehmen `toRecord()`, `fromRecord()` und Deep-Cloning. Persistenz beobachtet Store-Revisionen beziehungsweise erfolgreiche Actions, statt dass jede UI-Methode selbst Autosave auslöst.
+
+### P2 – Parser, Gruppenupdates und Overlay-Infrastruktur enthalten konkrete Duplikate
+
+**Status:** im Code bestätigt.
+**Evidenz:** `parseDraftPage()` und `parseTemplatePage()` validieren und kopieren fast dieselbe Seitenstruktur (`src/domain/publisherDraft.ts:590-622`; `src/domain/publisherDesignTemplate.ts:45-70`). Die rekursive Funktion `updateLayoutGroup()` existiert separat in `useCanvasGroups.ts` und `useCanvasTransforms.ts`. `PublisherColorPicker.vue` implementiert Teleport, Positionierung, Outside-click, Escape und Fokusbehandlung parallel zu `DesignPopover.vue`. `EditableTextElement`, `EditableVisualElement` und `EditableLayoutGroup` besitzen drei Varianten des Konva-Effekt-/Cache-Lifecycles. `LayoutInspector` und `PublisherContextBar` rekonstruieren beide Auswahl-, Gruppen- und Lockinformationen.
+
+**Auswirkung:** Schemaänderungen, verschachtelte Gruppen und Overlay-A11y müssen an mehreren Stellen synchron gehalten werden. Bereits kleine Abweichungen erzeugen inkonsistente Migrationen oder Interaktionen.
+
+**Empfehlung:**
+
+- gemeinsamer `parsePublisherPage()`-Codec mit konfigurierbarem Namensfallback, von Draft, Vorlage und Dokumentparser verwendet;
+- pure `updateLayoutGroupById()`-Funktion im Domainmodul, von Gruppen- und Transform-Composable importiert;
+- `DesignPopover` um kontrollierten Trigger, Panelbreite und initialen Fokus ergänzen, danach den Farbwähler daraus komponieren;
+- Effekte- und Filterdialoge auf eine kleine gemeinsame vertikale Dialog-/Tab-Shell setzen, fachliche Datenmodelle aber getrennt lassen.
+- gemeinsames `useActiveLayoutSelectionViewModel` für Zielidentität, Mixed-State, Lockstatus und erlaubte Commands in Inspector und Kontextleiste;
+- gemeinsamer Konva-Effektadapter für Cache, Filterkonfiguration, Invalidierung und Cleanup der drei Node-Arten.
+
+Ein weiteres Ownership-Signal ist die aktuelle Store-Proxy-Schicht in `EventTemplate.vue`: `layoutSectionProxy` kann bereits beim Lesen über `ensurePageLayout()` Zustand erzeugen. Gleichzeitig akzeptiert `App.vue` in `updatePageDraftLayout()` einen Layoutzustand, verwendet den Parameter aber nicht, weil die Canvas-Komponente den Store vorher schon mutiert hat. Layouts sollten einmal explizit initialisiert und danach nur über eine eindeutige Action-/Projection-API verändert werden; Events dürfen nicht so aussehen, als würden sie Daten transportieren, wenn sie tatsächlich nur einen Save anstoßen.
+
+### P2 – Zielzuschnitt für die großen Dateien
+
+Dateilänge ist ein Warnsignal, aber keine fachliche Grenze. Für dieses Projekt ist folgende Zerlegung belastbar:
+
+| Ausgangsdatei | Zielmodule | Regel für die Grenze |
+|---|---|---|
+| `App.vue` (1.278 Zeilen) | `usePublisherDocumentSession`, `usePublisherPersistence`, `usePublisherDesignTemplates`, `usePublisherExport`, `usePublisherDataContext` | `App.vue` verdrahtet Shell und Services; Repository-I/O, Exportloops und Record-Codecs liegen außerhalb. |
+| `EventTemplate.vue` (1.872 Zeilen) | `useCanvasLayoutProjection`, `useCanvasTextRendering`, `useCanvasImages`, `useCanvasQrCodes`, `useCanvasRasterization`, optional `useCanvasLayerCommands` | Nur Konva-Refs, Events und Renderbaum verbleiben. Pure Geometrie und datenabhängige Projektion gehören in Domainmodule, nicht in Composables. |
+| `useCanvasTransforms.ts` (551 Zeilen) | `useCanvasElementTransforms`, `useCanvasGroupTransforms`, gemeinsame pure Koordinatenhelfer | Element- und Gruppengesten getrennt testen; Commit-/History-Semantik bleibt identisch. |
+| `layoutEditing.ts` (1.160 Zeilen) | `layoutElements`, `layoutGroups`, `layoutLayerTree`, `layoutGeometry`, `layoutSnapping`, `layoutStyles` | Nach Fachbegriffen und Importabhängigkeiten schneiden, keine zyklischen Barrel-Module erzeugen. |
+| `publisherDraft.ts` (715 Zeilen) | `publisherLayoutCodec`, `publisherPageCodec`, `publisherDraftMigrations`, dünne Draft-Fassade | Aktuelle Parser und versionierte Migrationen trennen; externe Exporte stabil halten. |
+| `LayoutInspector.vue` (509 Zeilen) | Appearance-, Typography-, Layers- und Transform-Inspector plus `useLayoutInspectorPresentation` | UI-Blöcke bleiben Komponenten; nur labels, Mixed-State und Preview-Mapping werden composable/pure. |
+
+Für neue Dateien bietet sich als weiche Leitplanke an: Vue-Komponenten möglichst unter ungefähr 300 Zeilen, Composables und Domainmodule unter ungefähr 400 Zeilen. Überschreitungen sind erlaubt, brauchen aber eine klar benennbare zusammenhängende Verantwortung. Ein reines Verschieben von 500 Zeilen aus einer Komponente in ein einziges Composable verbessert die Architektur nicht.
+
+### P2 – `styles.css` enthält Komponentenstyles, Kaskadenduplikate und Altbestand
+
+**Status:** strukturell bestätigt.
+**Evidenz:** `src/styles.css` umfasst 4.083 Zeilen. Nur acht von 38 Vue-Komponenten besitzen derzeit einen lokalen `<style scoped>`-Block. Der globale Bestand enthält unter anderem DesignButton/IconButton-, Dialog-, Export-, Effekt-, Filter-, Shell-, Workspace- und Inspectorregeln. Selektoren wie `.publisher-workspace__canvas` und `.publisher-inspector__content--layout` erscheinen in voneinander entfernten Blöcken. Ganze Regelgruppen wie `.publisher-card*`, `.template-picker*`, `.layout-controls*` und `.local-draft__actions` besitzen im produktiven Markup keine entsprechenden Treffer mehr.
+
+**Auswirkung:** Komponenten lassen sich nicht isoliert verstehen oder entfernen. Source-Order wird zur versteckten Abhängigkeit, alte Regeln erhöhen CSS-Größe und spätere Media-Overrides überschreiben unbemerkt frühere Zustände.
+
+**Empfehlung:**
+
+1. Tote Selektorgruppen erst mit Produktion- und E2E-Suche bestätigen und dann in einem eigenen Commit löschen.
+2. Eindeutig besessene Regeln in den jeweiligen `<style scoped>`-Block verschieben: Dialoge, Inspectorblöcke, Panels, Buttons, Popover und Workspace-Komponenten.
+3. Nur Tokens, `html/body/#app`, Host-/Dark-Bridge, Reset, Schriftdefinitionen und wenige echte Utilities wie `.sr-only` global lassen.
+4. Wiederkehrende Status-, Field-, Range-/Number-Pair- und Vertical-Tab-Muster als kleine Designkomponenten kapseln; deren Styles leben dort.
+5. Responsive Regeln zusammen mit ihrer Komponente verschieben. Globale Media-Queries dürfen nur Shell-übergreifendes Layout koordinieren.
+
+### P3 – Altpfade und Bundlekosten sollten bewusst bereinigt werden
+
+**Status:** Produktionsimporte und Build geprüft.
+**Evidenz:** `src/utils/kv-store.ts` hat keine produktiven Importe. `publisherDraftFile.ts`, die terminbezogenen `localStorage`-Draftfunktionen in `publisherDraft.ts` und die lokale Designvorlagenbibliothek werden außerhalb ihrer Tests nicht mehr vom Produktpfad verwendet. Der Build erzeugt einen Hauptchunk von rund 623 KB minifiziert beziehungsweise 190 KB gzip. `publisherImagePalettes.ts` importiert `node-vibrant/browser` statisch, während JSZip bereits sinnvoll dynamisch geladen wird.
+
+**Auswirkung:** Historische Speicherpfade vergrößern die aktive API-Oberfläche und suggerieren weiterhin unterstützte Konzepte. Die statische Farbanalyse erhöht den Startpfad eines Editors, obwohl sie nur bei expliziter Analyse benötigt wird.
+
+**Empfehlung:** Altpfade nicht vorschnell löschen, sondern zunächst klären, ob sie noch eine einmalige Migration erfüllen. Falls ja, unter `legacy/` isolieren und mit Ablaufkriterium dokumentieren; sonst inklusive Tests entfernen. `node-vibrant/browser` erst bei Palettenanalyse dynamisch importieren und nach dem Split erneut Bundle sowie Browserlauf messen.
+
+### Fehlende Regressionstests aus diesem Audit
+
+Die bestehende Suite ist grün, deckt die gefundenen Fehler aber nicht ab. Vor den jeweiligen Fixes sollten reproduzierende Tests ergänzt werden für:
+
+- Filter ändern und Termindialog abbrechen: bestätigter Termin und Overrides bleiben erhalten;
+- persistiertes Dokument mit Termin außerhalb des Listenzeitraums: Detailquery und Variablen funktionieren;
+- Terminwechsel bei Auto-Layout: serialisierter Zustand und Historie bleiben unverändert;
+- Export mit Auto-Layout: kein Store- oder History-Write;
+- Reconnect nach erfolgreichem Recovery-Save: kein falscher Konflikt;
+- Save-Antwort nach Dokumentwechsel oder Löschung: keine fremden Metadaten werden übernommen;
+- Custom Image nur im inaktiven Layout und anschließender Layoutwechsel;
+- sofortiger Export nach Custom-Image-/QR-Erzeugung und paralleler Thumbnail-/Exportversuch;
+- gefiltertes Text- beziehungsweise Bildelement nach Alignment-, Decoration-, Gradient- oder Crop-Änderung;
+- gesperrte Auswahl über Ausrichten, Verteilen, Z-Order, Gruppieren und Entgruppieren;
+- zwei ausgewählte Formen: visuelle Stiländerung folgt der definierten Multi-Selection-Semantik;
+- Page-Store-Actions mit `NaN`, 63, 8193 und gültigen Grenzwerten;
+- 20 bis 50 Seiten: Canvasanzahl, Heap und Interaktionslatenz bleiben im definierten Budget;
+- konkurrierende Repository-Schreibvorgänge, sobald serverseitige CAS-Semantik existiert.
 
 ## Bereits gute Entscheidungen
 
@@ -482,20 +697,23 @@ Die Analyse soll nicht nur Defizite festhalten. Mehrere Grundlagen sind solide u
 - Der Farbwähler wird per `Teleport` außerhalb der scrollenden Inspectoren gerendert.
 - Die Vorlagen- und Dokumentverwaltung liegt in einem breiten Dialog mit Fokusfalle statt im rechten Inspector; die Header-Aktionen sind in Undo/Redo, Daten/Layout und Export gruppiert.
 - Design-Buttons, Icon-Buttons, Tabs und Panel-Header wurden bereits als gemeinsame Komponenten begonnen.
-- Terminwechsel überschreibt das aktuelle Layout inzwischen ausdrücklich nicht mehr.
+- Terminwechsel ersetzt weder Seiten noch Vorlage; der oben dokumentierte Auto-Layout-Reflow muss noch von persistierter Geometrie getrennt werden.
 - Verknüpfte Daten werden datensparsam erst auf Nutzeraktion geladen.
 
 ## Umgesetztes Programm und nächste Reihenfolge
 
-Abgeschlossen sind die priorisierten Grundlagen gegen Datenverlust, der kanonische Dokument-/Auswahlzustand, mehrseitige Vorlagen, rekursive Canvas-Gruppen, Gruppeneffekte und Filter, explizite Persistenzmigrationen, sichere Variablen-Pipelines, Repeat-Gruppen, zielgrößenabhängiger Bildabruf, gemeinsame Popover/Tabs, Ebenentastatur und responsive Seitenbereiche.
+Abgeschlossen sind die priorisierten Grundlagen gegen Datenverlust, der kanonische Dokument-/Auswahlzustand, mehrseitige Vorlagen, rekursive Canvas-Gruppen, Gruppeneffekte und Filter, explizite Persistenzmigrationen, sichere Variablen-Pipelines, Repeat-Gruppen, zielgrößenabhängiger Bildabruf, gemeinsame Dialoge/Popover/Tabs, Ebenentastatur samt Hierarchieänderungen und responsive Seitenbereiche.
 
-Als nächste eigenständige Ausbauschritte bleiben in sinnvoller Reihenfolge:
+Als nächste eigenständige Schritte bleiben in sinnvoller Reihenfolge:
 
-1. offiziellen ChurchTools-Assetpfad festlegen und erst danach eigene Bild-Uploads wieder aktivieren;
-2. verbleibende Spezialdialoge sowie den Ebenenbaum vollständig auditieren und eine weitergehende semantische Canvas-Alternative definieren;
-3. Exportpresets und Namensschema umsetzen, anschließend PDF separat evaluieren;
-4. vollständiges Remote-Autosave mit der kommenden ChurchTools-API auf Revisions-/Patchmöglichkeiten abstimmen;
-5. Abhängigkeitswarnungen, Dev-Zugangsdaten, Lizenz, SemVer, Changelog und reproduzierbares Packaging vor einem Store-Release klären.
+1. Datenwechsel und Export von persistierenden Auto-Layout-Mutationen entkoppeln;
+2. Terminfilter vom bestätigten Dokumentbezug trennen und Termine außerhalb der Discovery-Liste direkt laden;
+3. Recovery-Abgleich, Save-Session und atomare Remote-Revisionsprüfung stabilisieren;
+4. Lock-Guards zentralisieren sowie Asset-Barriere, Rasterisierungs-Mutex und inaktive Bildlayouts korrigieren;
+5. Multi-Selection-Stile, Cache-Invalidierung und Page-Size-Invarianten mit reproduzierenden Tests beheben und den Mehrseiten-Canvas virtualisieren;
+6. `App.vue`, `EventTemplate.vue`, `layoutEditing.ts`, `publisherDraft.ts` und `LayoutInspector.vue` entlang der beschriebenen Fachgrenzen zerlegen und Komponentenstyles aus `styles.css` zurück zu ihren Besitzern verschieben;
+7. offiziellen ChurchTools-Assetpfad festlegen und erst danach eigene Bild-Uploads wieder aktivieren;
+8. Ebenenbaum/A11y, Exportpresets, Abhängigkeitswarnungen und Releaseprozess anschließend ausbauen beziehungsweise klären.
 
 ## Vorgeschlagene Qualitätskriterien für eine erste Store-Version
 
@@ -513,12 +731,12 @@ Als nächste eigenständige Ausbauschritte bleiben in sinnvoller Reihenfolge:
 
 Am aktuellen Stand:
 
-- `npm test`: 59 Dateien, 279 Tests erfolgreich
-- `npm run test:e2e`: 8 Browsertests erfolgreich
+- `npm test`: 59 Dateien, 284 Tests erfolgreich
+- `npm run test:e2e`: 9 Browsertests erfolgreich
 - `npm run typecheck`: erfolgreich
 - `npm run benchmark:state`: 16 Seiten, 1.536 Elemente und 1,00 MiB; Layout-History-Eintrag im Mittel ungefähr 0,085 ms auf dem Audit-System
 - `npm run build`: erfolgreich
-- Vite meldet einen Hauptchunk von ungefähr 619 KB minifiziert beziehungsweise 189 KB gzip; Konva, ChurchTools, Vue und JSZip liegen in eigenen Chunks
+- Vite meldet einen Hauptchunk von ungefähr 623 KB minifiziert beziehungsweise 190 KB gzip; Konva, ChurchTools, Vue und JSZip liegen in eigenen Chunks
 - `npm audit --omit=dev`: 6 Meldungen, davon 1 hoch und 5 mittel
 
 Die Metriken sind Momentaufnahmen. Nach Änderungen an Abhängigkeiten oder Build-Splitting müssen sie neu erhoben werden.

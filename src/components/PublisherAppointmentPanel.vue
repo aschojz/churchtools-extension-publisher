@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { faCalendarDays, faXmark } from '@fortawesome/free-solid-svg-icons';
+import { faCalendarDays } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { storeToRefs } from 'pinia';
-import { nextTick, ref, watch } from 'vue';
+import { ref, watch } from 'vue';
 
 import { usePublisherAppointmentsStore } from '../stores/publisherAppointments';
 import DesignButton from './design/DesignButton.vue';
-import DesignIconButton from './design/DesignIconButton.vue';
+import DesignDialog from './design/DesignDialog.vue';
 
 export interface AppointmentPanelOption {
     key: string;
@@ -34,26 +34,13 @@ const {
     appointmentDialogOpen, appointmentSearch, hasAppointmentFilters, onlyAppointmentsWithDraft,
     selectedAppointmentKey, selectedAppointmentRange, selectedCalendarFilter,
 } = storeToRefs(appointmentStore);
-const dialog = ref<HTMLDialogElement | null>(null);
 const pendingAppointmentKey = ref('');
 
 watch(
     appointmentDialogOpen,
     (open) => {
-        if (!open && (dialog.value?.open || dialog.value?.hasAttribute('open'))) {
-            if (typeof dialog.value.close === 'function') {
-                dialog.value.close();
-            }
-            dialog.value.removeAttribute('open');
-            return;
-        }
         if (!open) return;
         pendingAppointmentKey.value = selectedAppointmentKey.value;
-        void nextTick(() => {
-            if (!appointmentDialogOpen.value || dialog.value?.open) return;
-            if (typeof dialog.value?.showModal === 'function') dialog.value.showModal();
-            else dialog.value?.setAttribute('open', '');
-        });
     },
     { immediate: true },
 );
@@ -63,32 +50,18 @@ const confirmSelection = () => {
     emit('close');
 };
 
-const closeFromBackdrop = (event: MouseEvent) => {
-    if (event.target === event.currentTarget) {
-        emit('close');
-    }
-};
 </script>
 
 <template>
-    <dialog
-        ref="dialog"
-        class="publisher-appointment-dialog"
-        aria-labelledby="appointments-panel-title"
-        @cancel.prevent="emit('close')"
-        @click="closeFromBackdrop"
+    <DesignDialog
+        :open="appointmentDialogOpen"
+        title="Termin auswählen"
+        description="Der Termin liefert Daten für Variablen, verändert aber das aktuelle Layout nicht."
+        panel-class="publisher-appointment-dialog"
+        @close="emit('close')"
     >
+        <template #icon><FontAwesomeIcon :icon="faCalendarDays" /></template>
         <section id="appointments-editor" class="publisher-appointment-panel">
-            <header class="publisher-appointment-panel__header">
-                <div class="publisher-appointment-panel__title">
-                    <span class="publisher-appointment-panel__icon"><FontAwesomeIcon :icon="faCalendarDays" aria-hidden="true" /></span>
-                    <h2 id="appointments-panel-title">Termin auswählen</h2>
-                </div>
-                <DesignIconButton class="publisher-appointment-panel__close" label="Dialog schließen" @click="emit('close')">
-                    <FontAwesomeIcon :icon="faXmark" aria-hidden="true" />
-                </DesignIconButton>
-            </header>
-
             <div class="appointment-picker">
                 <p v-if="isLoading" class="status-message" role="status">Termine werden geladen …</p>
 
@@ -104,7 +77,7 @@ const closeFromBackdrop = (event: MouseEvent) => {
                     <div class="appointment-picker__filters">
                         <label>
                             Suche
-                            <input v-model="appointmentSearch" type="search" placeholder="Titel oder Kalender" autofocus />
+                            <input v-model="appointmentSearch" data-dialog-initial-focus type="search" placeholder="Titel oder Kalender" />
                         </label>
                         <label>
                             Kalender
@@ -160,98 +133,25 @@ const closeFromBackdrop = (event: MouseEvent) => {
                     </select>
                 </template>
             </div>
-            <footer class="publisher-appointment-panel__footer">
-                <DesignButton variant="secondary" @click="emit('close')">Abbrechen</DesignButton>
-                <DesignButton @click="confirmSelection">
-                    <template #icon><FontAwesomeIcon :icon="faCalendarDays" aria-hidden="true" /></template>
-                    Auswahl übernehmen
-                </DesignButton>
-            </footer>
         </section>
-    </dialog>
+        <template #footer>
+            <DesignButton variant="secondary" @click="emit('close')">Abbrechen</DesignButton>
+            <DesignButton @click="confirmSelection">
+                <template #icon><FontAwesomeIcon :icon="faCalendarDays" aria-hidden="true" /></template>
+                Auswahl übernehmen
+            </DesignButton>
+        </template>
+    </DesignDialog>
 </template>
 
 <style scoped>
-.publisher-appointment-dialog {
+:global(.publisher-appointment-dialog) {
     width: min(760px, calc(100vw - 32px));
-    max-width: none;
-    max-height: min(760px, calc(100dvh - 32px));
-    box-sizing: border-box;
-    margin: auto;
-    padding: 0;
-    overflow-y: auto;
-    border: 1px solid var(--color-border-strong);
-    border-radius: 14px;
-    background: var(--color-surface);
-    color: var(--color-text);
-    box-shadow: 0 24px 70px rgb(0 0 0 / 28%);
-}
-
-.publisher-appointment-dialog::backdrop {
-    background: rgb(11 18 28 / 58%);
-    backdrop-filter: blur(2px);
 }
 
 .publisher-appointment-panel {
     padding: 24px;
     overflow-y: auto;
-}
-
-.publisher-appointment-panel__header {
-    display: flex;
-    margin-bottom: 22px;
-    align-items: start;
-    justify-content: space-between;
-}
-
-.publisher-appointment-panel__title {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-}
-
-.publisher-appointment-panel__icon {
-    display: grid;
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    background: var(--color-surface-accent-strong);
-    color: var(--color-accent-text);
-    place-items: center;
-}
-
-.publisher-appointment-panel__header h2 {
-    margin: 0;
-    font-size: 24px;
-}
-
-.publisher-appointment-panel__close {
-    display: grid;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    border: 1px solid var(--color-border-control);
-    border-radius: 8px;
-    background: var(--color-surface-subtle);
-    color: var(--color-text);
-    cursor: pointer;
-    place-items: center;
-}
-
-.publisher-appointment-panel__close:hover {
-    background: var(--color-surface-info);
-}
-
-.publisher-appointment-panel__close:focus-visible {
-    outline: 3px solid var(--color-focus-ring-strong);
-    outline-offset: 1px;
-}
-
-.publisher-appointment-panel__footer {
-    display: flex;
-    margin-top: 22px;
-    gap: 10px;
-    justify-content: flex-end;
 }
 
 .appointment-picker__filters {
@@ -272,7 +172,7 @@ const closeFromBackdrop = (event: MouseEvent) => {
 }
 
 @media (max-width: 680px) {
-    .publisher-appointment-dialog {
+    :global(.publisher-appointment-dialog) {
         width: calc(100vw - 20px);
         max-height: calc(100dvh - 20px);
     }

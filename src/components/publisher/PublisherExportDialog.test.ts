@@ -16,6 +16,7 @@ describe('PublisherExportDialog', () => {
     it('configures format and JPEG quality independently for every page', async () => {
         const wrapper = mount(PublisherExportDialog, {
             props: { busy: false, error: '', open: true, pages, progress: '', settings },
+            global: { stubs: { teleport: true } },
         });
 
         expect(wrapper.findAll('.publisher-export-page')).toHaveLength(2);
@@ -35,6 +36,7 @@ describe('PublisherExportDialog', () => {
     it('submits one ZIP export and disables closing while rendering', async () => {
         const wrapper = mount(PublisherExportDialog, {
             props: { busy: true, error: '', open: true, pages, progress: 'Seite 1 von 2 wird gerendert …', settings },
+            global: { stubs: { teleport: true } },
         });
 
         expect(wrapper.text()).toContain('Seite 1 von 2 wird gerendert');

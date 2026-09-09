@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue';
+import { inject, nextTick, provide, ref, watch, type InjectionKey } from 'vue';
 import { faAngleDown, faAngleRight, faEye, faEyeSlash, faFont, faGripVertical, faIcons, faImage, faLayerGroup, faLock, faQrcode, faRepeat, faShapes, faSliders, faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 
@@ -25,9 +25,10 @@ const props = withDefaults(defineProps<{
     hiddenElementIds?: LayoutElementId[];
     lockedElementIds?: LayoutElementId[];
     nodes: LayoutLayerTreeNode[];
+    parentGroupId?: string | null;
     repeatGroupIds?: string[];
     selectedElementIds: LayoutElementId[];
-}>(), { depth: 0, effectElementIds: () => [], filterElementIds: () => [], elementPreviews: () => ({}), hiddenElementIds: () => [], lockedElementIds: () => [], repeatGroupIds: () => [] });
+}>(), { depth: 0, effectElementIds: () => [], filterElementIds: () => [], elementPreviews: () => ({}), hiddenElementIds: () => [], lockedElementIds: () => [], parentGroupId: null, repeatGroupIds: () => [] });
 
 const emit = defineEmits<{
     drillIntoElement: [elementId: LayoutElementId];
@@ -40,6 +41,17 @@ const emit = defineEmits<{
 }>();
 
 const collapsedGroups = ref(new Set<string>());
+type LayerMovementAnnouncer = (message: string) => Promise<void>;
+const layerMovementAnnouncerKey = Symbol.for('publisher-layer-movement-announcer') as InjectionKey<LayerMovementAnnouncer>;
+const movementAnnouncement = ref('');
+const inheritedAnnouncer = inject(layerMovementAnnouncerKey, null);
+const localAnnouncer: LayerMovementAnnouncer = async (message) => {
+    movementAnnouncement.value = '';
+    await nextTick();
+    movementAnnouncement.value = message;
+};
+const announceMovement = inheritedAnnouncer ?? localAnnouncer;
+provide(layerMovementAnnouncerKey, announceMovement);
 watch(
     () => props.expandedGroupIds,
     (groupIds) => {
@@ -113,15 +125,24 @@ const dragNode = (node: LayoutLayerTreeNode): LayoutLayerDragNode => ({
     kind: node.kind,
     id: node.kind === 'element' ? node.elementId : node.id,
 });
+const nodeLabel = (node: LayoutLayerTreeNode) => node.kind === 'element'
+    ? props.elementLabels[node.elementId]
+    : props.depth === 0 ? 'Gruppe' : 'Untergruppe';
 const moveLayerWithKeyboard = (node: LayoutLayerTreeNode, index: number, event: KeyboardEvent) => {
-    if (!event.altKey || !['ArrowUp', 'ArrowDown', 'ArrowRight'].includes(event.key)) return;
+    if (!event.altKey || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     const source = dragNode(node);
     if (event.key === 'ArrowUp' && index > 0) {
         event.preventDefault();
         emit('moveLayer', source, dragNode(props.nodes[index - 1]!), 'before');
+        void announceMovement(`${nodeLabel(node)} nach oben verschoben.`);
     } else if (event.key === 'ArrowDown' && index < props.nodes.length - 1) {
         event.preventDefault();
         emit('moveLayer', source, dragNode(props.nodes[index + 1]!), 'after');
+        void announceMovement(`${nodeLabel(node)} nach unten verschoben.`);
+    } else if (event.key === 'ArrowLeft' && props.parentGroupId) {
+        event.preventDefault();
+        emit('moveLayer', source, { kind: 'group', id: props.parentGroupId }, 'outside');
+        void announceMovement(`${nodeLabel(node)} aus der Gruppe herausgezogen.`);
     } else if (event.key === 'ArrowRight') {
         const previousGroup = props.nodes.slice(0, index).reverse().find(
             (candidate): candidate is Extract<LayoutLayerTreeNode, { kind: 'group' }> => candidate.kind === 'group',
@@ -129,6 +150,7 @@ const moveLayerWithKeyboard = (node: LayoutLayerTreeNode, index: number, event: 
         if (previousGroup) {
             event.preventDefault();
             emit('moveLayer', source, { kind: 'group', id: previousGroup.id }, 'inside');
+            void announceMovement(`${nodeLabel(node)} in die vorherige Gruppe verschachtelt.`);
         }
     }
 };
@@ -181,11 +203,18 @@ const handleTreeNavigation = async (node: LayoutLayerTreeNode, event: KeyboardEv
         }
     }
 };
+const elementAccessibleLabel = (elementId: LayoutElementId) => [
+    props.elementLabels[elementId],
+    elementPresentation(elementId).kind,
+    elementIsHidden(elementId) ? 'ausgeblendet' : '',
+    elementIsLocked(elementId) ? 'gesperrt' : '',
+].filter(Boolean).join(', ');
 </script>
 
 <template>
     <div class="inspector-layer-tree" :class="{ 'is-nested': depth > 0 }" :role="depth === 0 ? 'tree' : 'group'" :aria-label="depth === 0 ? 'Ebenen' : undefined">
-        <span v-if="depth === 0" id="publisher-layer-keyboard-help" class="sr-only">Mit den Pfeiltasten navigieren und Gruppen auf- oder zuklappen. Mit Wahltaste beziehungsweise Alt und Pfeil nach oben oder unten verschieben, mit Wahltaste beziehungsweise Alt und Pfeil nach rechts in die vorherige Gruppe verschachteln.</span>
+        <span v-if="depth === 0" id="publisher-layer-keyboard-help" class="sr-only">Mit den Pfeiltasten navigieren und Gruppen auf- oder zuklappen. Mit Wahltaste beziehungsweise Alt und Pfeil nach oben oder unten verschieben, mit Wahltaste beziehungsweise Alt und Pfeil nach rechts in die vorherige Gruppe verschachteln und mit Wahltaste beziehungsweise Alt und Pfeil nach links aus der aktuellen Gruppe herausziehen.</span>
+        <span v-if="depth === 0" class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ movementAnnouncement }}</span>
         <template v-for="(node, nodeIndex) in nodes" :key="`${node.kind}-${node.id}`">
             <div
                 v-if="node.kind === 'element'"
@@ -204,6 +233,7 @@ const handleTreeNavigation = async (node: LayoutLayerTreeNode, event: KeyboardEv
                     type="button"
                     class="inspector-layer-list__select"
                     data-layer-select
+                    :aria-label="elementAccessibleLabel(node.elementId)"
                     :aria-pressed="selectedElementIds.includes(node.elementId)"
                     @click="emit('selectElement', node.elementId, $event)"
                     @dblclick="emit('drillIntoElement', node.elementId)"
@@ -227,7 +257,7 @@ const handleTreeNavigation = async (node: LayoutLayerTreeNode, event: KeyboardEv
                 <div class="inspector-layer-list__row inspector-layer-list__row--group" :class="[{ 'is-selected': groupIsSelected(node.elementIds), 'is-hidden': groupIsHidden(node.elementIds) }, dropClass({ kind: 'group', id: node.id })]" @dragover.prevent.stop="updateDrop({ kind: 'group', id: node.id }, $event)" @dragleave.self="activeDrop = null" @drop.prevent.stop="finishDrop({ kind: 'group', id: node.id }, $event)">
                     <button type="button" class="inspector-layer-list__drag" :disabled="groupContainsLocked(node.elementIds)" :draggable="!groupContainsLocked(node.elementIds)" aria-label="Gruppe verschieben" aria-describedby="publisher-layer-keyboard-help" @dragstart="startLayerDrag({ kind: 'group', id: node.id }, $event)" @dragend="activeDrop = null" @keydown="moveLayerWithKeyboard(node, nodeIndex, $event)"><FontAwesomeIcon :icon="faGripVertical" aria-hidden="true" /></button>
                     <DesignIconButton class="inspector-layer-group__toggle" :label="collapsedGroups.has(node.id) ? 'Gruppe aufklappen' : 'Gruppe zuklappen'" :aria-expanded="!collapsedGroups.has(node.id)" @click="toggleGroup(node.id)"><FontAwesomeIcon :icon="collapsedGroups.has(node.id) ? faAngleRight : faAngleDown" aria-hidden="true" /></DesignIconButton>
-                    <button type="button" class="inspector-layer-list__select inspector-layer-list__select--group" data-layer-select :aria-pressed="groupIsSelected(node.elementIds)" @click="emit('selectGroup', node.id, $event)" @keydown="handleTreeNavigation(node, $event)"><span class="inspector-layer-list__icon"><FontAwesomeIcon :icon="faLayerGroup" aria-hidden="true" /></span><span>{{ depth === 0 ? 'Gruppe' : 'Untergruppe' }}</span></button>
+                    <button type="button" class="inspector-layer-list__select inspector-layer-list__select--group" data-layer-select :aria-label="`${depth === 0 ? 'Gruppe' : 'Untergruppe'}, ${node.elementIds.length} Ebenen${groupIsHidden(node.elementIds) ? ', ausgeblendet' : ''}${groupContainsLocked(node.elementIds) ? ', enthält gesperrte Ebenen' : ''}`" :aria-pressed="groupIsSelected(node.elementIds)" @click="emit('selectGroup', node.id, $event)" @keydown="handleTreeNavigation(node, $event)"><span class="inspector-layer-list__icon"><FontAwesomeIcon :icon="faLayerGroup" aria-hidden="true" /></span><span>{{ depth === 0 ? 'Gruppe' : 'Untergruppe' }}</span></button>
                     <span class="inspector-layer-list__indicators">
                         <span v-if="repeatGroupIds.includes(node.id)" class="inspector-layer-list__repeat" title="Datenabhängige Wiederholung"><FontAwesomeIcon :icon="faRepeat" aria-hidden="true" /><span class="sr-only">Datenabhängige Wiederholung</span></span>
                         <DesignIconButton v-if="effectElementIds.includes(node.id)" class="inspector-layer-list__effect" label="Gruppeneffekte bearbeiten" @click="emit('editEffects', node.id)"><FontAwesomeIcon :icon="faWandMagicSparkles" aria-hidden="true" /></DesignIconButton>
@@ -247,6 +277,7 @@ const handleTreeNavigation = async (node: LayoutLayerTreeNode, event: KeyboardEv
                     :hidden-element-ids="hiddenElementIds"
                     :locked-element-ids="lockedElementIds"
                     :nodes="node.children"
+                    :parent-group-id="node.id"
                     :repeat-group-ids="repeatGroupIds"
                     :selected-element-ids="selectedElementIds"
                     @drill-into-element="emit('drillIntoElement', $event)"

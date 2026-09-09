@@ -12,6 +12,7 @@ import {
     nestLayoutNodeInGroup,
     sortLayoutGroupChildren,
     ungroupLayoutElements,
+    unnestLayoutNodeFromGroup,
     type LayoutDistributionAxis,
     type LayoutElementId,
     type LayoutFrame,
@@ -263,6 +264,19 @@ export const useCanvasGroups = (options: UseCanvasGroupsOptions) => {
             : null;
         const movingElementIds = sourceGroup ? layoutGroupElementIds(sourceGroup) : [source.id as LayoutElementId];
         const targetElementIds = targetGroup ? layoutGroupElementIds(targetGroup) : [target.id as LayoutElementId];
+        if (placement === 'outside' && target.kind === 'group') {
+            if (movingElementIds.some(options.elementIsLocked)) return;
+            const nextGroups = unnestLayoutNodeFromGroup(groups, source, target.id);
+            if (nextGroups === groups) return;
+            const previousState = options.captureLayoutState();
+            options.setGroups(nextGroups);
+            pruneEffectsForCurrentTargets();
+            reflowAutoLayoutGroups();
+            options.commitCurrentLayout(previousState);
+            options.updateSelection(movingElementIds, sourceGroup?.id ?? null);
+            options.onLayoutChange();
+            return;
+        }
         if (movingElementIds.some((elementId) => targetElementIds.includes(elementId)) ||
             movingElementIds.some(options.elementIsLocked)) return;
 

@@ -60,6 +60,28 @@ test('creates a real group target and stores effects on that group', async ({ pa
     await expect(page.getByRole('button', { name: 'Effekte von Neuer Text bearbeiten' })).toHaveCount(0);
 });
 
+test('pulls a layer out of a nested group with the keyboard and announces the hierarchy change', async ({ page }) => {
+    await page.getByRole('button', { name: 'Grafiktext hinzufügen' }).click();
+    await page.getByRole('button', { name: 'Quadrat hinzufügen' }).click();
+    await page.locator('.inspector-layer-list__select').filter({ hasText: 'Neuer Text' }).click();
+    await page.locator('.inspector-layer-list__select').filter({ hasText: 'Quadrat' }).click({ modifiers: ['Shift'] });
+    await page.locator('.publisher-layer-popover .design-popover__trigger').click();
+    await page.getByRole('button', { name: 'Gruppieren', exact: true }).click();
+
+    await page.getByRole('button', { name: 'Kreis hinzufügen' }).click();
+    await page.locator('.inspector-layer-list__select--group').click();
+    await page.locator('.inspector-layer-list__select').filter({ hasText: 'Kreis' }).click({ modifiers: ['Shift'] });
+    await page.locator('.publisher-layer-popover .design-popover__trigger').click();
+    await page.getByRole('button', { name: 'Gruppieren', exact: true }).click();
+    await expect(page.locator('.inspector-layer-group .inspector-layer-group')).toHaveCount(1);
+
+    await page.getByRole('button', { name: 'Neuer Text verschieben', exact: true }).press('Alt+ArrowLeft');
+
+    await expect(page.locator('.inspector-layer-group .inspector-layer-group')).toHaveCount(0);
+    await expect(page.locator('.inspector-layer-tree[role="tree"] [role="status"]'))
+        .toHaveText('Neuer Text aus der Gruppe herausgezogen.');
+});
+
 test('saves and reapplies a complete multi-page document template', async ({ page }) => {
     await page.getByRole('button', { name: 'Seite hinzufügen' }).first().click();
     await page.getByLabel('Breite in Pixeln').fill('600');

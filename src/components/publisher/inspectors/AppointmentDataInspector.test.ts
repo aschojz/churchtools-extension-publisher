@@ -27,7 +27,7 @@ const mountInspector = () => {
             replacementName: '',
             replacementUrl: null,
         },
-        global: { plugins: [pinia] },
+        global: { plugins: [pinia], stubs: { teleport: true } },
     });
 };
 
@@ -74,7 +74,7 @@ describe('AppointmentDataInspector', () => {
         await wrapper.get('[aria-label="Titel bearbeiten"]').trigger('click');
         expect(wrapper.get('[role="dialog"]').text()).toContain('{{title}}');
         await wrapper.get('textarea').setValue('Neuer Titel');
-        await wrapper.findAll('button').find((button) => button.text() === 'Übernehmen')!.trigger('submit');
+        await wrapper.get('#publisher-data-dialog-form').trigger('submit');
 
         expect(wrapper.emitted('updateField')).toEqual([['title', 'Neuer Titel']]);
         expect(wrapper.find('[role="dialog"]').exists()).toBe(false);

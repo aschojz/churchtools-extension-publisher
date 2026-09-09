@@ -37,4 +37,29 @@ describe('DesignDialog', () => {
         wrapper.unmount();
         returnTarget.remove();
     });
+
+    it('honors explicit initial focus and blocks every close path while disabled', async () => {
+        const wrapper = mount(DesignDialog, {
+            props: {
+                closeDisabled: true,
+                description: 'Der Vorgang läuft noch.',
+                open: true,
+                title: 'Export',
+            },
+            slots: { default: '<input data-dialog-initial-focus aria-label="Dateiname" />' },
+            attachTo: document.body,
+        });
+        await nextTick();
+        const dialog = document.body.querySelector<HTMLElement>('.design-dialog');
+        const input = dialog?.querySelector<HTMLInputElement>('[aria-label="Dateiname"]');
+
+        expect(document.activeElement).toBe(input);
+        expect(dialog?.getAttribute('aria-describedby')).toBeTruthy();
+        expect(dialog?.querySelector('[aria-label="Dialog schließen"]')?.hasAttribute('disabled')).toBe(true);
+        dialog?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        document.body.querySelector<HTMLElement>('.design-dialog-backdrop')?.click();
+        expect(wrapper.emitted('close')).toBeUndefined();
+
+        wrapper.unmount();
+    });
 });

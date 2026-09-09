@@ -5,11 +5,11 @@ import {
     faArrowsRotate,
     faBorderAll,
     faCircleHalfStroke,
+    faFilter,
     faImage,
     faPalette,
     faSun,
     faWaveSquare,
-    faXmark,
 } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { computed, nextTick, ref, watch } from 'vue';
@@ -27,6 +27,7 @@ import {
     type LayoutPixelateFilter,
 } from '../../domain/layoutFilters';
 import DesignButton from '../design/DesignButton.vue';
+import DesignDialog from '../design/DesignDialog.vue';
 import DesignIconButton from '../design/DesignIconButton.vue';
 
 const props = defineProps<{
@@ -53,8 +54,6 @@ const filterDefinitions = [
 
 const activeType = ref<LayoutFilterType>('brightness');
 const draft = ref<LayoutFilterStack>(createLayoutFilterStack());
-const dialogRef = ref<HTMLFormElement | null>(null);
-let restoreFocus: HTMLElement | null = null;
 
 const filterOfType = <FilterType extends LayoutFilterType>(type: FilterType) =>
     draft.value.find((filter) => filter.type === type) as Extract<LayoutFilterStack[number], { type: FilterType }>;
@@ -90,16 +89,10 @@ const noisePercent = computed({
 
 watch(
     () => props.open,
-    async (open) => {
+    (open) => {
         if (open) {
-            restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
             draft.value = createLayoutFilterStack(props.filters);
             activeType.value = props.filters.find(({ enabled }) => enabled)?.type ?? 'brightness';
-            await nextTick();
-            dialogRef.value?.querySelector<HTMLElement>('[data-dialog-initial-focus]')?.focus();
-        } else {
-            restoreFocus?.focus();
-            restoreFocus = null;
         }
     },
     { immediate: true },
@@ -119,48 +112,53 @@ const applyFilters = () => {
     emit('apply', normalizeLayoutFilterStack(draft.value));
     emit('close');
 };
-const handleDialogKeydown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-        event.preventDefault();
-        emit('close');
-        return;
-    }
-    if (event.key !== 'Tab' || !dialogRef.value) return;
-    const focusable = [...dialogRef.value.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    )].filter((element) => !element.hidden);
-    if (focusable.length === 0) return;
-    const first = focusable[0]!;
-    const last = focusable.at(-1)!;
-    if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-    }
+const handleFilterTabKeydown = async (event: KeyboardEvent) => {
+    const definitions = orderedFilterDefinitions.value;
+    const index = definitions.findIndex(({ type }) => type === activeType.value);
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowDown') nextIndex = (index + 1) % definitions.length;
+    if (event.key === 'ArrowUp') nextIndex = (index - 1 + definitions.length) % definitions.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = definitions.length - 1;
+    if (nextIndex === null || !definitions[nextIndex]) return;
+    event.preventDefault();
+    activeType.value = definitions[nextIndex].type;
+    await nextTick();
+    document.getElementById(`publisher-filter-${activeType.value}-tab`)?.focus();
 };
 </script>
 
 <template>
-    <div v-if="open" class="publisher-page-dialog-backdrop publisher-effects-dialog-backdrop" @click.self="emit('close')" @keydown="handleDialogKeydown">
-        <form ref="dialogRef" class="publisher-page-dialog publisher-effects-dialog publisher-filters-dialog" role="dialog" aria-modal="true" aria-labelledby="publisher-filters-dialog-title" @submit.prevent="applyFilters">
-            <header>
-                <div><h2 id="publisher-filters-dialog-title">Ebenenfilter</h2><span>{{ selectionCount }} Ebene{{ selectionCount === 1 ? '' : 'n' }}</span></div>
-                <DesignIconButton data-dialog-initial-focus label="Dialog schließen" @click="emit('close')"><FontAwesomeIcon :icon="faXmark" aria-hidden="true" /></DesignIconButton>
-            </header>
-
+    <DesignDialog
+        :open="open"
+        title="Ebenenfilter"
+        :description="`${selectionCount} Ebene${selectionCount === 1 ? '' : 'n'} ausgewählt`"
+        panel-class="publisher-effects-dialog publisher-filters-dialog"
+        body-class="publisher-effects-dialog__dialog-body"
+        @close="emit('close')"
+    >
+        <template #icon><FontAwesomeIcon :icon="faFilter" /></template>
+        <form id="publisher-filters-dialog-form" class="publisher-effects-dialog__form" @submit.prevent="applyFilters">
             <div class="publisher-effects-dialog__body">
-                <nav aria-label="Filterreihenfolge">
+                <nav role="tablist" aria-label="Filterreihenfolge" aria-orientation="vertical" @keydown="handleFilterTabKeydown">
                     <div v-for="definition in orderedFilterDefinitions" :key="definition.type" class="publisher-filters-dialog__nav-item" :class="{ 'is-active': activeType === definition.type }">
-                        <button type="button" :aria-pressed="activeType === definition.type" @click="activeType = definition.type">
+                        <button
+                            :id="`publisher-filter-${definition.type}-tab`"
+                            :data-dialog-initial-focus="activeType === definition.type ? '' : undefined"
+                            type="button"
+                            role="tab"
+                            :aria-controls="`publisher-filter-${definition.type}-panel`"
+                            :aria-selected="activeType === definition.type"
+                            :tabindex="activeType === definition.type ? 0 : -1"
+                            @click="activeType = definition.type"
+                        >
                             <FontAwesomeIcon :icon="definition.icon" aria-hidden="true" /><span>{{ definition.label }}</span>
                         </button>
                         <input :checked="filterOfType(definition.type).enabled" type="checkbox" :aria-label="`${definition.label} aktivieren`" @change="toggleFilter(definition.type, ($event.target as HTMLInputElement).checked)" />
                     </div>
                 </nav>
 
-                <section class="publisher-effects-dialog__settings">
+                <section :id="`publisher-filter-${activeType}-panel`" role="tabpanel" :aria-labelledby="`publisher-filter-${activeType}-tab`" class="publisher-effects-dialog__settings">
                     <div class="publisher-effects-dialog__heading">
                         <div><strong>{{ activeLabel }}</strong><small>Wirkt ausschließlich auf die ausgewählte Ebene oder Gruppe.</small></div>
                         <div class="publisher-filters-dialog__order">
@@ -192,13 +190,17 @@ const handleDialogKeydown = (event: KeyboardEvent) => {
                     </fieldset>
                 </section>
             </div>
-
-            <footer><DesignButton type="button" variant="danger" @click="removeFilters">Filter entfernen</DesignButton><span /><DesignButton type="button" variant="secondary" @click="emit('close')">Abbrechen</DesignButton><DesignButton type="submit">Anwenden</DesignButton></footer>
         </form>
-    </div>
+        <template #footer><DesignButton type="button" variant="danger" @click="removeFilters">Filter entfernen</DesignButton><span /><DesignButton type="button" variant="secondary" @click="emit('close')">Abbrechen</DesignButton><DesignButton type="submit" form="publisher-filters-dialog-form">Anwenden</DesignButton></template>
+    </DesignDialog>
 </template>
 
 <style scoped>
+.publisher-effects-dialog__form {
+    min-height: 0;
+    height: 100%;
+}
+
 .publisher-filters-dialog__nav-item {
     display: grid;
     min-height: 42px;

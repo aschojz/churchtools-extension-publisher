@@ -232,4 +232,21 @@ describe('LayoutLayerTree', () => {
             [{ kind: 'element', id: 'image' }, { kind: 'group', id: 'outer' }, 'inside'],
         ]);
     });
+
+    it('pulls a nested layer out of its direct group with Alt plus ArrowLeft and announces the move', async () => {
+        const wrapper = mount(LayoutLayerTree, {
+            props: { elementLabels, nodes: nestedNodes, selectedElementIds: [] },
+        });
+        const titleHandle = wrapper.get('[aria-label="Titel verschieben"]');
+
+        await titleHandle.trigger('keydown', { altKey: true, key: 'ArrowLeft' });
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.emitted('moveLayer')).toContainEqual([
+            { kind: 'element', id: 'title' },
+            { kind: 'group', id: 'inner' },
+            'outside',
+        ]);
+        expect(wrapper.get('[role="status"]').text()).toBe('Titel aus der Gruppe herausgezogen.');
+    });
 });

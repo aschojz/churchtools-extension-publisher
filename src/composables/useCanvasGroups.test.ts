@@ -77,4 +77,67 @@ describe('useCanvasGroups', () => {
         });
         expect(commits).toHaveBeenCalledTimes(3);
     });
+
+    it('moves a layer out of its direct group without changing its stack order', () => {
+        const bases: Record<string, LayoutFrame> = {
+            title: { x: 10, y: 20, width: 100, height: 40 },
+            accent: { x: 10, y: 68, width: 100, height: 4 },
+            dateTime: { x: 10, y: 80, width: 100, height: 30 },
+            location: { x: 10, y: 118, width: 100, height: 30 },
+        };
+        const layout = {
+            deleted: [] as LayoutElementId[],
+            effects: {},
+            filters: {},
+            groups: [{
+                id: 'outer',
+                children: [{ id: 'heading', children: ['title', 'accent', 'dateTime'] }, 'location'],
+            }] as LayoutGroups,
+            offsets: Object.fromEntries(Object.keys(bases).map((id) => [id, { x: 0, y: 0 }])),
+            order: ['title', 'accent', 'dateTime', 'location'] as LayoutElementId[],
+            sizes: Object.fromEntries(Object.entries(bases).map(([id, frame]) => [id, { width: frame.width, height: frame.height }])),
+        };
+        const selectedElements = ref<LayoutElementId[]>(['dateTime']);
+        const selectedGroupId = ref<string | null>('heading');
+        const commits = vi.fn();
+        const originalOrder = [...layout.order];
+        const groups = useCanvasGroups({
+            autoLayoutTextHeight: () => null,
+            captureLayoutState: () => cloneLayoutState({
+                ...layout,
+                rotations: Object.fromEntries(layout.order.map((id) => [id, 0])),
+                styles: {}, visualStyles: {}, customElements: [],
+            }),
+            commitCurrentLayout: commits,
+            elementFrame: (elementId) => ({ ...bases[elementId]!, ...layout.sizes[elementId] }),
+            elementIsLocked: () => false,
+            getBaseFrame: (elementId) => bases[elementId]!,
+            getLayout: () => layout,
+            onLayoutChange: vi.fn(),
+            selectedElements,
+            selectedGroupId,
+            setEffects: (value) => { layout.effects = value; },
+            setFilters: (value) => { layout.filters = value; },
+            setGroups: (value) => { layout.groups = value; },
+            setOrder: (value) => { layout.order = value; },
+            updateSelection: (elementIds, groupId = null) => {
+                selectedElements.value = elementIds;
+                selectedGroupId.value = groupId;
+            },
+        });
+
+        groups.moveLayerNode(
+            { kind: 'element', id: 'dateTime' },
+            { kind: 'group', id: 'heading' },
+            'outside',
+        );
+
+        expect(layout.groups).toEqual([{
+            id: 'outer',
+            children: [{ id: 'heading', children: ['title', 'accent'] }, 'dateTime', 'location'],
+        }]);
+        expect(layout.order).toEqual(originalOrder);
+        expect(selectedGroupId.value).toBeNull();
+        expect(commits).toHaveBeenCalledOnce();
+    });
 });

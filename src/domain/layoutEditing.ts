@@ -719,7 +719,7 @@ export const ungroupLayoutElements = (
 };
 
 export type LayoutLayerDragNode = { kind: 'element' | 'group'; id: string };
-export type LayoutLayerDropPlacement = 'before' | 'after' | 'inside';
+export type LayoutLayerDropPlacement = 'before' | 'after' | 'inside' | 'outside';
 
 export const moveLayoutOrderBlock = (
     order: LayoutOrder,
@@ -765,6 +765,52 @@ export const nestLayoutNodeInGroup = (
         : { ...group, children: group.children.map((child) => typeof child === 'string' ? child : appendToTarget(child)) };
     const nested = withoutSource.map(appendToTarget);
     return flattenLayoutGroups(nested).some(({ id }) => id === targetGroupId) ? nested : groups;
+};
+
+export const unnestLayoutNodeFromGroup = (
+    groups: LayoutGroups,
+    source: LayoutLayerDragNode,
+    parentGroupId: string,
+): LayoutGroups => {
+    const matchesSource = (child: LayoutElementId | LayoutGroup) => typeof child === 'string'
+        ? source.kind === 'element' && child === source.id
+        : source.kind === 'group' && child.id === source.id;
+    const visit = (
+        children: (LayoutElementId | LayoutGroup)[],
+    ): { changed: boolean; children: (LayoutElementId | LayoutGroup)[] } => {
+        for (const [index, child] of children.entries()) {
+            if (typeof child === 'string') continue;
+            if (child.id === parentGroupId) {
+                const sourceIndex = child.children.findIndex(matchesSource);
+                if (sourceIndex < 0) return { changed: false, children };
+                const sourceNode = child.children[sourceIndex]!;
+                const remainingChildren = child.children.filter((_, childIndex) => childIndex !== sourceIndex);
+                const replacement: (LayoutElementId | LayoutGroup)[] = remainingChildren.length >= 2
+                    ? [{ ...child, children: remainingChildren }, sourceNode]
+                    : [...remainingChildren, sourceNode];
+                return {
+                    changed: true,
+                    children: [...children.slice(0, index), ...replacement, ...children.slice(index + 1)],
+                };
+            }
+            const nested = visit(child.children);
+            if (nested.changed) {
+                return {
+                    changed: true,
+                    children: [
+                        ...children.slice(0, index),
+                        { ...child, children: nested.children },
+                        ...children.slice(index + 1),
+                    ],
+                };
+            }
+        }
+        return { changed: false, children };
+    };
+    const result = visit(groups);
+    return result.changed
+        ? result.children.filter((child): child is LayoutGroup => typeof child !== 'string')
+        : groups;
 };
 
 export const createLayoutTextStyles = (templateId: TemplateId): LayoutTextStyles => {

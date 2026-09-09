@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { faDroplet, faLayerGroup, faMoon, faXmark } from '@fortawesome/free-solid-svg-icons';
+import { faDroplet, faLayerGroup, faMoon, faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 
 import {
     createLayoutElementEffects,
@@ -9,7 +9,7 @@ import {
     type LayoutElementEffects,
 } from '../../domain/layoutEditing';
 import DesignButton from '../design/DesignButton.vue';
-import DesignIconButton from '../design/DesignIconButton.vue';
+import DesignDialog from '../design/DesignDialog.vue';
 import PublisherColorPicker from './PublisherColorPicker.vue';
 
 const props = defineProps<{
@@ -24,6 +24,7 @@ const emit = defineEmits<{
 }>();
 
 type EffectSection = 'shadow' | 'blur' | 'appearance';
+const effectSections: EffectSection[] = ['shadow', 'blur', 'appearance'];
 const activeSection = ref<EffectSection>('shadow');
 const draft = ref<LayoutElementEffects>(createLayoutElementEffects());
 const cloneEffects = (effects: LayoutElementEffects) => ({
@@ -55,33 +56,55 @@ const applyEffects = () => {
     emit('apply', cloneEffects(draft.value));
     emit('close');
 };
+const handleEffectTabKeydown = async (event: KeyboardEvent) => {
+    const index = effectSections.indexOf(activeSection.value);
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowDown') nextIndex = (index + 1) % effectSections.length;
+    if (event.key === 'ArrowUp') nextIndex = (index - 1 + effectSections.length) % effectSections.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = effectSections.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    activeSection.value = effectSections[nextIndex]!;
+    await nextTick();
+    document.getElementById(`publisher-effects-${activeSection.value}-tab`)?.focus();
+};
 </script>
 
 <template>
-    <div v-if="open" class="publisher-page-dialog-backdrop publisher-effects-dialog-backdrop" @click.self="emit('close')" @keydown.esc="emit('close')">
-        <form class="publisher-page-dialog publisher-effects-dialog" role="dialog" aria-modal="true" aria-labelledby="publisher-effects-dialog-title" @submit.prevent="applyEffects">
-            <header>
-                <div><h2 id="publisher-effects-dialog-title">Ebeneneffekte</h2><span>{{ selectionCount }} Ebene{{ selectionCount === 1 ? '' : 'n' }}</span></div>
-                <DesignIconButton label="Dialog schließen" @click="emit('close')"><FontAwesomeIcon :icon="faXmark" aria-hidden="true" /></DesignIconButton>
-            </header>
-
+    <DesignDialog
+        :open="open"
+        title="Ebeneneffekte"
+        :description="`${selectionCount} Ebene${selectionCount === 1 ? '' : 'n'} ausgewählt`"
+        panel-class="publisher-effects-dialog"
+        body-class="publisher-effects-dialog__dialog-body"
+        @close="emit('close')"
+    >
+        <template #icon><FontAwesomeIcon :icon="faWandMagicSparkles" /></template>
+        <form id="publisher-effects-dialog-form" class="publisher-effects-dialog__form" @submit.prevent="applyEffects">
             <div class="publisher-effects-dialog__body">
-                <nav aria-label="Effekte">
-                    <button type="button" :class="{ 'is-active': activeSection === 'shadow' }" @click="activeSection = 'shadow'">
-                        <FontAwesomeIcon :icon="faMoon" aria-hidden="true" /><span>Schlagschatten</span>
-                        <input v-model="draft.shadow.enabled" type="checkbox" aria-label="Schlagschatten aktivieren" @click.stop />
-                    </button>
-                    <button type="button" :class="{ 'is-active': activeSection === 'blur' }" @click="activeSection = 'blur'">
-                        <FontAwesomeIcon :icon="faDroplet" aria-hidden="true" /><span>Weichzeichnen</span>
-                        <input v-model="draft.blur.enabled" type="checkbox" aria-label="Weichzeichnen aktivieren" @click.stop />
-                    </button>
-                    <button type="button" :class="{ 'is-active': activeSection === 'appearance' }" @click="activeSection = 'appearance'">
-                        <FontAwesomeIcon :icon="faLayerGroup" aria-hidden="true" /><span>Darstellung</span>
+                <nav role="tablist" aria-label="Effekte" aria-orientation="vertical" @keydown="handleEffectTabKeydown">
+                    <div class="publisher-effects-dialog__nav-item" :class="{ 'is-active': activeSection === 'shadow' }">
+                        <button id="publisher-effects-shadow-tab" :data-dialog-initial-focus="activeSection === 'shadow' ? '' : undefined" type="button" role="tab" aria-controls="publisher-effects-shadow-panel" :aria-selected="activeSection === 'shadow'" :tabindex="activeSection === 'shadow' ? 0 : -1" @click="activeSection = 'shadow'">
+                            <FontAwesomeIcon :icon="faMoon" aria-hidden="true" /><span>Schlagschatten</span>
+                        </button>
+                        <input v-model="draft.shadow.enabled" type="checkbox" aria-label="Schlagschatten aktivieren" />
+                    </div>
+                    <div class="publisher-effects-dialog__nav-item" :class="{ 'is-active': activeSection === 'blur' }">
+                        <button id="publisher-effects-blur-tab" :data-dialog-initial-focus="activeSection === 'blur' ? '' : undefined" type="button" role="tab" aria-controls="publisher-effects-blur-panel" :aria-selected="activeSection === 'blur'" :tabindex="activeSection === 'blur' ? 0 : -1" @click="activeSection = 'blur'">
+                            <FontAwesomeIcon :icon="faDroplet" aria-hidden="true" /><span>Weichzeichnen</span>
+                        </button>
+                        <input v-model="draft.blur.enabled" type="checkbox" aria-label="Weichzeichnen aktivieren" />
+                    </div>
+                    <div class="publisher-effects-dialog__nav-item" :class="{ 'is-active': activeSection === 'appearance' }">
+                        <button id="publisher-effects-appearance-tab" :data-dialog-initial-focus="activeSection === 'appearance' ? '' : undefined" type="button" role="tab" aria-controls="publisher-effects-appearance-panel" :aria-selected="activeSection === 'appearance'" :tabindex="activeSection === 'appearance' ? 0 : -1" @click="activeSection = 'appearance'">
+                            <FontAwesomeIcon :icon="faLayerGroup" aria-hidden="true" /><span>Darstellung</span>
+                        </button>
                         <i :class="{ 'is-enabled': draft.opacity < 1 || draft.blendMode !== 'source-over' }" aria-hidden="true" />
-                    </button>
+                    </div>
                 </nav>
 
-                <section v-if="activeSection === 'shadow'" class="publisher-effects-dialog__settings">
+                <section v-if="activeSection === 'shadow'" id="publisher-effects-shadow-panel" role="tabpanel" aria-labelledby="publisher-effects-shadow-tab" class="publisher-effects-dialog__settings">
                     <div class="publisher-effects-dialog__heading"><div><strong>Schlagschatten</strong><small>Folgt dem sichtbaren Inhalt der Ebene.</small></div><label><input v-model="draft.shadow.enabled" type="checkbox" /> Aktiv</label></div>
                     <fieldset :disabled="!draft.shadow.enabled">
                         <label class="inspector-color-field"><PublisherColorPicker v-model="draft.shadow.color" label="Schattenfarbe" :disabled="!draft.shadow.enabled" /><span><strong>Farbe</strong><small>{{ draft.shadow.color.toUpperCase() }}</small></span></label>
@@ -92,14 +115,14 @@ const applyEffects = () => {
                     </fieldset>
                 </section>
 
-                <section v-else-if="activeSection === 'blur'" class="publisher-effects-dialog__settings">
+                <section v-else-if="activeSection === 'blur'" id="publisher-effects-blur-panel" role="tabpanel" aria-labelledby="publisher-effects-blur-tab" class="publisher-effects-dialog__settings">
                     <div class="publisher-effects-dialog__heading"><div><strong>Gaußsche Unschärfe</strong><small>Zeichnet den sichtbaren Ebeneninhalt weich.</small></div><label><input v-model="draft.blur.enabled" type="checkbox" /> Aktiv</label></div>
                     <fieldset :disabled="!draft.blur.enabled">
                         <label class="publisher-effects-dialog__range"><span>Radius</span><input v-model.number="draft.blur.radius" type="range" min="0" max="100" step="1" /><input v-model.number="draft.blur.radius" type="number" min="0" max="100" step="1" /><small>px</small></label>
                     </fieldset>
                 </section>
 
-                <section v-else class="publisher-effects-dialog__settings">
+                <section v-else id="publisher-effects-appearance-panel" role="tabpanel" aria-labelledby="publisher-effects-appearance-tab" class="publisher-effects-dialog__settings">
                     <div class="publisher-effects-dialog__heading"><div><strong>Darstellung</strong><small>Wirkt auf die komplette Ebene.</small></div></div>
                     <fieldset>
                         <label class="publisher-effects-dialog__range"><span>Deckkraft</span><input v-model.number="opacityPercent" type="range" min="0" max="100" step="1" /><input v-model.number="opacityPercent" type="number" min="0" max="100" step="1" /><small>%</small></label>
@@ -107,8 +130,14 @@ const applyEffects = () => {
                     </fieldset>
                 </section>
             </div>
-
-            <footer><DesignButton type="button" variant="danger" @click="removeEffects">Effekte entfernen</DesignButton><span /><DesignButton type="button" variant="secondary" @click="emit('close')">Abbrechen</DesignButton><DesignButton type="submit">Anwenden</DesignButton></footer>
         </form>
-    </div>
+        <template #footer><DesignButton type="button" variant="danger" @click="removeEffects">Effekte entfernen</DesignButton><span /><DesignButton type="button" variant="secondary" @click="emit('close')">Abbrechen</DesignButton><DesignButton type="submit" form="publisher-effects-dialog-form">Anwenden</DesignButton></template>
+    </DesignDialog>
 </template>
+
+<style scoped>
+.publisher-effects-dialog__form {
+    min-height: 0;
+    height: 100%;
+}
+</style>

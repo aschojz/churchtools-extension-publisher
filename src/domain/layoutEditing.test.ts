@@ -40,6 +40,7 @@ import {
     snapRotation,
     sortLayoutGroupChildren,
     ungroupLayoutElements,
+    unnestLayoutNodeFromGroup,
 } from './layoutEditing';
 import type { LayoutGroup } from './layoutEditing';
 
@@ -281,6 +282,31 @@ describe('layout editing', () => {
         expect(nestLayoutNodeInGroup(groups, { kind: 'group', id: 'details' }, 'heading')).toEqual([
             { id: 'heading', children: ['title', 'accent', { id: 'details', children: ['dateTime', 'location'] }] },
         ]);
+    });
+
+    it('pulls direct children out of nested groups and dissolves groups with one child', () => {
+        const groups: LayoutGroup[] = [{
+            id: 'outer',
+            children: [
+                { id: 'heading', children: ['title', 'accent', 'dateTime'] },
+                'location',
+            ],
+        }];
+
+        expect(unnestLayoutNodeFromGroup(groups, { kind: 'element', id: 'dateTime' }, 'heading')).toEqual([{
+            id: 'outer',
+            children: [
+                { id: 'heading', children: ['title', 'accent'] },
+                'dateTime',
+                'location',
+            ],
+        }]);
+        expect(unnestLayoutNodeFromGroup(
+            [{ id: 'heading', children: ['title', 'accent'] }],
+            { kind: 'element', id: 'accent' },
+            'heading',
+        )).toEqual([]);
+        expect(unnestLayoutNodeFromGroup(groups, { kind: 'element', id: 'location' }, 'heading')).toBe(groups);
     });
 
     it('creates nested groups and removes only their outermost level', () => {

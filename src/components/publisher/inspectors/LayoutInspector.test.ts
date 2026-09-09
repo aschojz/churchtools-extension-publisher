@@ -198,7 +198,7 @@ describe('LayoutInspector typography controls', () => {
         expect(wrapper.get('[role="dialog"]').text()).toContain('Ebeneneffekte');
 
         await wrapper.get('[aria-label="Schlagschatten aktivieren"]').setValue(true);
-        await wrapper.get('.publisher-effects-dialog').trigger('submit');
+        await wrapper.get('#publisher-effects-dialog-form').trigger('submit');
 
         expect(wrapper.emitted('updateEffects')?.[0]?.[0]).toEqual(['title']);
         expect(wrapper.emitted('updateEffects')?.[0]?.[1]).toMatchObject({
@@ -207,6 +207,19 @@ describe('LayoutInspector typography controls', () => {
             opacity: 1,
             blendMode: 'source-over',
         });
+    });
+
+    it('exposes effect sections as arrow-key operable tabs without nested controls', async () => {
+        const wrapper = mountInspector(textStyle());
+        await openTab(wrapper, 'Ebenen');
+        await wrapper.get('.inspector-layer-footer [aria-label="Ebeneneffekte"]').trigger('click');
+        const shadowTab = wrapper.get('#publisher-effects-shadow-tab');
+
+        expect(shadowTab.attributes('aria-selected')).toBe('true');
+        expect(wrapper.find('.publisher-effects-dialog nav button input').exists()).toBe(false);
+        await shadowTab.trigger('keydown', { key: 'ArrowDown' });
+        expect(wrapper.get('#publisher-effects-blur-tab').attributes('aria-selected')).toBe('true');
+        expect(wrapper.get('#publisher-effects-blur-panel').attributes('aria-labelledby')).toBe('publisher-effects-blur-tab');
     });
 
     it('applies group effects to the group node instead of copying them onto every child', async () => {
@@ -220,7 +233,7 @@ describe('LayoutInspector typography controls', () => {
         expect(button.attributes()).not.toHaveProperty('disabled');
         await button.trigger('click');
         await wrapper.get('[aria-label="Schlagschatten aktivieren"]').setValue(true);
-        await wrapper.get('.publisher-effects-dialog').trigger('submit');
+        await wrapper.get('#publisher-effects-dialog-form').trigger('submit');
 
         expect(wrapper.emitted('updateEffects')?.[0]?.[0]).toEqual(['group-1']);
     });
@@ -241,7 +254,7 @@ describe('LayoutInspector typography controls', () => {
             .trigger('click');
         await wrapper.get('[aria-label="Kontrast aktivieren"]').setValue(true);
         await wrapper.get('button[aria-label="Filter nach oben verschieben"]').trigger('click');
-        await wrapper.get('.publisher-filters-dialog').trigger('submit');
+        await wrapper.get('#publisher-filters-dialog-form').trigger('submit');
 
         const update = wrapper.emitted('updateFilters')?.[0];
         expect(update?.[0]).toEqual(['title']);
@@ -260,7 +273,7 @@ describe('LayoutInspector typography controls', () => {
 
         await wrapper.get('.inspector-layer-footer [aria-label="Ebenenfilter"]').trigger('click');
         await wrapper.get('[aria-label="Graustufen aktivieren"]').setValue(true);
-        await wrapper.get('.publisher-filters-dialog').trigger('submit');
+        await wrapper.get('#publisher-filters-dialog-form').trigger('submit');
 
         expect(wrapper.emitted('updateFilters')?.[0]?.[0]).toEqual(['group-1']);
     });
