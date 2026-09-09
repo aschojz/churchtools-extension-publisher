@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { faAngleDown } from '@fortawesome/free-solid-svg-icons';
+import { faAngleDown, faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { storeToRefs } from 'pinia';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 import {
     publisherPlaceholderOptions,
@@ -24,6 +24,8 @@ import { usePublisherEditorStore } from '../../stores/publisherEditor';
 import { usePublisherAppointmentsStore } from '../../stores/publisherAppointments';
 import { usePublisherDocumentStore } from '../../stores/publisherDocument';
 import DesignButton from '../design/DesignButton.vue';
+import DesignIconButton from '../design/DesignIconButton.vue';
+import PublisherVariableDialog from './PublisherVariableDialog.vue';
 
 const props = defineProps<{
     hasImage: boolean;
@@ -51,7 +53,7 @@ const placeholderOptions = computed(() => dataFields.value
     .filter(({ type }) => type === 'text')
     .map((field) => publisherPlaceholderOptions(field)[0]));
 const formatterOptions = computed(() => dataFields.value
-    .filter(({ formatType }) => formatType === 'date' || formatType === 'time' || formatType === 'list')
+    .filter(({ formatType }) => formatType === 'date' || formatType === 'time' || formatType === 'list' || formatType === 'number')
     .flatMap((field) => publisherPlaceholderOptions(field).slice(1).map((option) => ({
         label: `${field.label}: ${resolvePublisherPlaceholders(option.placeholder, { [field.id]: field })}`,
         placeholder: option.placeholder,
@@ -74,6 +76,7 @@ const groupAutoLayout = computed(() => selectedGroup.value?.autoLayout ?? {
     horizontalOrigin: 'left' as const,
     verticalOrigin: 'top' as const,
 });
+const variableDialogOpen = ref(false);
 
 const emit = defineEmits<{
     align: [alignment: LayoutAlignment];
@@ -124,6 +127,7 @@ const insertFormatter = (event: Event) => {
     }
     select.value = '';
 };
+const applyVariableExpression = (expression: string) => emit('updateTextContent', expression);
 </script>
 
 <template>
@@ -146,10 +150,16 @@ const insertFormatter = (event: Event) => {
                     <option v-for="option in placeholderOptions" :key="option.placeholder" :value="option.placeholder">{{ option.label }}</option>
                 </select>
             </template>
-            <select v-if="!selectedQrElement && formatterOptions.length" aria-label="Datum, Uhrzeit oder Liste formatieren" value="" @change="insertFormatter">
+            <select v-if="!selectedQrElement && formatterOptions.length" aria-label="Datum, Uhrzeit, Liste oder Zahl formatieren" value="" @change="insertFormatter">
                 <option value="">Formatierung</option>
                 <option v-for="option in formatterOptions" :key="option.placeholder" :value="option.placeholder">{{ option.label }}</option>
             </select>
+            <DesignIconButton
+                v-if="!selectedQrElement && placeholderOptions.length"
+                size="compact"
+                label="Variable mit Fallback oder Bedingung einsetzen"
+                @click="variableDialogOpen = true"
+            ><FontAwesomeIcon :icon="faWandMagicSparkles" aria-hidden="true" /></DesignIconButton>
         </div>
         <div v-if="hasLayoutSelection" class="publisher-contextbar__actions" aria-label="Kontextaktionen für Auswahl">
             <details class="publisher-alignment-popover publisher-layer-popover">
@@ -202,4 +212,10 @@ const insertFormatter = (event: Event) => {
         <div v-else class="publisher-contextbar__hint">{{ activeEditorTool === 'layout' ? 'Element auf der Seite oder in der Ebenenliste auswählen' : 'Einstellungen im rechten Bedienfeld' }}</div>
         <label class="publisher-contextbar__toggle"><input type="checkbox" :checked="snapEnabled" @change="updateSnap" /> Einrasten</label>
     </div>
+    <PublisherVariableDialog
+        :fields="dataFields.filter(({ type }) => type === 'text')"
+        :open="variableDialogOpen"
+        @apply="applyVariableExpression"
+        @close="variableDialogOpen = false"
+    />
 </template>

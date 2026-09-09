@@ -101,7 +101,7 @@ describe('PublisherContextBar content controls', () => {
     it('offers date formatting variants through one dropdown', async () => {
         const wrapper = mountTextContextBar();
 
-        const formatter = wrapper.get('[aria-label="Datum, Uhrzeit oder Liste formatieren"]');
+        const formatter = wrapper.get('[aria-label="Datum, Uhrzeit, Liste oder Zahl formatieren"]');
         expect(formatter.text()).toContain('Datum: 01.12.2026');
         await formatter.setValue('{{date|date:DD.MM.YYYY}}');
 
@@ -117,7 +117,7 @@ describe('PublisherContextBar content controls', () => {
         });
         await wrapper.vm.$nextTick();
 
-        const formatter = wrapper.get('[aria-label="Datum, Uhrzeit oder Liste formatieren"]');
+        const formatter = wrapper.get('[aria-label="Datum, Uhrzeit, Liste oder Zahl formatieren"]');
         expect(formatter.text()).toContain('Predigt: • Ada Lovelace');
         await formatter.setValue('{{eventService-12|list:lines}}');
 

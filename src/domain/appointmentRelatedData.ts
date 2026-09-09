@@ -197,12 +197,12 @@ export const createSignupGroupDataFields = (
         relatedField('signupGroupLink', 'Link zur Anmeldegruppe', 'text', source.frontendUrl ?? '', source, options, { formatType: 'url' }),
         relatedField('signupGroupImage', 'Bild der Anmeldegruppe', 'image', textValue(group.information.imageUrl), source, options),
         relatedField('signupGroupPlaces', 'Orte der Anmeldegruppe', 'text', places, source, options, { multiline: true }),
-        relatedField('signupGroupParticipants', 'Teilnehmende', 'text', statistics ? String(statistics.participants) : '', source, options),
-        relatedField('signupGroupLeaders', 'Leitende', 'text', statistics ? String(statistics.leaders) : '', source, options),
-        relatedField('signupGroupRequests', 'Offene Anfragen', 'text', statistics ? String(statistics.requested) : '', source, options),
-        relatedField('signupGroupWaiting', 'Warteliste', 'text', statistics ? String(statistics.waiting) : '', source, options),
-        relatedField('signupGroupCapacity', 'Maximale Plätze', 'text', maximum === null || maximum === undefined ? '' : String(maximum), source, options),
-        relatedField('signupGroupAvailableSeats', 'Freie Plätze', 'text', available, source, options),
+        relatedField('signupGroupParticipants', 'Teilnehmende', 'text', statistics ? String(statistics.participants) : '', source, options, { formatType: 'number' }),
+        relatedField('signupGroupLeaders', 'Leitende', 'text', statistics ? String(statistics.leaders) : '', source, options, { formatType: 'number' }),
+        relatedField('signupGroupRequests', 'Offene Anfragen', 'text', statistics ? String(statistics.requested) : '', source, options, { formatType: 'number' }),
+        relatedField('signupGroupWaiting', 'Warteliste', 'text', statistics ? String(statistics.waiting) : '', source, options, { formatType: 'number' }),
+        relatedField('signupGroupCapacity', 'Maximale Plätze', 'text', maximum === null || maximum === undefined ? '' : String(maximum), source, options, { formatType: 'number' }),
+        relatedField('signupGroupAvailableSeats', 'Freie Plätze', 'text', available, source, options, { formatType: 'number' }),
     ];
     return candidates.filter(({ value }) => value !== '');
 };

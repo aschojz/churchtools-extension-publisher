@@ -82,6 +82,7 @@ describe('appointment related data', () => {
         const fields = createSignupGroupDataFields(group, groupSource, options);
 
         expect(fields.find(({ id }) => id === 'signupGroupAvailableSeats')?.value).toBe('5');
+        expect(fields.find(({ id }) => id === 'signupGroupAvailableSeats')?.formatType).toBe('number');
         expect(fields.find(({ id }) => id === 'signupGroupPlaces')?.value).toBe('Gemeindehaus, Kirchweg 1, 12345 Berlin');
         expect(fields.find(({ id }) => id === 'signupGroupParticipants')?.placeholder).toBe('{{signupGroupParticipants}}');
     });

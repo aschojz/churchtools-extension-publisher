@@ -311,12 +311,12 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 ### Teilweise behoben – Datenformatierung ist für Template-Automation noch zu begrenzt
 
-**Status:** Funktionslücke.  
-**Beobachtung:** Datum und Zeit besitzen visuelle Formate. Dienstbesetzungen werden als echte Listenwerte geliefert und können über sichere vordefinierte Formate komma- oder zeilenweise, als Aufzählung, mit „und“ oder auf den ersten Eintrag begrenzt gerendert werden. Robuste Fallbacks, Bedingungen, Zahlen-/Währungsformate und gestaltete Repeat-Container mit einem Canvas-Knoten je Eintrag fehlen weiterhin.
+**Status:** die sichere Ausdrucks- und Formatierungsebene ist umgesetzt; gestaltete Repeat-Container fehlen noch.
+**Beobachtung:** Bestehende Platzhalter bleiben kompatibel. Neue `v1`-Pipelines unterstützen Datum, Zeit, Listen, Zahlen, Währungen, Groß-/Kleinschreibung, Fallbacks und vordefinierte Vergleiche ohne `eval` oder freie JavaScript-Auswertung. Ein gemeinsamer Dialog erzeugt diese Ausdrücke visuell; Zahlenfelder aus Anmeldegruppen werden entsprechend typisiert. Ein Repeat-Container mit einem Canvas-Knoten je Eintrag fehlt weiterhin.
 
-**Auswirkung:** Mehrere Dienstpersonen lassen sich direkt in einem Textfeld sinnvoll ausgeben. Für komplexere Automationen und individuell gestaltete Wiederholungen sind weiterhin vorbereitete Daten oder zusätzliche Elemente nötig.
+**Auswirkung:** Terminabhängige Leerwerte, Statushinweise und lokalisierte Zahlen lassen sich terminneutral in Vorlagen behandeln. Für individuell gestaltete Wiederholungen sind weiterhin vorbereitete Daten oder zusätzliche Elemente nötig.
 
-**Empfehlung:** Kleine, versionierte Ausdruckssyntax statt immer neuer Sonderfelder: `{{date | date:'dd.MM.'}}`, `{{location | default:'Ort folgt'}}`, sichere Listen-Pipelines und ein Repeat-Container. Keine freie JavaScript-Auswertung.
+**Empfehlung:** Als nächsten Schritt dieselbe sichere Auswertungslogik für einen persistenten Repeat-Container nutzen. Die `v1`-Syntax bei zukünftigen Semantikänderungen migrieren statt still umzudeuten.
 
 ### Behoben – Stammdatenfehler wurden still verschluckt
 

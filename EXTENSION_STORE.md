@@ -23,6 +23,7 @@ Ein Dokument kann mehrere Seiten mit unterschiedlichen Abmessungen enthalten –
 - dynamische ChurchTools-Termindaten über Platzhalter
 - nachladbare Daten aus verknüpften Events, Diensten und Anmeldegruppen
 - flexible Listenausgabe für mehrfach besetzte Dienste, etwa zeilenweise oder als Aufzählung
+- visuelle Variablenregeln für Datums-, Zeit-, Listen-, Zahlen- und Währungsformate sowie Fallbacks und bedingte Ausgaben
 - Grafiktext und Rahmentext mit umfangreichen Zeichen- und Absatzoptionen
 - Bilder, Rechtecke, Kreise, Dreiecke, Linien, Icons und QR-Codes
 - Ebenen, verschachtelte Gruppen, Sichtbarkeit, Sperren und Drag-and-drop-Sortierung

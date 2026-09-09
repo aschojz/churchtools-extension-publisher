@@ -4,6 +4,7 @@ import {
     faClock,
     faFont,
     faGripVertical,
+    faHashtag,
     faImage,
     faLink,
     faListUl,
@@ -82,6 +83,7 @@ const fieldIcon = (field: PublisherDataField) => {
     if (field.formatType === 'time') return faClock;
     if (field.formatType === 'url') return faLink;
     if (field.formatType === 'list') return faListUl;
+    if (field.formatType === 'number') return faHashtag;
     return faFont;
 };
 

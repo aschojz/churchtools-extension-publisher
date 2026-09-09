@@ -67,6 +67,7 @@ npx playwright install chromium
 - Vorlagen und gespeicherte Dokumente werden in einem eigenen Dialog verwaltet; der rechte Inspektor bleibt dadurch für Daten und Gestaltung verfügbar.
 - Verknüpfte Events werden gezielt über ihre ID geladen; Fehler optionaler Dienst-Stammdaten bleiben als sichtbare Teilfehler erkennbar.
 - Mehrfach besetzte Dienste können komma- oder zeilenweise, als Aufzählung, mit „und“ oder als erste Person ausgegeben werden.
+- Eine sichere, versionierte Variablen-Pipeline formatiert Datum, Zeit, Listen und Zahlen, setzt Fallbacks und bildet vordefinierte Bedingungen ab – ohne frei ausführbaren Ausdruckscode.
 - Zuletzt verwendete Farben und analysierte Bildpaletten werden als abgeleitete Werte versioniert in IndexedDB gecacht; Bilddaten und vollständige Quell-URLs werden dabei nicht gespeichert.
 - Vorlagen sind terminneutral; nur gespeicherte Dokumente dürfen optional einen Terminbezug besitzen.
 - ChurchTools ist die Quelle für Dokumente und Vorlagen, der Browser hält lediglich eine Recovery-Kopie.
