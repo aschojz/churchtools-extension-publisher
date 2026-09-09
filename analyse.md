@@ -336,14 +336,14 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Im Browser einen sicheren HTML-Parser verwenden, blockbezogene Zeilenumbrüche kontrolliert übernehmen und Tests für Entities, Listen und verschachtelte Tags ergänzen.
 
-### P2 – Responsive Layout blendet zentrale Bedienung ersatzlos aus
+### Behoben – Responsive Layout blendete zentrale Bedienung ersatzlos aus
 
-**Status:** CSS bestätigt.  
-**Evidenz:** Unter 681 Pixeln werden linke Seitenübersicht und rechter Inspector mit `display: none` entfernt; sichtbar bleiben nur Werkzeugleiste und Arbeitsfläche (`src/components/PublisherEditorShell.vue:115-128`). Zwischen 681 und 1100 Pixeln bleiben feste 54 + 160 + 310 Pixel Seitenbereiche, bevor mindestens 320 Pixel Arbeitsfläche folgen (`src/components/PublisherEditorShell.vue:131-135`).
+**Status:** Seitenübersicht und Inspector bleiben bis 1100 Pixel erreichbar.
+**Evidenz:** `PublisherEditorShell` rendert beide Bereiche an Tablet- und Mobilbreiten als seitliche Drawer über der unbeschnittenen Arbeitsfläche. Eine kompakte schwebende Leiste öffnet die Bereiche; Backdrop, Escape, Fokus-Rückgabe sowie `inert`/`aria-hidden` für geschlossene Drawer sind umgesetzt.
 
-**Auswirkung:** Auf kleinen Displays sind Seitenwahl und Eigenschaften nicht erreichbar. Auf Tablets ist die Arbeitsfläche sehr schmal. Die Anwendung ist dort zwar gerendert, aber nicht funktional responsiv.
+**Auswirkung:** Seitenwahl und sämtliche Eigenschaften bleiben erreichbar, während der Canvas die verbleibende Breite erhält. Die Desktopdarstellung oberhalb des Breakpoints bleibt unverändert.
 
-**Empfehlung:** Seiten und Inspector als Drawer/Sheets zugänglich machen, Toolrail einklappbar gestalten und Breakpoints anhand echter Mindestbreiten testen.
+**Empfehlung:** Für echte Smartphone-Optimierung zusätzlich die Toolrail einklappbar machen und Touch-Ziele sowie komplexe Canvas-Gesten auf realen Geräten prüfen.
 
 ### P2 – Modale Komponenten und Tabs sind nicht vollständig zugänglich
 
