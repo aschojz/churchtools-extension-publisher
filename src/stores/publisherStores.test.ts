@@ -94,6 +94,24 @@ describe('publisher stores', () => {
         expect(document.activePageId).toBe(secondPage.id);
     });
 
+    it('applies named layout mutations atomically and records a single undo step', () => {
+        const document = usePublisherDocumentStore();
+        const pageId = document.activePageId;
+
+        expect(document.mutatePageLayout(pageId, 'split', (layout) => {
+            layout.offsets.title = { x: 120, y: 60 };
+            layout.rotations.title = 15;
+        })).toBe(true);
+        expect(document.activePage.layouts.split?.offsets.title).toEqual({ x: 120, y: 60 });
+        expect(document.activePage.layouts.split?.rotations.title).toBe(15);
+        expect(document.documentHistory.past).toHaveLength(1);
+
+        expect(document.undoDocument()).toBe(true);
+        expect(document.activePage.layouts.split?.offsets.title).toEqual({ x: 0, y: 0 });
+        expect(document.activePage.layouts.split?.rotations.title).toBe(0);
+        expect(document.mutatePageLayout(pageId, 'split', () => undefined)).toBe(false);
+    });
+
     it('undoes page rename, reorder, duplicate and removal as complete snapshots', () => {
         const document = usePublisherDocumentStore();
         const firstPageId = document.activePageId;

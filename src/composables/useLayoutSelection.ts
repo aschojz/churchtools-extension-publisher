@@ -20,18 +20,20 @@ export const useLayoutSelection = (
 
     watch(selectedLayoutElements, (ids) => { if (ids.length > 0) onSelectionActivated(); });
 
-    const clearLayoutSelection = () => templateRef.value?.clearSelection();
-    const deleteLayoutElements = (ids: LayoutElementId[]) => templateRef.value?.deleteElements(ids);
-    const nudgeLayoutElement = (x: number, y: number) => templateRef.value?.nudgeSelectedElement(x, y);
-    const alignLayoutElement = (alignment: LayoutAlignment) => templateRef.value?.alignSelectedElement(alignment);
-    const changeSelectedLayer = (direction: -1 | 1) => templateRef.value?.changeSelectedLayer(direction);
+    const clearLayoutSelection = () => templateRef.value?.commands.clearSelection();
+    const deleteLayoutElements = (ids: LayoutElementId[]) => templateRef.value?.commands.deleteElements(ids);
+    const nudgeLayoutElement = (x: number, y: number) => templateRef.value?.commands.nudgeSelectedElement(x, y);
+    const alignLayoutElement = (alignment: LayoutAlignment) => templateRef.value?.commands.alignSelectedElement(alignment);
+    const changeSelectedLayer = (direction: -1 | 1) => templateRef.value?.commands.changeSelectedLayer(direction);
     const selectLayoutElement = (id: LayoutElementId, event: MouseEvent) =>
-        templateRef.value?.selectElement(id, event.ctrlKey || event.metaKey || event.shiftKey);
+        templateRef.value?.commands.selectElement(id, event.ctrlKey || event.metaKey || event.shiftKey);
     const selectLayoutGroup = (id: string, event: MouseEvent) =>
-        templateRef.value?.selectGroup(id, event.ctrlKey || event.metaKey || event.shiftKey);
+        templateRef.value?.commands.selectGroup(id, event.ctrlKey || event.metaKey || event.shiftKey);
     const updateSelectedLayoutGeometry = (field: keyof LayoutGeometry, event: Event) => {
         const input = event.target as HTMLInputElement;
-        if (Number.isFinite(input.valueAsNumber)) templateRef.value?.setSelectedElementGeometry(field, input.valueAsNumber);
+        if (Number.isFinite(input.valueAsNumber)) {
+            templateRef.value?.commands.setSelectedElementGeometry(field, input.valueAsNumber);
+        }
     };
     const restoreSelectedLayoutGeometryInput = (field: keyof LayoutGeometry, event: FocusEvent) => {
         const currentValue = selectedLayoutGeometry.value?.[field];
@@ -45,11 +47,14 @@ export const useLayoutSelection = (
         } else {
             value = inputValue;
         }
-        templateRef.value?.setSelectedElementTextStyle(field, value);
+        templateRef.value?.commands.setSelectedElementTextStyle(field, value);
     };
     const updateSelectedVisualStyle = (field: keyof LayoutVisualStyle, event: Event) => {
         const input = event.target as HTMLInputElement;
-        templateRef.value?.setSelectedElementVisualStyle(field, field === 'strokeWidth' ? input.valueAsNumber : input.value);
+        templateRef.value?.commands.setSelectedElementVisualStyle(
+            field,
+            field === 'strokeWidth' ? input.valueAsNumber : input.value,
+        );
     };
     const restoreSelectedFontSizeInput = (event: FocusEvent) => {
         (event.target as HTMLInputElement).value = selectedLayoutStyle.value ? String(selectedLayoutStyle.value.fontSize) : '';
@@ -57,7 +62,7 @@ export const useLayoutSelection = (
     const updateSelectedTextContent = (input: Event | string) => {
         const value = typeof input === 'string' ? input : (input.target as HTMLTextAreaElement).value;
         selectedLayoutTextContent.value = value;
-        templateRef.value?.setSelectedElementTextContent(value);
+        templateRef.value?.commands.setSelectedElementTextContent(value);
     };
 
     return {

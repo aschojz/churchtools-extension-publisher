@@ -106,6 +106,20 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         return true;
     };
 
+    const mutatePageLayout = (
+        pageId: string,
+        templateId: TemplateId,
+        mutate: (layout: SerializableLayoutState) => void,
+    ) => {
+        const current = pageById(pageId)?.layouts[templateId];
+        if (!current) return false;
+        const previous = cloneLayoutState(current);
+        const next = cloneLayoutState(current);
+        mutate(next);
+        if (JSON.stringify(previous) === JSON.stringify(next)) return false;
+        return commitPageLayout(pageId, templateId, previous, next);
+    };
+
     const commitPageLayout = (
         pageId: string,
         templateId: TemplateId,
@@ -276,6 +290,7 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         duplicatePage,
         ensurePageLayout,
         imageFocusByTemplate,
+        mutatePageLayout,
         pageById,
         pages,
         redoDocument,

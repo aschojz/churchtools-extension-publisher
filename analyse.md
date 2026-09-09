@@ -147,12 +147,12 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 ### Stabilisiert – Pinia war nicht die kanonische Editorquelle
 
-**Status:** der persistierbare Seiten-/Layoutzustand, Historien und die seitengebundene Auswahl sind in Pinia zentralisiert. Auswahlrechteck und Gruppendrilldown, Transformer-Konfiguration sowie Drag-, Resize- und Rotate-Gesten sind aus `EventTemplate.vue` in getestete Composables verschoben.
-**Evidenz:** `App.vue` umfasst weiterhin mehr als 1.200 Zeilen und hält Dokumentworkflow, Persistenz, Daten, Vorlagen und Export. `EventTemplate.vue` ist von 3.024 auf 2.282 Zeilen gesunken, liest den serialisierbaren Layoutzustand über Store-Proxies und bindet die Auswahl an den Editor-Store, bietet aber weiterhin eine große imperative `defineExpose()`-Oberfläche für weitere fachliche Canvas-Aktionen.
+**Status:** der persistierbare Seiten-/Layoutzustand, Historien und die seitengebundene Auswahl sind in Pinia zentralisiert. Auswahl, Transformer, Transformationen, Gruppen/Auto-Layout und Elementstile sind aus `EventTemplate.vue` in getestete Composables verschoben.
+**Evidenz:** `App.vue` umfasst weiterhin mehr als 1.200 Zeilen und hält Dokumentworkflow, Persistenz, Daten, Vorlagen und Export. `EventTemplate.vue` ist von 3.024 auf 1.802 Zeilen gesunken, liest den serialisierbaren Layoutzustand über Store-Proxies und bindet die Auswahl an den Editor-Store. Die öffentliche Komponentenoberfläche besteht nur noch aus dem gebündelten `commands`-Adapter sowie `exportImage()` und `renderThumbnail()`.
 
-**Auswirkung:** Die widersprüchlichen persistierbaren Zustandskopien sind beseitigt. Die große Orchestrierungs- und Methodenoberfläche macht komplexe Canvas-Änderungen aber weiterhin schwer isoliert testbar und erhöht die Kopplung zwischen App, Inspector und Renderer.
+**Auswirkung:** Die widersprüchlichen persistierbaren Zustandskopien sind beseitigt und zentrale Canvas-Verhalten sind isoliert testbar. `App.vue` benötigt den imperativen Befehlsadapter für die gemountete Seitendarstellung aber weiterhin.
 
-**Empfehlung:** Einen `PublisherDocumentStore` mit benannten, undo-fähigen Actions als alleinige Quelle einführen. Auswahl seitenbezogen im Editor-Store halten. `EventTemplate` liest die aktive Seite und dispatcht Gesten; Inspector und Toolbar rufen dieselben Actions auf. Imperative Canvas-Methoden auf rein technische Operationen wie `exportImage()` und Fokus beschränken.
+**Empfehlung:** Neue fachliche Operationen zuerst als pure Domainfunktion beziehungsweise Store-Action implementieren. Den verbleibenden `commands`-Adapter schrittweise auf Operationen reduzieren, die tatsächlich eine gemountete Konva-Instanz benötigen.
 
 ### Behoben – Auswahl konnte auf inaktiven Seiten sichtbar bleiben
 
@@ -372,20 +372,20 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 ### P2 – Monolithische Dateien bremsen Änderungen
 
-**Status:** weiterhin relevant; die Canvas-Auswahl- und Transformationspfade sind inzwischen fachlich getrennt.
-**Evidenz:** `EventTemplate.vue` 2.282 Zeilen, `styles.css` 4.128, `App.vue` 1.273, `layoutEditing.ts` 1.107, `publisherDraft.ts` 687 und `LayoutInspector.vue` 500. In den UI-/Domain-Dateien existieren weiterhin zahlreiche direkte Hex-Farbwerte; Design-Tokens decken Abstände, Radien und Typografie nur teilweise ab.
+**Status:** weiterhin relevant; die Canvas-Auswahl-, Transformations-, Gruppen- und Stilpfade sind inzwischen fachlich getrennt.
+**Evidenz:** `EventTemplate.vue` 1.802 Zeilen, `styles.css` 4.128, `App.vue` 1.277, `layoutEditing.ts` 1.107, `publisherDraft.ts` 687 und `LayoutInspector.vue` 500. In den UI-/Domain-Dateien existieren weiterhin zahlreiche direkte Hex-Farbwerte; Design-Tokens decken Abstände, Radien und Typografie nur teilweise ab.
 
 **Auswirkung:** Fachgrenzen verschwimmen, Merge-Konflikte nehmen zu, Tests erfordern große Setups und kleine UI-Abweichungen entstehen leicht.
 
 **Empfehlung:** nicht rein nach Dateilänge schneiden, sondern nach Verantwortungen:
 
 - `App.vue`: Dokumentcontroller, Datenkontext, Persistenzservice und Exportservice trennen
-- `EventTemplate.vue`: Selection, Gestures, Transform, Groups, Assets, Export und rekursive Renderer
+- `EventTemplate.vue`: Asset-Laden, Konva-Konfiguration, Export und rekursive Renderer
 - `layoutEditing.ts`: Knotenmodell, Geometrie/Snapping, Layerbaum, Gruppen/Auto-Layout und Elementfactory
 - `publisherDraft.ts`: Schemas und Migrationen je Version
 - `styles.css`: Tokens, Shell, Canvas, Inspectoren, Dialoge und einzelne Komponenten
 
-**Umsetzungsstand:** Datenfeld-Drops liegen in `useCanvasDataFieldDrop`, Auswahlrechteck, Gruppendrilldown und Auswahlsynchronisierung in `useCanvasSelection`, die Konva-Transformer-Konfiguration in `useCanvasTransformer` und Drag-, Resize-, Rotate- sowie Transform-Inspector-Mutationen in `useCanvasTransforms`. Alle vier Grenzen besitzen isolierte Tests. Als nächste Schnitte bieten sich Gruppen-/Auto-Layout-Kommandos und Element-Styling an; danach kann die imperative `defineExpose()`-Oberfläche verkleinert werden.
+**Umsetzungsstand:** Datenfeld-Drops liegen in `useCanvasDataFieldDrop`, Auswahlrechteck, Gruppendrilldown und Auswahlsynchronisierung in `useCanvasSelection`, die Konva-Transformer-Konfiguration in `useCanvasTransformer`, Drag-/Resize-/Rotate-Gesten in `useCanvasTransforms`, Gruppen und Auto-Layout in `useCanvasGroups` und Formatierungen in `useCanvasElementStyles`. Diese Grenzen besitzen isolierte Tests. Als nächste Schnitte bieten sich Asset-Laden, Konva-Konfiguration und Export an; parallel sollte `App.vue` nach Dokumentworkflow, Datenkontext, Persistenz und Export zerlegt werden.
 
 ### P2 – README und Plan beschreiben einen früheren Prototyp
 

@@ -11,6 +11,8 @@ import EditableVisualElement from './EditableVisualElement.vue';
 import CanvasGradientHandles from './CanvasGradientHandles.vue';
 import CanvasSceneTree from './CanvasSceneTree.vue';
 import { useCanvasDataFieldDrop } from '../composables/useCanvasDataFieldDrop';
+import { useCanvasElementStyles } from '../composables/useCanvasElementStyles';
+import { useCanvasGroups } from '../composables/useCanvasGroups';
 import { useCanvasSelection } from '../composables/useCanvasSelection';
 import { useCanvasTransformer } from '../composables/useCanvasTransformer';
 import { useCanvasTransforms } from '../composables/useCanvasTransforms';
@@ -21,13 +23,10 @@ import {
     type PublisherDataValues,
 } from '../domain/appointmentDataFields';
 import { calculateCoverCrop, type ImageFocus } from '../domain/imageFocus';
-import type { LayoutColorBinding } from '../domain/imagePalette';
-import { layoutGradientFillConfig, normalizeLayoutGradient, type LayoutGradient } from '../domain/layoutGradient';
+import { layoutGradientFillConfig } from '../domain/layoutGradient';
 import {
-    cloneLayoutFilter,
     layoutFilterStackHasEnabled,
     normalizeLayoutFilterStack,
-    type LayoutFilterStack,
 } from '../domain/layoutFilters';
 import { publisherIcon, type PublisherIconName } from '../domain/publisherIcons';
 import { usePublisherImagePalettesStore } from '../stores/publisherImagePalettes';
@@ -36,10 +35,7 @@ import { usePublisherDocumentStore } from '../stores/publisherDocument';
 import { usePublisherEditorStore } from '../stores/publisherEditor';
 import {
     alignLayoutGeometry,
-    applyLayoutGroupAutoLayout,
     constrainFontSize,
-    constrainLetterSpacing,
-    constrainLineHeight,
     createCustomTextStyle,
     createCustomVisualStyle,
     createLayoutLayerTree,
@@ -48,28 +44,18 @@ import {
     createLayoutVisualStyles,
     flattenLayoutGroups,
     findLayoutGroupPath,
-    groupLayoutElements,
-    isHexColor,
     isFixedAspectRatioLayoutElement,
     isShapeLayoutElement,
     isTextLayoutElement,
     layoutGroupElementIds,
-    layoutGroupAnchor,
-    layoutGroupBounds,
     type AlignmentGuide,
     type LayoutElementId,
-    type LayoutElementEffects,
     type LayoutCustomElement,
     type LayoutCustomElementKind,
     type LayoutFrame,
     type LayoutSelectionGeometry,
     type LayoutGroup,
-    type LayoutGroupAutoLayout,
     type LayoutDistributionAxis,
-    type LayoutHorizontalOrigin,
-    type LayoutLayerDragNode,
-    type LayoutLayerDropPlacement,
-    type LayoutVerticalOrigin,
     type LayoutGroups,
     type LayoutAlignment,
     type LayoutTextStyle,
@@ -83,12 +69,8 @@ import {
     SHAPE_LAYOUT_ELEMENT_IDS,
     TEXT_LAYOUT_ELEMENT_IDS,
     moveLayoutElementInOrder,
-    moveLayoutOrderBlock,
-    nestLayoutNodeInGroup,
     distributeLayoutFrames,
     resizeLayoutFrame,
-    sortLayoutGroupChildren,
-    ungroupLayoutElements,
 } from '../domain/layoutEditing';
 import {
     cloneLayoutState,
@@ -280,16 +262,8 @@ const deletedElements = layoutSectionProxy('deleted');
 const hiddenElements = layoutSectionProxy('hidden');
 const lockedElements = layoutSectionProxy('locked');
 const elementIsLocked = (elementId: LayoutElementId) => lockedElements.value[props.templateId].includes(elementId);
-const selectionContainsLockedElement = () => selectedElements.value.some(elementIsLocked);
 const availableElements = computed(() =>
     layoutOrder.value[props.templateId].filter((elementId) => !deletedElements.value[props.templateId].includes(elementId)));
-let layoutGroupSequence = 0;
-let activeGradientEdit: {
-    elementId: LayoutElementId;
-    field: 'color' | 'fill';
-    previousState: SerializableLayoutState;
-} | null = null;
-
 const previewScale = computed(() => calculatePreviewScale(props.documentWidth, props.previewZoom, props.documentWidth));
 const documentSize = computed(() => ({ width: props.documentWidth, height: props.documentHeight }));
 const stageConfig = computed(() => ({
@@ -827,12 +801,6 @@ const activeCanvasGradient = computed(() => {
     };
 });
 
-const currentElementFrames = () => Object.fromEntries(
-    layoutOrder.value[props.templateId]
-        .filter((elementId) => !deletedElements.value[props.templateId].includes(elementId))
-        .map((elementId) => [elementId, elementFrame(elementId)]),
-) as Partial<Record<LayoutElementId, LayoutFrame>>;
-
 const selectedGroupVisualBounds = (group: LayoutGroup): LayoutFrame | null => {
     const frames = layoutGroupElementIds(group)
         .map((elementId) => {
@@ -970,113 +938,39 @@ const autoFitSelectedTextFrame = (axis: 'height' | 'width') => {
     void syncTransformer();
 };
 
-const reflowAutoLayoutGroups = () => {
-    const groups = layoutGroups.value[props.templateId];
-    const verticalTextIds = new Set(groups.flatMap((group) => flattenLayoutGroups([group]))
-        .filter(({ autoLayout }) => autoLayout?.axis === 'vertical')
-        .flatMap(layoutGroupElementIds)
-        .filter(isTextLayoutElement));
-    for (const elementId of verticalTextIds) {
-        const height = autoLayoutTextHeight(elementId);
-        if (height !== null) layoutSizes.value[props.templateId][elementId].height = height;
-    }
-
-    const reflowGroup = (
-        group: LayoutGroup,
-        frames: Partial<Record<LayoutElementId, LayoutFrame>>,
-    ): Partial<Record<LayoutElementId, LayoutFrame>> => {
-        let nextFrames = frames;
-        for (const child of group.children) {
-            if (typeof child !== 'string') nextFrames = reflowGroup(child, nextFrames);
-        }
-        return applyLayoutGroupAutoLayout(group, nextFrames);
-    };
-    let frames = currentElementFrames();
-    for (const group of groups) frames = reflowGroup(group, frames);
-    for (const [elementId, frame] of Object.entries(frames) as [LayoutElementId, LayoutFrame][]) {
-        const baseFrame = templateElementFrames.value[props.templateId][elementId];
-        layoutOffsets.value[props.templateId][elementId] = { x: frame.x - baseFrame.x, y: frame.y - baseFrame.y };
-        layoutSizes.value[props.templateId][elementId] = { width: frame.width, height: frame.height };
-    }
-};
-
-const updateLayoutGroup = (
-    groups: LayoutGroups,
-    groupId: string,
-    update: (group: LayoutGroup) => LayoutGroup,
-): LayoutGroups => groups.map((group) => group.id === groupId
-    ? update(group)
-    : { ...group, children: group.children.map((child) => typeof child === 'string'
-        ? child
-        : updateLayoutGroup([child], groupId, update)[0]!) });
-
-const syncSelectedAutoLayoutAnchor = () => {
-    if (!selectedGroupId.value) return;
-    const groups = layoutGroups.value[props.templateId];
-    const group = flattenLayoutGroups(groups).find(({ id }) => id === selectedGroupId.value);
-    if (!group) return;
-    const frames = currentElementFrames();
-    const syncAnchors = (candidate: LayoutGroup): LayoutGroup => {
-        const next = {
-            ...candidate,
-            children: candidate.children.map((child) => typeof child === 'string' ? child : syncAnchors(child)),
-        };
-        if (!next.autoLayout) return next;
-        const bounds = layoutGroupBounds(next, frames);
-        if (!bounds) return next;
-        return {
-            ...next,
-            autoLayout: {
-                ...next.autoLayout,
-                anchor: layoutGroupAnchor(bounds, next.autoLayout.horizontalOrigin, next.autoLayout.verticalOrigin),
-            },
-        };
-    };
-    layoutGroups.value[props.templateId] = updateLayoutGroup(groups, group.id, (candidate) => ({
-        ...syncAnchors(candidate),
-    }));
-};
-
-const setSelectedGroupAutoLayout = (settings: {
-    axis: LayoutDistributionAxis;
-    gap: number;
-    horizontalOrigin: LayoutHorizontalOrigin;
-    verticalOrigin: LayoutVerticalOrigin;
-} | null) => {
-    if (!selectedGroupId.value) return;
-    const groups = layoutGroups.value[props.templateId];
-    const selectedGroup = flattenLayoutGroups(groups).find(({ id }) => id === selectedGroupId.value);
-    if (!selectedGroup) return;
-    const previousState = captureLayoutState();
-    if (!settings) {
-        layoutGroups.value[props.templateId] = updateLayoutGroup(groups, selectedGroup.id, ({ autoLayout: _, ...group }) => group);
-    } else {
-        const requestedGap = Number(settings.gap);
-        const gap = Number.isFinite(requestedGap)
-            ? Math.min(4096, Math.max(0, requestedGap))
-            : selectedGroup.autoLayout?.gap ?? 8;
-        const frames = currentElementFrames();
-        const bounds = layoutGroupBounds(selectedGroup, frames);
-        if (!bounds) return;
-        const originChanged = selectedGroup.autoLayout && (
-            selectedGroup.autoLayout.horizontalOrigin !== settings.horizontalOrigin ||
-            selectedGroup.autoLayout.verticalOrigin !== settings.verticalOrigin ||
-            selectedGroup.autoLayout.axis !== settings.axis
-        );
-        const anchor = !selectedGroup.autoLayout || originChanged
-            ? layoutGroupAnchor(bounds, settings.horizontalOrigin, settings.verticalOrigin)
-            : selectedGroup.autoLayout.anchor;
-        const autoLayout: LayoutGroupAutoLayout = { ...settings, gap, anchor };
-        layoutGroups.value[props.templateId] = updateLayoutGroup(groups, selectedGroup.id, (group) => ({
-            ...sortLayoutGroupChildren(group, frames, settings.axis),
-            autoLayout,
-        }));
-        reflowAutoLayoutGroups();
-    }
-    commitCurrentLayout(previousState);
-    updateSelection(selectedElements.value, selectedGroup.id);
-    emit('layoutChange', currentLayoutChanged.value);
-};
+const {
+    groupSelectedElements,
+    moveLayerNode,
+    pruneEffectsForCurrentTargets,
+    reflowAutoLayoutGroups,
+    setSelectedGroupAutoLayout,
+    syncSelectedAutoLayoutAnchor,
+    ungroupSelectedElements,
+} = useCanvasGroups({
+    autoLayoutTextHeight,
+    captureLayoutState: () => captureLayoutState(),
+    commitCurrentLayout: (previousState) => commitCurrentLayout(previousState),
+    elementFrame,
+    elementIsLocked,
+    getBaseFrame: (elementId) => templateElementFrames.value[props.templateId][elementId],
+    getLayout: () => ({
+        deleted: deletedElements.value[props.templateId],
+        effects: layoutEffects.value[props.templateId],
+        filters: layoutFilters.value[props.templateId],
+        groups: layoutGroups.value[props.templateId],
+        offsets: layoutOffsets.value[props.templateId],
+        order: layoutOrder.value[props.templateId],
+        sizes: layoutSizes.value[props.templateId],
+    }),
+    onLayoutChange: () => emit('layoutChange', currentLayoutChanged.value),
+    selectedElements,
+    selectedGroupId,
+    setEffects: (effects) => { layoutEffects.value[props.templateId] = effects; },
+    setFilters: (filters) => { layoutFilters.value[props.templateId] = filters; },
+    setGroups: (groups) => { layoutGroups.value[props.templateId] = groups; },
+    setOrder: (order) => { layoutOrder.value[props.templateId] = order; },
+    updateSelection,
+});
 
 const emitSelectionGeometry = () => {
     if (!selectedElement.value) {
@@ -1148,8 +1042,6 @@ const captureLayoutState = (): SerializableLayoutState =>
         filters: layoutFilters.value[props.templateId],
     });
 
-const getLayoutState = () => captureLayoutState();
-
 const commitCurrentLayout = (previousState: SerializableLayoutState) => {
     documentStore.commitPageLayout(
         props.pageId,
@@ -1162,14 +1054,57 @@ const commitCurrentLayout = (previousState: SerializableLayoutState) => {
 };
 
 const {
+    beginCanvasGradientEdit,
+    finishCanvasGradientEdit,
+    setElementEffects,
+    setElementFilters,
+    setSelectedCustomTextMode,
+    setSelectedElementColorBinding,
+    setSelectedElementGradient,
+    setSelectedElementStaticColor,
+    setSelectedElementTextContent,
+    setSelectedElementTextStyle,
+    setSelectedElementVisualStyle,
+    setSelectedQrOptions,
+    updateCanvasGradient,
+} = useCanvasElementStyles({
+    captureLayoutState,
+    commitCurrentLayout,
+    elementIsLocked,
+    getActiveCanvasGradient: () => activeCanvasGradient.value,
+    getCustomElement: customElementById,
+    getLayout: () => ({
+        customElements: customElements.value[props.templateId],
+        effects: layoutEffects.value[props.templateId],
+        filters: layoutFilters.value[props.templateId],
+        groups: layoutGroups.value[props.templateId],
+        order: layoutOrder.value[props.templateId],
+        sizes: layoutSizes.value[props.templateId],
+        styles: layoutTextStyles.value[props.templateId],
+        visualStyles: layoutVisualStyles.value[props.templateId],
+    }),
+    loadCustomQr: (element) => { void loadCustomQr(element); },
+    onLayoutChange: () => emit('layoutChange', currentLayoutChanged.value),
+    onSelectionDetailsChange: emitSelectionGeometry,
+    reflowAutoLayoutGroups,
+    rememberColor: colorsStore.rememberColor,
+    selectedElement,
+    selectedElements,
+    setCustomElements: (elements) => { customElements.value[props.templateId] = elements; },
+    setEffects: (effects) => { layoutEffects.value[props.templateId] = effects; },
+    setFilters: (filters) => { layoutFilters.value[props.templateId] = filters; },
+    setStyles: (styles) => { layoutTextStyles.value[props.templateId] = styles; },
+    syncGraphicTextSize,
+    syncTransformer,
+});
+
+const {
     alignElementWhileDragging,
     alignGroupWhileDragging,
     moveElement,
     moveGroup,
     nudgeSelectedElement,
     resizeElement,
-    resizeSelectedElement,
-    rotateSelectedElement,
     setSelectedElementGeometry,
     startElementDrag,
     startGroupDrag,
@@ -1208,256 +1143,6 @@ const {
     syncTransformer,
 });
 
-const createLayoutGroupId = () => `group-${Date.now()}-${layoutGroupSequence++}`;
-
-const groupSelectedElements = () => {
-    if (selectedElements.value.length < 2) {
-        return;
-    }
-    const previousState = captureLayoutState();
-    const currentGroups = layoutGroups.value[props.templateId];
-    const groupId = createLayoutGroupId();
-    const nextGroups = groupLayoutElements(
-        currentGroups,
-        selectedElements.value,
-        groupId,
-        layoutOrder.value[props.templateId],
-    );
-    if (nextGroups === currentGroups) {
-        return;
-    }
-    layoutGroups.value[props.templateId] = nextGroups;
-    pruneEffectsForCurrentTargets();
-    commitCurrentLayout(previousState);
-    updateSelection(selectedElements.value, groupId);
-    emit('layoutChange', currentLayoutChanged.value);
-};
-
-const ungroupSelectedElements = () => {
-    if (selectedElements.value.length === 0) {
-        return;
-    }
-    const previousState = captureLayoutState();
-    const currentGroups = layoutGroups.value[props.templateId];
-    const nextGroups = ungroupLayoutElements(currentGroups, selectedElements.value);
-    if (nextGroups.length === currentGroups.length &&
-        nextGroups.every((group, index) => group === currentGroups[index])) {
-        return;
-    }
-    layoutGroups.value[props.templateId] = nextGroups;
-    pruneEffectsForCurrentTargets();
-    commitCurrentLayout(previousState);
-    updateSelection(selectedElements.value);
-    emit('layoutChange', currentLayoutChanged.value);
-};
-
-const setSelectedElementTextStyle = (
-    field: keyof LayoutTextStyle,
-    value: number | string,
-) => {
-    if (selectedElements.value.length === 0 || selectionContainsLockedElement() || !selectedElement.value ||
-        !isTextLayoutElement(selectedElement.value)) {
-        return;
-    }
-
-    const selectedTextId = selectedElement.value;
-    const currentStyle = layoutTextStyles.value[props.templateId][selectedTextId];
-    const nextValue = field === 'fontSize'
-        ? constrainFontSize(Number(value))
-        : field === 'lineHeight'
-            ? constrainLineHeight(Number(value))
-            : field === 'letterSpacing'
-                ? constrainLetterSpacing(Number(value))
-                : field === 'strokeWidth'
-                    ? Number(value)
-                    : field === 'color' || field === 'stroke' ? String(value).toLowerCase() : String(value);
-    const nextStyle = { ...currentStyle, [field]: nextValue } as LayoutTextStyle;
-    if (!Number.isFinite(nextStyle.fontSize) || !isHexColor(nextStyle.color) || !isHexColor(nextStyle.stroke) ||
-        !Number.isFinite(nextStyle.strokeWidth) || nextStyle.strokeWidth < 0 || nextStyle.strokeWidth > 100 ||
-        !nextStyle.fontFamily.trim() || !['normal', 'bold', 'italic', 'bold italic'].includes(nextStyle.fontStyle) ||
-        !Number.isFinite(nextStyle.lineHeight) || !Number.isFinite(nextStyle.letterSpacing) ||
-        !['left', 'center', 'right'].includes(nextStyle.align) ||
-        !['none', 'bullet', 'numbered'].includes(nextStyle.listStyle) ||
-        !['none', 'uppercase', 'smallCaps'].includes(nextStyle.textTransform) ||
-        !['none', 'single', 'double'].includes(nextStyle.underlineStyle) ||
-        !['none', 'single', 'double'].includes(nextStyle.strikethroughStyle)) {
-        emitSelectionGeometry();
-        return;
-    }
-
-    const previousState = captureLayoutState();
-    layoutTextStyles.value[props.templateId] = selectedElements.value.reduce(
-        (styles, elementId) => isTextLayoutElement(elementId)
-            ? { ...styles, [elementId]: { ...styles[elementId], [field]: nextStyle[field] } }
-            : styles,
-        layoutTextStyles.value[props.templateId],
-    );
-    if (field === 'color') {
-        selectedElements.value.filter(isTextLayoutElement).forEach((elementId) => {
-            delete layoutTextStyles.value[props.templateId][elementId].colorGradient;
-        });
-    }
-    selectedElements.value.forEach(syncGraphicTextSize);
-    reflowAutoLayoutGroups();
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-};
-
-const setSelectedElementVisualStyle = (
-    field: keyof LayoutVisualStyle,
-    value: number | string,
-) => {
-    if (selectionContainsLockedElement() || !selectedElement.value || !isShapeLayoutElement(selectedElement.value)) {
-        return;
-    }
-    const shapeId = selectedElement.value;
-    const nextValue = field === 'strokeWidth' ? Number(value) : String(value).toLowerCase();
-    if ((field === 'strokeWidth' && (!Number.isFinite(nextValue) || Number(nextValue) < 0 || Number(nextValue) > 100)) ||
-        (field !== 'strokeWidth' && !isHexColor(String(nextValue)))) {
-        emitSelectionGeometry();
-        return;
-    }
-    const previousState = captureLayoutState();
-    layoutVisualStyles.value[props.templateId][shapeId] = {
-        ...layoutVisualStyles.value[props.templateId][shapeId],
-        [field]: nextValue,
-    };
-    if (field === 'fill') delete layoutVisualStyles.value[props.templateId][shapeId].fillGradient;
-    const customElement = customElementById(shapeId);
-    if (customElement?.kind === 'line' && field === 'strokeWidth') {
-        layoutSizes.value[props.templateId][shapeId].height = Math.max(1, Number(nextValue));
-    }
-    if (customElement?.kind === 'qr') void loadCustomQr(customElement);
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-};
-
-type LayoutColorField = 'color' | 'fill' | 'stroke';
-const setSelectedElementColorBinding = (field: LayoutColorField, binding: LayoutColorBinding | null) => {
-    if (selectedElements.value.length === 0 || selectionContainsLockedElement()) return;
-    const previousState = captureLayoutState();
-    if (field === 'color' || (field === 'stroke' && selectedElements.value.some(isTextLayoutElement))) {
-        const bindingField = field === 'color' ? 'colorBinding' : 'strokeBinding';
-        for (const elementId of selectedElements.value.filter(isTextLayoutElement)) {
-            const style = layoutTextStyles.value[props.templateId][elementId];
-            if (!style) continue;
-            if (binding) style[bindingField] = { ...binding };
-            else delete style[bindingField];
-            if (binding && field === 'color') delete style.colorGradient;
-        }
-    } else {
-        const bindingField = field === 'fill' ? 'fillBinding' : 'strokeBinding';
-        for (const elementId of selectedElements.value.filter(isShapeLayoutElement)) {
-            const style = layoutVisualStyles.value[props.templateId][elementId];
-            if (!style) continue;
-            if (binding) style[bindingField] = { ...binding };
-            else delete style[bindingField];
-            if (binding && field === 'fill') delete style.fillGradient;
-            const element = customElementById(elementId);
-            if (element?.kind === 'qr') void loadCustomQr(element);
-        }
-    }
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-};
-
-const setSelectedElementStaticColor = (field: LayoutColorField, color: string) => {
-    const normalized = color.toLowerCase();
-    if (!isHexColor(normalized) || selectedElements.value.length === 0 || selectionContainsLockedElement()) return;
-    const previousState = captureLayoutState();
-    if (field === 'color' || (field === 'stroke' && selectedElements.value.some(isTextLayoutElement))) {
-        const bindingField = field === 'color' ? 'colorBinding' : 'strokeBinding';
-        for (const elementId of selectedElements.value.filter(isTextLayoutElement)) {
-            const style = layoutTextStyles.value[props.templateId][elementId];
-            if (!style) continue;
-            style[field] = normalized;
-            delete style[bindingField];
-            if (field === 'color') delete style.colorGradient;
-        }
-    } else {
-        const bindingField = field === 'fill' ? 'fillBinding' : 'strokeBinding';
-        for (const elementId of selectedElements.value.filter(isShapeLayoutElement)) {
-            const style = layoutVisualStyles.value[props.templateId][elementId];
-            if (!style) continue;
-            style[field] = normalized;
-            delete style[bindingField];
-            if (field === 'fill') delete style.fillGradient;
-            const element = customElementById(elementId);
-            if (element?.kind === 'qr') void loadCustomQr(element);
-        }
-    }
-    commitCurrentLayout(previousState);
-    colorsStore.rememberColor(normalized);
-    emit('layoutChange', currentLayoutChanged.value);
-};
-
-const setSelectedElementGradient = (field: 'color' | 'fill', gradient: LayoutGradient | null) => {
-    if (selectedElements.value.length === 0 || selectionContainsLockedElement()) return;
-    const previousState = captureLayoutState();
-    if (field === 'color') {
-        for (const elementId of selectedElements.value.filter(isTextLayoutElement)) {
-            const style = layoutTextStyles.value[props.templateId][elementId];
-            if (!style) continue;
-            if (gradient) {
-                style.colorGradient = normalizeLayoutGradient(gradient);
-                delete style.colorBinding;
-            } else {
-                delete style.colorGradient;
-            }
-        }
-    } else {
-        for (const elementId of selectedElements.value.filter(isShapeLayoutElement)) {
-            const element = customElementById(elementId);
-            if (element?.kind === 'qr' || element?.kind === 'line') continue;
-            const style = layoutVisualStyles.value[props.templateId][elementId];
-            if (!style) continue;
-            if (gradient) {
-                style.fillGradient = normalizeLayoutGradient(gradient);
-                delete style.fillBinding;
-            } else {
-                delete style.fillGradient;
-            }
-        }
-    }
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-};
-
-const beginCanvasGradientEdit = () => {
-    const active = activeCanvasGradient.value;
-    if (!active || activeGradientEdit) return;
-    activeGradientEdit = {
-        elementId: active.elementId,
-        field: active.field,
-        previousState: captureLayoutState(),
-    };
-};
-
-const updateCanvasGradient = (gradient: LayoutGradient) => {
-    const edit = activeGradientEdit;
-    if (!edit || elementIsLocked(edit.elementId)) return;
-    const normalized = normalizeLayoutGradient(gradient);
-    if (edit.field === 'color' && isTextLayoutElement(edit.elementId)) {
-        const style = layoutTextStyles.value[props.templateId][edit.elementId];
-        if (!style) return;
-        style.colorGradient = normalized;
-        delete style.colorBinding;
-    } else if (edit.field === 'fill' && isShapeLayoutElement(edit.elementId)) {
-        const style = layoutVisualStyles.value[props.templateId][edit.elementId];
-        if (!style) return;
-        style.fillGradient = normalized;
-        delete style.fillBinding;
-    }
-    emitSelectionGeometry();
-};
-
-const finishCanvasGradientEdit = () => {
-    const edit = activeGradientEdit;
-    if (!edit) return;
-    activeGradientEdit = null;
-    commitCurrentLayout(edit.previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-};
 
 const alignSelectedElement = (alignment: LayoutAlignment) => {
     if (selectedElements.value.length === 0) {
@@ -1573,37 +1258,6 @@ const changeSelectedLayer = (direction: -1 | 1) => {
     void syncTransformer();
 };
 
-const moveLayerNode = (
-    source: LayoutLayerDragNode,
-    target: LayoutLayerDragNode,
-    placement: LayoutLayerDropPlacement,
-) => {
-    if (source.kind === target.kind && source.id === target.id) return;
-    const groups = layoutGroups.value[props.templateId];
-    const sourceGroup = source.kind === 'group' ? flattenLayoutGroups(groups).find(({ id }) => id === source.id) : null;
-    const targetGroup = target.kind === 'group' ? flattenLayoutGroups(groups).find(({ id }) => id === target.id) : null;
-    const movingElementIds = sourceGroup ? layoutGroupElementIds(sourceGroup) : [source.id as LayoutElementId];
-    const targetElementIds = targetGroup ? layoutGroupElementIds(targetGroup) : [target.id as LayoutElementId];
-    if (movingElementIds.some((elementId) => targetElementIds.includes(elementId)) || movingElementIds.some(elementIsLocked)) return;
-
-    const previousState = captureLayoutState();
-    layoutOrder.value[props.templateId] = moveLayoutOrderBlock(
-        layoutOrder.value[props.templateId], movingElementIds, targetElementIds, placement,
-    );
-    if (placement === 'inside' && target.kind === 'group') {
-        layoutGroups.value[props.templateId] = nestLayoutNodeInGroup(groups, source, target.id);
-        reflowAutoLayoutGroups();
-    }
-    commitCurrentLayout(previousState);
-    const updatedTargetGroup = placement === 'inside' && target.kind === 'group'
-        ? flattenLayoutGroups(layoutGroups.value[props.templateId]).find(({ id }) => id === target.id)
-        : null;
-    updateSelection(
-        updatedTargetGroup ? layoutGroupElementIds(updatedTargetGroup) : movingElementIds,
-        updatedTargetGroup?.id ?? sourceGroup?.id ?? null,
-    );
-    emit('layoutChange', currentLayoutChanged.value);
-};
 
 const pruneDeletedElementsFromGroups = (groups: LayoutGroups, deleted: Set<LayoutElementId>): LayoutGroups =>
     groups.flatMap((group) => {
@@ -1616,18 +1270,6 @@ const pruneDeletedElementsFromGroups = (groups: LayoutGroups, deleted: Set<Layou
         return children.length >= 2 ? [{ ...group, children }] : [];
     });
 
-const pruneEffectsForCurrentTargets = () => {
-    const validTargets = new Set<string>([
-        ...layoutOrder.value[props.templateId],
-        ...flattenLayoutGroups(layoutGroups.value[props.templateId]).map(({ id }) => id),
-    ]);
-    layoutEffects.value[props.templateId] = Object.fromEntries(
-        Object.entries(layoutEffects.value[props.templateId]).filter(([targetId]) => validTargets.has(targetId)),
-    );
-    layoutFilters.value[props.templateId] = Object.fromEntries(
-        Object.entries(layoutFilters.value[props.templateId]).filter(([targetId]) => validTargets.has(targetId)),
-    );
-};
 
 const addElement = (
     kind: LayoutCustomElementKind,
@@ -1692,125 +1334,6 @@ const addElement = (
 
 const { handleDataFieldDrop } = useCanvasDataFieldDrop(() => previewScale.value, addElement);
 
-const setSelectedElementTextContent = (value: string) => {
-    const elementId = selectedElement.value;
-    if (!elementId || elementIsLocked(elementId) || !elementId.startsWith('text-')) return;
-    const previousState = captureLayoutState();
-    customElements.value[props.templateId] = customElements.value[props.templateId].map((element) =>
-        element.id === elementId
-            ? { ...element, text: value, name: element.dataBinding ? element.name : value.trim() || 'Text' }
-            : element);
-    syncGraphicTextSize(elementId);
-    reflowAutoLayoutGroups();
-    commitCurrentLayout(previousState);
-    emit('layoutChange', true);
-};
-
-const setSelectedCustomTextMode = (mode: LayoutTextMode) => {
-    if ((mode !== 'graphic' && mode !== 'frame') || selectedElements.value.length === 0 || selectionContainsLockedElement()) return;
-    const customTextIds = selectedElements.value.filter((elementId) => {
-        const element = customElementById(elementId);
-        return element?.kind === 'text';
-    });
-    if (customTextIds.length === 0) return;
-    const previousState = captureLayoutState();
-    const ids = new Set(customTextIds);
-    customElements.value[props.templateId] = customElements.value[props.templateId].map((element) =>
-        ids.has(element.id) ? { ...element, textMode: mode } : element);
-    if (mode === 'graphic') customTextIds.forEach(syncGraphicTextSize);
-    reflowAutoLayoutGroups();
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-    emitSelectionGeometry();
-    void syncTransformer();
-};
-
-const setSelectedQrOptions = (
-    field: 'qrValue' | 'qrBackground' | 'qrMargin' | 'qrErrorCorrection',
-    value: string | number,
-) => {
-    const elementId = selectedElement.value;
-    const element = elementId ? customElementById(elementId) : null;
-    if (!element || element.kind !== 'qr') return;
-    const nextValue = field === 'qrMargin' ? Number(value) : String(value);
-    if ((field === 'qrMargin' && (!Number.isFinite(nextValue) || Number(nextValue) < 0 || Number(nextValue) > 10)) ||
-        (field === 'qrBackground' && !isHexColor(String(nextValue))) ||
-        (field === 'qrErrorCorrection' && !['L', 'M', 'Q', 'H'].includes(String(nextValue))) ||
-        (field === 'qrValue' && String(nextValue).length > 10_000)) return;
-    const previousState = captureLayoutState();
-    let updated: LayoutCustomElement | null = null;
-    customElements.value[props.templateId] = customElements.value[props.templateId].map((candidate) => {
-        if (candidate.id !== elementId) return candidate;
-        if (field === 'qrValue') {
-            const { dataBinding: _, ...unboundCandidate } = candidate;
-            updated = { ...unboundCandidate, qrValue: String(nextValue) };
-        } else {
-            updated = { ...candidate, [field]: nextValue };
-        }
-        return updated;
-    });
-    if (updated) void loadCustomQr(updated);
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-};
-
-const setElementEffects = (targetIds: string[], effects: LayoutElementEffects) => {
-    const groupsById = new Map(flattenLayoutGroups(layoutGroups.value[props.templateId]).map((group) => [group.id, group]));
-    const existingIds = targetIds.filter((targetId) => {
-        const group = groupsById.get(targetId);
-        return group
-            ? !layoutGroupElementIds(group).some(elementIsLocked)
-            : (
-                layoutOrder.value[props.templateId].includes(targetId as LayoutElementId) &&
-                !elementIsLocked(targetId as LayoutElementId)
-            );
-    });
-    if (existingIds.length === 0) return;
-    const previousState = captureLayoutState();
-    const nextEffects = { ...layoutEffects.value[props.templateId] };
-    const normalized = normalizeLayoutElementEffects(effects);
-    for (const elementId of existingIds) {
-        if (layoutElementHasEffects(normalized)) {
-            nextEffects[elementId] = {
-                ...normalized,
-                shadow: { ...normalized.shadow },
-                blur: { ...normalized.blur },
-            };
-        } else {
-            delete nextEffects[elementId];
-        }
-    }
-    layoutEffects.value[props.templateId] = nextEffects;
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-};
-
-const setElementFilters = (targetIds: string[], filters: LayoutFilterStack) => {
-    const groupsById = new Map(flattenLayoutGroups(layoutGroups.value[props.templateId]).map((group) => [group.id, group]));
-    const existingIds = targetIds.filter((targetId) => {
-        const group = groupsById.get(targetId);
-        return group
-            ? !layoutGroupElementIds(group).some(elementIsLocked)
-            : (
-                layoutOrder.value[props.templateId].includes(targetId as LayoutElementId) &&
-                !elementIsLocked(targetId as LayoutElementId)
-            );
-    });
-    if (existingIds.length === 0) return;
-    const previousState = captureLayoutState();
-    const nextFilters = { ...layoutFilters.value[props.templateId] };
-    const normalized = normalizeLayoutFilterStack(filters);
-    for (const targetId of existingIds) {
-        if (layoutFilterStackHasEnabled(normalized)) {
-            nextFilters[targetId] = normalized.map(cloneLayoutFilter);
-        } else {
-            delete nextFilters[targetId];
-        }
-    }
-    layoutFilters.value[props.templateId] = nextFilters;
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-};
 
 const deleteElements = (elementIds: LayoutElementId[]) => {
     const existingIds = elementIds.filter((elementId) =>
@@ -2040,7 +1563,7 @@ const renderThumbnail = async (maxWidth = 176, maxHeight = 120) => {
     }
 };
 
-defineExpose({
+const commands = {
     addElement,
     alignSelectedElement,
     distributeSelectedElements,
@@ -2049,14 +1572,9 @@ defineExpose({
     drillIntoElement,
     deleteElements,
     deleteSelectedElements,
-    exportImage,
     groupSelectedElements,
-    getLayoutState,
     moveLayerNode,
     nudgeSelectedElement,
-    renderThumbnail,
-    resizeSelectedElement,
-    rotateSelectedElement,
     setSelectedElementGeometry,
     setSelectedElementGradient,
     setElementEffects,
@@ -2074,7 +1592,9 @@ defineExpose({
     selectElement,
     selectGroup,
     ungroupSelectedElements,
-});
+};
+
+defineExpose({ commands, exportImage, renderThumbnail });
 </script>
 
 <template>

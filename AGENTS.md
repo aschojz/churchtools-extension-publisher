@@ -120,7 +120,8 @@ Es gibt aktuell keinen Lint-, Format- oder Visual-Regression-Runner. Playwright 
 
 - `src/App.vue`: derzeit noch zentraler Orchestrator; nicht weiter anwachsen lassen
 - `src/components/EventTemplate.vue`: Canvas-Interaktion und Rendering; vorrangiger Refactoring-Kandidat
-- `src/composables/useCanvasSelection.ts`, `useCanvasTransformer.ts`, `useCanvasTransforms.ts`: Auswahl-, Transformer- und Transformationsgesten; bestehende Grenzen erweitern statt Verhalten zurück nach `EventTemplate.vue` zu verschieben
+- `src/composables/useCanvasSelection.ts`, `useCanvasTransformer.ts`, `useCanvasTransforms.ts`: Auswahl-, Transformer- und Transformationsgesten
+- `src/composables/useCanvasGroups.ts`, `useCanvasElementStyles.ts`: Gruppen-/Auto-Layout-Kommandos und Elementformatierung; bestehende Grenzen erweitern statt Verhalten zurück nach `EventTemplate.vue` zu verschieben
 - `src/stores/`: globaler Editor-, Dokument-, Termin- und Farbzustand
 - `src/domain/`: pure Fachlogik, Parser, Typen und Serialisierung
 - `src/components/publisher/inspectors/`: rechte Inspector-Bereiche

@@ -373,22 +373,22 @@ const activateEditorToolById = (toolId: EditorToolId) => {
 };
 
 const addLayoutElement = (kind: Exclude<LayoutCustomElementKind, 'image' | 'text'>) => {
-    templateRef.value?.addElement(kind);
+    templateRef.value?.commands.addElement(kind);
     activeEditorTool.value = 'layout';
 };
 
 const addLayoutText = (textMode: LayoutTextMode) => {
-    templateRef.value?.addElement('text', { textMode });
+    templateRef.value?.commands.addElement('text', { textMode });
     activeEditorTool.value = 'layout';
 };
 
 const addLayoutIcon = (iconName: PublisherIconName) => {
-    templateRef.value?.addElement('icon', { iconName, name: 'Icon' });
+    templateRef.value?.commands.addElement('icon', { iconName, name: 'Icon' });
     activeEditorTool.value = 'layout';
 };
 
 const addLayoutQr = () => {
-    templateRef.value?.addElement('qr', { qrValue: 'https://church.tools', name: 'QR-Code' });
+    templateRef.value?.commands.addElement('qr', { qrValue: 'https://church.tools', name: 'QR-Code' });
     activeEditorTool.value = 'layout';
 };
 
@@ -575,9 +575,13 @@ const updateTemplateOverride = (field: EditableTemplateField, value: string) => 
 const insertAppointmentDataField = (field: PublisherDataField) => {
     if (field.type === 'image') {
         if (!field.value) return;
-        templateRef.value?.addElement('image', { imageSource: field.value, name: field.label, dataBinding: field.id });
+        templateRef.value?.commands.addElement('image', {
+            imageSource: field.value,
+            name: field.label,
+            dataBinding: field.id,
+        });
     } else {
-        templateRef.value?.addElement('text', {
+        templateRef.value?.commands.addElement('text', {
             text: field.placeholder,
             textMode: 'frame',
             name: field.label,
@@ -589,7 +593,7 @@ const insertAppointmentDataField = (field: PublisherDataField) => {
 
 const insertAppointmentQrField = (field: PublisherDataField) => {
     if (field.formatType !== 'url' || !field.value) return;
-    templateRef.value?.addElement('qr', {
+    templateRef.value?.commands.addElement('qr', {
         qrValue: field.placeholder,
         name: `${field.label} · QR-Code`,
         dataBinding: field.id,
@@ -847,7 +851,7 @@ const handleEditorShortcut = (event: KeyboardEvent) => {
 
     if ((event.key === 'Delete' || event.key === 'Backspace') && hasLayoutSelection.value) {
         event.preventDefault();
-        templateRef.value?.deleteSelectedElements();
+        templateRef.value?.commands.deleteSelectedElements();
         return;
     }
 
@@ -880,10 +884,10 @@ const handleEditorShortcut = (event: KeyboardEvent) => {
             clearLayoutSelection();
             break;
         case 'group':
-            templateRef.value?.groupSelectedElements();
+            templateRef.value?.commands.groupSelectedElements();
             break;
         case 'ungroup':
-            templateRef.value?.ungroupSelectedElements();
+            templateRef.value?.commands.ungroupSelectedElements();
             break;
     }
 };
@@ -1085,12 +1089,12 @@ const exportPages = async () => {
                 :has-image="Boolean(templateProps.imageUrl)"
                 @align="alignLayoutElement"
                 @change-layer="changeSelectedLayer"
-                @distribute="templateRef?.distributeSelectedElements($event)"
-                @group="templateRef?.groupSelectedElements()"
+                @distribute="templateRef?.commands.distributeSelectedElements($event)"
+                @group="templateRef?.commands.groupSelectedElements()"
                 @reset-image-focus="resetImageFocus"
-                @set-group-auto-layout="templateRef?.setSelectedGroupAutoLayout($event)"
-                @ungroup="templateRef?.ungroupSelectedElements()"
-                @update-qr-content="templateRef?.setSelectedQrOptions('qrValue', $event)"
+                @set-group-auto-layout="templateRef?.commands.setSelectedGroupAutoLayout($event)"
+                @ungroup="templateRef?.commands.ungroupSelectedElements()"
+                @update-qr-content="templateRef?.commands.setSelectedQrOptions('qrValue', $event)"
                 @update-text-content="updateSelectedTextContent"
             />
         </template>
@@ -1227,25 +1231,25 @@ const exportPages = async () => {
                     :data-values="appointmentDataValues"
                     :template="templateProps"
                     @delete-elements="deleteLayoutElements"
-                    @drill-into-element="templateRef?.drillIntoElement($event)"
-                    @move-layer="(source, target, placement) => templateRef?.moveLayerNode(source, target, placement)"
+                    @drill-into-element="templateRef?.commands.drillIntoElement($event)"
+                    @move-layer="(source, target, placement) => templateRef?.commands.moveLayerNode(source, target, placement)"
                     @restore-font-size="restoreSelectedFontSizeInput"
                     @restore-geometry="restoreSelectedLayoutGeometryInput"
                     @select-element="selectLayoutElement"
                     @select-group="selectLayoutGroup"
-                    @set-color-binding="(field, binding) => templateRef?.setSelectedElementColorBinding(field, binding)"
-                    @set-fill-color="templateRef?.setSelectedElementStaticColor('fill', $event)"
-                    @set-static-color="(field, color) => templateRef?.setSelectedElementStaticColor(field, color)"
-                    @set-text-color="templateRef?.setSelectedElementStaticColor('color', $event)"
-                    @toggle-lock="templateRef?.toggleElementsLock($event)"
-                    @toggle-visibility="templateRef?.toggleElementsVisibility($event)"
+                    @set-color-binding="(field, binding) => templateRef?.commands.setSelectedElementColorBinding(field, binding)"
+                    @set-fill-color="templateRef?.commands.setSelectedElementStaticColor('fill', $event)"
+                    @set-static-color="(field, color) => templateRef?.commands.setSelectedElementStaticColor(field, color)"
+                    @set-text-color="templateRef?.commands.setSelectedElementStaticColor('color', $event)"
+                    @toggle-lock="templateRef?.commands.toggleElementsLock($event)"
+                    @toggle-visibility="templateRef?.commands.toggleElementsVisibility($event)"
                     @update-geometry="updateSelectedLayoutGeometry"
-                    @update-effects="(elementIds, effects) => templateRef?.setElementEffects(elementIds, effects)"
-                    @update-filters="(elementIds, filters) => templateRef?.setElementFilters(elementIds, filters)"
-                    @update-gradient="(field, gradient) => templateRef?.setSelectedElementGradient(field, gradient)"
+                    @update-effects="(elementIds, effects) => templateRef?.commands.setElementEffects(elementIds, effects)"
+                    @update-filters="(elementIds, filters) => templateRef?.commands.setElementFilters(elementIds, filters)"
+                    @update-gradient="(field, gradient) => templateRef?.commands.setSelectedElementGradient(field, gradient)"
                     @update-text-style="updateSelectedTextStyle"
-                    @update-text-mode="templateRef?.setSelectedCustomTextMode($event)"
-                    @update-qr-option="(field, value) => templateRef?.setSelectedQrOptions(field, value)"
+                    @update-text-mode="templateRef?.commands.setSelectedCustomTextMode($event)"
+                    @update-qr-option="(field, value) => templateRef?.commands.setSelectedQrOptions(field, value)"
                     @update-visual-style="updateSelectedVisualStyle"
                 />
                 <AppointmentInspector v-else @open="appointmentDialogOpen = true" />
