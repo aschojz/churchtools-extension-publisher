@@ -6,6 +6,7 @@
     "scripts": {
         "dev": "vite",
         "build": "vue-tsc --noEmit && vite build",
+        "benchmark:state": "vitest bench --run src/domain/publisherStatePerformance.bench.ts",
         "typecheck": "vue-tsc --noEmit",
         "test": "vitest run",
         "test:e2e": "playwright test",
