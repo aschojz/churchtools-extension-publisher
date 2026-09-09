@@ -130,11 +130,11 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 ### Behoben – Persistierte Gruppenrotation wurde verworfen
 
 **Status:** behoben; Rotation wird validiert, normalisiert und per Roundtrip-Test abgesichert.
-**Evidenz:** `LayoutGroup` besitzt `rotation` (`src/domain/layoutEditing.ts:335-340`) und `cloneLayoutState()` kopiert sie (`src/domain/layoutHistory.ts:39-44`). `parseLayoutGroups()` erzeugt die Gruppe jedoch nur mit `id`, `children` und optional `autoLayout` (`src/domain/publisherDraft.ts:293-344`).
+**Evidenz:** `parseLayoutGroups()` akzeptiert nur endliche Rotationswerte und normalisiert sie beim Einlesen. `cloneLayoutState()` übernimmt die Rotation; Draft-, Vorlagen- und Dokument-Migrationstests decken den Roundtrip einschließlich verschachtelter Gruppen ab.
 
-**Auswirkung:** Eine im Transform-Inspector gedrehte Gruppe kann in der laufenden Sitzung korrekt wirken, verliert ihre Drehung aber beim Laden eines Entwurfs, beim JSON-Import und beim Laden einer gespeicherten Vorlage. Das ist stiller Datenverlust.
+**Auswirkung:** Gedrehte Gruppen behalten ihre Rotation beim Recovery-Laden, JSON-Import und Vorlagen-Roundtrip. Nicht endliche Werte werden als beschädigte Persistenzdaten abgewiesen.
 
-**Empfehlung:** `rotation` validieren, normalisieren und in `parseLayoutGroups()` übernehmen. Roundtrip-Tests für tief verschachtelte Gruppen mit Rotation in Draft und Designvorlage ergänzen. Da dies ein persistiertes Schema betrifft, Migration und Versionsstrategie festlegen.
+**Empfehlung:** Bei weiteren Gruppentransformationen denselben versionierten Parser- und Roundtrip-Pfad verwenden; keine Canvas-Transformwerte außerhalb des serialisierbaren Gruppenmodells ergänzen.
 
 ### Vorläufig behoben – Große lokale Bilder passten nicht zum Persistenzmodell
 
@@ -157,38 +157,38 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 ### Behoben – Auswahl konnte auf inaktiven Seiten sichtbar bleiben
 
 **Status:** behoben und im Browsertest mit zwei Seiten abgesichert.
-**Evidenz:** Beim Seitenwechsel wird nur `editorStore.clearSelectionState()` aufgerufen (`src/components/publisher/PublisherWorkspaceContent.vue:55-60`, `src/components/publisher/PublisherPagesPanel.vue:22-25`). Die vorherige `EventTemplate`-Instanz bleibt gemountet und ihr lokaler Auswahlzustand wird nicht geleert. Events inaktiver Seiten werden lediglich ignoriert.
+**Evidenz:** Der Editor-Store ordnet die Canvas-Auswahl einer `activeCanvasPageId` zu und leert sie atomar beim Seitenwechsel. Jede `EventTemplate`-Instanz projiziert Auswahl und Gruppenauswahl nur, wenn ihre eigene Seiten-ID aktiv ist. Der Playwright-Flow „keeps canvas selection scoped to the active page“ prüft Inspector und sichtbaren Zustand über zwei Seiten.
 
-**Auswirkung:** Handles oder Auswahlrahmen können auf einer nicht aktiven Seite bleiben, während der Inspector keine Auswahl anzeigt. Tastatur- und Kontextaktionen beziehen sich dann auf eine andere Zustandsquelle als die sichtbare Markierung.
+**Auswirkung:** Inaktive Seiten rendern keine veralteten Handles oder Auswahlrahmen; Inspector, Tastaturaktionen und Canvas beziehen sich auf dieselbe aktive Seite.
 
-**Empfehlung:** Auswahl in den gemeinsamen, seitenbezogenen Store verschieben oder beim Aktivieren einer Seite explizit `clearSelection()` auf allen anderen Instanzen ausführen. Browser-Integrationstest mit zwei Seiten ergänzen.
+**Empfehlung:** Künftige Auswahlzustände wie Hilfslinien oder Unterauswahl ebenfalls explizit an eine Seiten-ID binden und den vorhandenen Browsertest erweitern.
 
 ### Behoben – Gruppen waren Hierarchiemetadaten statt Canvas-Gruppen
 
 **Status:** behoben; Ebenenbaum und Canvas projizieren denselben rekursiven Gruppenbaum.
-**Evidenz:** Die Elementhierarchie liegt in `LayoutGroups`, die sichtbaren Elemente werden jedoch einzeln in der flachen Konva-Layerreihenfolge gerendert. `<v-group>` wird nur für nicht interaktive Dekorationsblöcke verwendet (`src/components/EventTemplate.vue:2749-2775`). Gruppentransformation berechnet und schreibt die Frames sämtlicher Kinder einzeln.
+**Evidenz:** `CanvasSceneTree.vue` rendert den von `buildLayoutLayerTree()` abgeleiteten Baum rekursiv. `EditableLayoutGroup.vue` stellt jede Gruppe als echten Konva-Container dar; verschachtelte Gruppen, Repeat-Instanzen, Rotation, Sperren, Effekte und Filter folgen demselben Szenengraphen. Der Ebenenbaum verändert dieses gemeinsame Gruppenmodell.
 
-**Auswirkung:** Ebenenbaum, Z-Order und Szenengraph haben unterschiedliche Strukturen. Gruppendrag kann zwischen Snap-Zielen flackern, verschachtelte Transformationen werden aufwendig, und ein Schatten auf der Gruppe lässt sich nicht als gemeinsamer Außenumriss darstellen. Das vom Nutzer beschriebene Problem überlagernder Schatten innerhalb einer Gruppe ist mit Einzeleffekten systembedingt.
+**Auswirkung:** Ebenenbaum, Z-Order und Canvas besitzen dieselbe Hierarchie. Gruppen werden gemeinsam bewegt und für Effekte beziehungsweise Filter als eine Einheit kompositiert, sodass überlappende Kinder keinen separaten Innenschatten erhalten.
 
-**Empfehlung:** Szenengraph auf rekursive Knoten umstellen: `GroupNode` enthält Kindknoten und eine lokale Transformationsmatrix. Für Gruppeneffekte die Gruppe als Einheit cachen beziehungsweise offscreen kompositieren. Migration vorhandener globaler Child-Frames sorgfältig planen und mit visuellen Tests absichern.
+**Empfehlung:** Die globale persistierte Kindgeometrie und lokale Konva-Projektion bei weiteren Transformationsarten nicht vermischen. Komposition und Cache-Verhalten großer, tief verschachtelter Effektgruppen gezielt messen.
 
 ### Behoben – Designvorlagen speicherten nur die aktive Seite
 
-**Status:** behoben durch Vorlagenbibliothek Version 2 samt Migration von Version 1 und Browser-Roundtrip.
-**Evidenz:** `PublisherDesignTemplate` enthält `baseTemplateId`, genau ein `layout` und einen `imageFocus` (`src/domain/publisherDesignTemplate.ts:17-25`). Beim Speichern wird nur `templateRef.getLayoutState()` der aktiven Seite verwendet (`src/App.vue:603-624`); beim Anwenden wird nur diese Seite aktualisiert (`src/App.vue:642-660`).
+**Status:** behoben durch Vorlagenbibliothek Version 4 samt Migration der unterstützten Vorgängerversionen und Browser-Roundtrip.
+**Evidenz:** `PublisherDesignTemplate` enthält alle `pages` und die `activePageId`. Jede Seite wird tief mit Größe, Name, Layouts, Szenengraph und Bildfokus gespeichert. Beim Anwenden ersetzt der Dokument-Store alle Vorlagenseiten in einem undo-fähigen Schritt, während der Termin-Datenkontext unverändert bleibt.
 
-**Auswirkung:** Der zentrale Produktfall „ein mehrseitiges Layout einmal gestalten und jeden Termin damit exportieren“ ist nur teilweise erfüllt. Seitengrößen, Reihenfolge und weitere Seiten fehlen in der Vorlage.
+**Auswirkung:** Der zentrale Produktfall „ein mehrseitiges Layout einmal gestalten und jeden Termin damit exportieren“ umfasst unterschiedliche Seitengrößen, Reihenfolge, Gruppen, Bindungen, Effekte und Bildfokusse.
 
-**Empfehlung:** Ein gemeinsames `PublisherDocumentTemplate` einführen, das Seiten samt Szenengraph, Größe, Reihenfolge und Bildfokus speichert. Beim Anwenden exakt diese Seiten ersetzen, aber den aktuellen Datenkontext erhalten. Bestehende einseitige Vorlagen migrieren, indem sie zu einer einseitigen Dokumentvorlage werden.
+**Empfehlung:** Weitere Vorlagenmerkmale ausschließlich am mehrseitigen Dokumentmodell ergänzen. Die terminneutrale Speicherung und die Migration einseitiger Altvorlagen beibehalten.
 
 ### Stabilisiert – Zwei parallele Vorlagenkonzepte verursachten Reset- und Leerzustandsfehler
 
 **Status:** Standardvorlagen und gespeicherte Dokumentvorlagen bleiben zwei Katalogquellen, erzeugen aber denselben serialisierbaren Seiten-/Layoutzustand. Neue und zurückgesetzte Seiten verwenden eine eigene Blank-Factory.
-**Evidenz:** `TemplateId` ist weiterhin auf `split | poster` beschränkt. Selbst eine leere Seite erzeugt den vollständigen Zustand eines eingebauten Templates und markiert dessen Elemente als gelöscht (`src/stores/publisherDocument.ts:17-33`). Daneben existiert die separate Bibliothek benutzerdefinierter Designvorlagen. `applyStandardTemplate()` leert den Seitenzustand und lässt ihn aus der eingebauten Definition neu entstehen (`src/App.vue:589-600`).
+**Evidenz:** `createBlankPublisherPage()` und `addPage()` erzeugen ausdrücklich einen leeren transparenten Layoutzustand. Eingebaute Standardvorlagen und gespeicherte Dokumentvorlagen werden beide nur durch explizite Aktionen angewendet und landen anschließend im selben `PublisherPage`-/`SerializableLayoutState`-Modell. Der Playwright-Test für frei dimensionierte Seiten prüft, dass keine Standardelemente injiziert werden.
 
-**Auswirkung:** „Leere Seite“, „Standardvorlage“, „Basistemplate“ und „gespeicherte Vorlage“ sind technisch verschiedene Sonderfälle. Das erklärt wiederkehrende Regressionen, bei denen eine Terminauswahl oder neue Seite versehentlich ein Standardlayout einsetzt.
+**Auswirkung:** Leerer Start, neue Seiten und Terminwechsel sind von Vorlagenaktionen getrennt. Der verbleibende Unterschied betrifft den Katalog und die Herkunft der Vorlagen, nicht den resultierenden Canvas-Zustand.
 
-**Empfehlung:** Eingebaute Layouts als Seed-Einträge desselben Dokumentvorlagenmodells behandeln. Eine leere Seite besitzt einen leeren Root-Szenengraphen, keine gelöschten unsichtbaren Standardknoten.
+**Empfehlung:** Eingebaute Layouts langfristig als schreibgeschützte Seed-Einträge desselben Vorlagenkatalogs anbieten. Die Blank-Factory als einzige Quelle für leere Seiten beibehalten.
 
 ### Behoben – Entwurfsmodell widersprach der terminunabhängigen Arbeitsweise
 
@@ -211,11 +211,11 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 ### Behoben – Entwurf löschen erzeugte ein implizites Standardlayout
 
 **Status:** behoben; Zurücksetzen verwendet die zentrale Factory für eine leere transparente Seite.
-**Evidenz:** `deleteLocalDraft()` erzeugt mit `createPublisherPage()` eine Seite ohne expliziten Blank-State (`src/App.vue:676-695`). Der Store verwendet dagegen `createBlankPage()` und löscht alle eingebauten Elemente (`src/stores/publisherDocument.ts:17-38`).
+**Evidenz:** `createNewDocument()` und der Dokument-Store verwenden `createBlankPublisherPage()`. Die Factory initialisiert den aktiven Layoutzustand ohne sichtbare Elemente; neue Seiten verwenden denselben Pfad. Das frühere UI-„Zurücksetzen“ wurde entfernt, sodass eine Standardvorlage nur noch ausdrücklich angewendet wird.
 
-**Auswirkung:** Nach dem Löschen eines Entwurfs kann das eingebaute Layout wieder erscheinen. Das widerspricht dem transparenten Initialzustand und der Regel, dass Standardlayouts nur bewusst angewendet werden.
+**Auswirkung:** Ein neues oder geleertes Dokument startet reproduzierbar transparent und leer. Es gibt keinen impliziten Weg mehr vom Termin- oder Dokumentwechsel zu einem Standardlayout.
 
-**Empfehlung:** ausschließlich eine zentrale `createBlankPage()`-Action verwenden. Löschen bestätigen, vom Zurücksetzen des aktuellen Dokuments trennen und idealerweise über Papierkorb/Undo wiederherstellbar machen.
+**Empfehlung:** Zusätzliche „Neu“- oder Importpfade weiterhin auf die zentrale Blank-Factory beziehungsweise explizit importierte Seitenzustände beschränken.
 
 ### Behoben – Seitenvorschauen waren keine Vorschauen
 
@@ -229,11 +229,11 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 ### Stabilisiert – Kritische Canvas-Flows hatten keine Browserabdeckung
 
 **Status:** Playwright und eine erste kritische Chromium-Suite sind eingerichtet; reine Zoomberechnung und Statusleisten-Steuerung besitzen Komponententests. Pointer-Gesten für Randhandles, Panning, Export und visuelle Regressionen sollten noch ergänzt werden.
-**Evidenz:** `PublisherZoomControls` und die Fit-Berechnung sind isoliert testbar. Sieben Playwright-Flows sind vorhanden. Für `EventTemplate.vue`, `App.vue`, `PublisherWorkspaceContent.vue`, `TemplateInspector.vue`, `LayoutEffectsDialog.vue` und die editierbaren Canvas-Elemente fehlen weiterhin gezielte isolierte beziehungsweise visuelle Tests.
+**Evidenz:** `PublisherZoomControls` und die Fit-Berechnung sind isoliert testbar. Acht Playwright-Flows prüfen leeren Start, leere Seiten, Seitenauswahl, echte Gruppen samt Effekten, mehrseitige Vorlagen, Upload-Platzhalter, terminunabhängiges Speichern und responsive Drawer. Für Pointer-Gesten und visuelle Ausgabe fehlen weiterhin gezielte Browserfälle.
 
-**Auswirkung:** Genau die gemeldeten Fehler – Handles am Rand, Gruppendrag und Snapping, Trackpad-Zoom, Seitenwechsel, Canvas-/Ebenenhierarchie, Export mit realen Bildern – liegen außerhalb der verlässlichen Tests. jsdom simuliert Konva-Geometrie und Pointergesten nicht ausreichend.
+**Auswirkung:** Die wichtigsten Zustands- und Workflowregressionen sind abgedeckt. Handles am Rand, Gruppendrag und Snapping, Trackpad-Zoom, Export mit realen Bildern und visuelle Regressionen liegen weiterhin außerhalb der verlässlichen Suite; jsdom simuliert Konva-Geometrie und Pointergesten nicht ausreichend.
 
-**Empfehlung:** Playwright oder vergleichbaren Browserrunner einführen. Eine kleine risikobasierte Suite ist wertvoller als weitere flache Mount-Tests: leerer Start, Seite hinzufügen, Elementtransform am Rand, Gruppe verschieben/nesten, Seite wechseln, Termindaten austauschen, dynamisches Auto-Layout, PNG/JPEG-Export.
+**Empfehlung:** Die bestehende Playwright-Suite risikobasiert um Elementtransformation am Rand, Gruppendrag/Snapping, Trackpad-Zoom, Termindatenwechsel, dynamisches Auto-Layout und PNG/JPEG-Export erweitern.
 
 ### Behoben – Persistenzversion blieb trotz Schemaänderungen zurück
 
@@ -247,11 +247,11 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 ### Behoben – Ein defekter Vorlageneintrag blockierte die gesamte Bibliothek
 
 **Status:** behoben; Einträge werden einzeln gelesen und ungültige beziehungsweise doppelte Einträge isoliert.
-**Evidenz:** `parsePublisherDesignTemplateLibrary()` gibt `null` zurück, sobald eine Vorlage ungültig ist oder eine ID doppelt vorkommt (`src/domain/publisherDesignTemplate.ts:63-88`). Danach verweigern Speichern und Löschen jede weitere Änderung (`src/domain/publisherDesignTemplate.ts:105-135`).
+**Evidenz:** `parsePublisherDesignTemplateLibrary()` validiert zunächst nur den Bibliothekscontainer und parst danach jeden Eintrag separat. Ungültige sowie doppelte Einträge werden übersprungen; gültige Vorlagen bleiben ladbar und die Bibliothek kann wieder geschrieben werden.
 
-**Auswirkung:** Ein einziger alter oder beschädigter Eintrag kann alle Vorlagen aus der UI verschwinden lassen und neue Speicherungen verhindern. Dies ist ein plausibler Grund für den zuvor beobachteten UI-Fehler beim Vorlagenspeichern.
+**Auswirkung:** Ein einzelner beschädigter Altbestand blockiert weder die übrige Vorlagenbibliothek noch neue Speicherungen. Ein vollständig beschädigter Container bleibt als diagnostizierbarer Fehler erhalten.
 
-**Empfehlung:** Bibliothekscontainer validieren, Einträge einzeln parsen und ungültige Einträge quarantänisieren. Gültige Vorlagen weiter anbieten, Rohdaten als Backup erhalten und eine verständliche Reparaturmeldung zeigen.
+**Empfehlung:** Für eine spätere serverseitige Bibliothek zusätzlich Quarantäne-/Diagnosemetadaten vorsehen, damit übersprungene Einträge in der Oberfläche nachvollziehbar bleiben.
 
 ### Behoben – Verknüpftes Event konnte durch das Listenlimit fehlen
 
@@ -456,14 +456,14 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 **Status:** lokaler UI- und Code-Audit.  
 **Beobachtungen:**
 
-- Seiten hinzufügen/löschen und Dialog schließen nutzen teilweise `＋`/`×` statt Font Awesome.
+- Der Dialog „Neue Seite“ verwendet beim Schließen noch ein Textglyph statt des gemeinsamen Font-Awesome-Icon-Buttons.
 - Ebenen und Ausrichtung verwenden nun ein gemeinsames, teleportiertes Popover mit Outside-click, Escape, Fokus-Rückgabe und Viewport-Positionierung.
 - „Einrasten“ erklärt seine Wirkung per Tooltip. Der redundante Layout-Reset wurde zugunsten von Undo/Redo und erneutem Anwenden einer Vorlage entfernt.
 - Transformieren bleibt korrekt sichtbar und deaktiviert, könnte aber noch dichter sein.
 - Der Hauptcanvas ist bei festen Seitenleisten auf kleinen Desktopbreiten schnell stark beschnitten.
 - `index.html` deklariert die deutsche Dokumentsprache und überlässt den Dark Mode vollständig der Hostklasse `.dark`.
 
-**Empfehlung:** Glyphen durch gemeinsame Icon-Buttons ersetzen, Popover-Primitiv einführen, Snapping per Tooltip erläutern, `lang="de"` setzen und Dark Mode ausschließlich aus der Hostumgebung beziehungsweise einer klaren lokalen Simulation beziehen.
+**Empfehlung:** Den verbliebenen Dialog-Glyph ersetzen, den Transform-Inspector weiter verdichten und schmale Desktop- beziehungsweise Touch-Viewports auf realen Geräten prüfen. Die bereits gemeinsamen Popover-, Snapping-, Sprach- und Dark-Mode-Lösungen beibehalten.
 
 ## Bereits gute Entscheidungen
 
