@@ -48,7 +48,7 @@ test('creates a real group target and stores effects on that group', async ({ pa
     const shapeLayer = page.locator('.inspector-layer-list__select').filter({ hasText: 'Quadrat' });
     await textLayer.click();
     await shapeLayer.click({ modifiers: ['Shift'] });
-    await page.locator('.publisher-layer-popover summary').click();
+    await page.locator('.publisher-layer-popover .design-popover__trigger').click();
     await page.getByRole('button', { name: 'Gruppieren', exact: true }).click();
 
     await expect(page.locator('.inspector-layer-list__row--group')).toHaveClass(/is-selected/);
@@ -99,4 +99,22 @@ test('stores a document without an appointment and exposes the save state', asyn
     const document = page.getByLabel('Gespeicherte Dokumente').locator('article').filter({ hasText: 'Freie Grafik' });
     await expect(document).toContainText('Ohne Termin');
     await expect(page.locator('.publisher-statusbar__storage')).toHaveText('In ChurchTools gespeichert');
+});
+
+test('keeps pages and properties available as drawers at tablet width', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 900 });
+    const pagesDrawer = page.locator('#publisher-pages-drawer');
+    const inspectorDrawer = page.locator('#publisher-inspector-drawer');
+
+    await expect(pagesDrawer).toHaveAttribute('aria-hidden', 'true');
+    await page.getByRole('button', { name: 'Seitenübersicht öffnen' }).click();
+    await expect(pagesDrawer).toBeVisible();
+    await expect(pagesDrawer).toHaveAttribute('aria-hidden', 'false');
+    await page.keyboard.press('Escape');
+    await expect(pagesDrawer).toHaveAttribute('aria-hidden', 'true');
+
+    await page.getByRole('button', { name: 'Eigenschaften öffnen' }).click();
+    await expect(inspectorDrawer).toBeVisible();
+    await expect(inspectorDrawer).toHaveAttribute('aria-hidden', 'false');
+    await expect(inspectorDrawer.getByRole('tab', { name: 'Ebenen' })).toBeVisible();
 });

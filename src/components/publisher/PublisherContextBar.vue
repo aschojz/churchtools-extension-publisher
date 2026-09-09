@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons';
+import { faAlignCenter, faAlignLeft, faAlignRight, faArrowsLeftRight, faArrowsUpDown, faBackwardStep, faForwardStep, faObjectGroup, faObjectUngroup, faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { storeToRefs } from 'pinia';
 import { computed, ref } from 'vue';
@@ -183,10 +183,10 @@ const placeholderLabel = (fieldId: string) => `{{${fieldId}}}`;
                         <strong>Reihenfolge und Gruppen</strong>
                         <small v-if="selectedLayoutElement && !hasMultipleLayoutSelection">Ebene {{ selectedLayerPosition }} von {{ selectedLayerTotal }}</small>
                         <div class="publisher-alignment-popover__buttons" role="group" aria-label="Ebenenaktionen">
-                            <DesignButton variant="secondary" size="compact" :disabled="!selectedLayoutElement || hasMultipleLayoutSelection || selectedLayerPosition <= 1" @click="emit('changeLayer', -1)">Nach hinten</DesignButton>
-                            <DesignButton variant="secondary" size="compact" :disabled="!selectedLayoutElement || hasMultipleLayoutSelection || selectedLayerPosition >= selectedLayerTotal" @click="emit('changeLayer', 1)">Nach vorne</DesignButton>
-                            <DesignButton variant="secondary" size="compact" :disabled="!canGroupLayoutSelection" @click="emit('group')">Gruppieren</DesignButton>
-                            <DesignButton variant="secondary" size="compact" :disabled="!canUngroupLayoutSelection" @click="emit('ungroup')">Gruppe lösen</DesignButton>
+                            <DesignIconButton size="compact" label="Nach hinten" :disabled="!selectedLayoutElement || hasMultipleLayoutSelection || selectedLayerPosition <= 1" @click="emit('changeLayer', -1)"><FontAwesomeIcon :icon="faBackwardStep" aria-hidden="true" /></DesignIconButton>
+                            <DesignIconButton size="compact" label="Nach vorne" :disabled="!selectedLayoutElement || hasMultipleLayoutSelection || selectedLayerPosition >= selectedLayerTotal" @click="emit('changeLayer', 1)"><FontAwesomeIcon :icon="faForwardStep" aria-hidden="true" /></DesignIconButton>
+                            <DesignIconButton size="compact" label="Gruppieren" :disabled="!canGroupLayoutSelection" @click="emit('group')"><FontAwesomeIcon :icon="faObjectGroup" aria-hidden="true" /></DesignIconButton>
+                            <DesignIconButton size="compact" label="Gruppe lösen" :disabled="!canUngroupLayoutSelection" @click="emit('ungroup')"><FontAwesomeIcon :icon="faObjectUngroup" aria-hidden="true" /></DesignIconButton>
                         </div>
                     </section>
             </DesignPopover>
@@ -194,15 +194,15 @@ const placeholderLabel = (fieldId: string) => `{{${fieldId}}}`;
                     <section>
                         <strong>Horizontal ausrichten</strong>
                         <div class="publisher-alignment-popover__buttons" role="group" aria-label="Horizontal ausrichten">
-                            <DesignButton v-for="action in ([['left', 'Links'], ['horizontalCenter', 'Mitte'], ['right', 'Rechts']] as const)" :key="action[0]" variant="secondary" size="compact" @click="emit('align', action[0])">{{ action[1] }}</DesignButton>
-                            <DesignButton variant="secondary" size="compact" :disabled="selectedLayoutElements.length < 3" @click="emit('distribute', 'horizontal')">Verteilen</DesignButton>
+                            <DesignIconButton v-for="action in ([['left', 'Links ausrichten', faAlignLeft], ['horizontalCenter', 'Horizontal zentrieren', faAlignCenter], ['right', 'Rechts ausrichten', faAlignRight]] as const)" :key="action[0]" size="compact" :label="action[1]" @click="emit('align', action[0])"><FontAwesomeIcon :icon="action[2]" aria-hidden="true" /></DesignIconButton>
+                            <DesignIconButton size="compact" label="Horizontal gleichmäßig verteilen" :disabled="selectedLayoutElements.length < 3" @click="emit('distribute', 'horizontal')"><FontAwesomeIcon :icon="faArrowsLeftRight" aria-hidden="true" /></DesignIconButton>
                         </div>
                     </section>
                     <section>
                         <strong>Vertikal ausrichten</strong>
                         <div class="publisher-alignment-popover__buttons" role="group" aria-label="Vertikal ausrichten">
-                            <DesignButton v-for="action in ([['top', 'Oben'], ['verticalCenter', 'Mitte'], ['bottom', 'Unten']] as const)" :key="action[0]" variant="secondary" size="compact" @click="emit('align', action[0])">{{ action[1] }}</DesignButton>
-                            <DesignButton variant="secondary" size="compact" :disabled="selectedLayoutElements.length < 3" @click="emit('distribute', 'vertical')">Verteilen</DesignButton>
+                            <DesignIconButton v-for="action in ([['top', 'Oben ausrichten', faAlignLeft], ['verticalCenter', 'Vertikal zentrieren', faAlignCenter], ['bottom', 'Unten ausrichten', faAlignRight]] as const)" :key="action[0]" size="compact" :label="action[1]" @click="emit('align', action[0])"><FontAwesomeIcon :icon="action[2]" rotation="90" aria-hidden="true" /></DesignIconButton>
+                            <DesignIconButton size="compact" label="Vertikal gleichmäßig verteilen" :disabled="selectedLayoutElements.length < 3" @click="emit('distribute', 'vertical')"><FontAwesomeIcon :icon="faArrowsUpDown" aria-hidden="true" /></DesignIconButton>
                         </div>
                     </section>
                     <section class="publisher-alignment-popover__auto-layout">

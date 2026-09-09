@@ -1899,6 +1899,11 @@ textarea {
     font-size: 10px;
 }
 
+.publisher-contextbar__actions .publisher-alignment-popover__buttons .design-icon-button {
+    width: 30px;
+    padding-inline: 0;
+}
+
 .publisher-alignment-popover__auto-layout > p {
     margin: 0;
     color: var(--color-text-muted);

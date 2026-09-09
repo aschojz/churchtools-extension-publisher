@@ -27,6 +27,8 @@ Ein Dokument kann mehrere Seiten mit unterschiedlichen Abmessungen enthalten –
 - Grafiktext und Rahmentext mit umfangreichen Zeichen- und Absatzoptionen
 - Bilder, Rechtecke, Kreise, Dreiecke, Linien, Icons und QR-Codes
 - Ebenen, verschachtelte Gruppen, Sichtbarkeit, Sperren und Drag-and-drop-Sortierung
+- Tastaturnavigation und Tastatursortierung im Ebenenbaum
+- Seitenübersicht und Eigenschaften als erreichbare Drawer auf schmalen Desktop- und Tabletbreiten
 - automatisches horizontales oder vertikales Gruppenlayout mit definierbaren Abständen
 - datenabhängige Wiederholungsgruppen für Listenwerte, zum Beispiel eine gestaltete Zeile pro eingeteilter Person
 - Ausrichten, gleichmäßig verteilen, Snapping, Undo und Redo

@@ -1,6 +1,6 @@
 # Publisher-Layout-Umbau
 
-Diese Datei ist der Arbeitsplan für den schrittweisen Umbau des Publishers zu einer vollflächigen Design-Editor-Oberfläche. Sie wird während der Umsetzung aktualisiert und dient als gemeinsame, versionierte Referenz.
+> Historisches Konzeptdokument: Diese Datei beschreibt den frühen Prototyp und wird nicht mehr als aktueller Backlog gepflegt. Der heutige Funktionsstand und die priorisierten offenen Punkte stehen in `README.md`, `analyse.md` und `docs/todos.md`.
 
 ## Statuslegende
 

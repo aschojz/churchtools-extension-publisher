@@ -57,7 +57,7 @@ describe('PublisherContextBar alignment popover', () => {
         expect(layerPopover.get('.design-popover__trigger').text()).toBe('Ebenen');
         await layerPopover.get('.design-popover__trigger').trigger('click');
         const layerActions = layerPopover.findAll('.publisher-alignment-popover__buttons button');
-        expect(layerActions.map((button) => button.text())).toEqual([
+        expect(layerActions.map((button) => button.attributes('aria-label'))).toEqual([
             'Nach hinten', 'Nach vorne', 'Gruppieren', 'Gruppe lösen',
         ]);
         await layerActions[0]!.trigger('click');
@@ -69,9 +69,8 @@ describe('PublisherContextBar alignment popover', () => {
         const wrapper = mountContextBar();
         await wrapper.findAll('.design-popover__trigger')[1]!.trigger('click');
 
-        const distribute = wrapper.findAll('button').filter((button) => button.text() === 'Verteilen');
-        await distribute[0]!.trigger('click');
-        await distribute[1]!.trigger('click');
+        await wrapper.get('[aria-label="Horizontal gleichmäßig verteilen"]').trigger('click');
+        await wrapper.get('[aria-label="Vertikal gleichmäßig verteilen"]').trigger('click');
 
         expect(wrapper.emitted('distribute')).toEqual([['horizontal'], ['vertical']]);
     });

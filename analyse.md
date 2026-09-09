@@ -1,14 +1,14 @@
 # Technische und konzeptionelle Analyse des ChurchTools Publisher
 
 Stand: 9. September 2026
-Untersuchter Stand: Audit auf Basis von Commit `66affa4`, Fundament-Umsetzung auf Basis von `a02005c`, CCM-Persistenz auf Basis von `1bacd72`
-Status: Audit plus Umsetzung der priorisierten Architektur- und Persistenzgrundlagen
+Untersuchter Stand: fortgeschriebener Arbeitsstand einschließlich Canvas-Refactoring, Datenautomation und UI-Grundlagen
+Status: Audit plus Umsetzung der priorisierten Architektur-, Persistenz-, Automations- und Bediengrundlagen
 
 ## Kurzfazit
 
 Der Publisher ist kein kleiner Prototyp mehr, auch wenn Teile des Datenmodells noch aus dieser Phase stammen. Er ist bereits ein umfangreicher Mehrseiten-Editor mit eigener Szenenlogik, Hierarchie, Auto-Layout, Datenbindungen, dynamischen Farben, Effekten, CCM-Persistenz und Export-Pipeline. Die fachliche Breite ist gut erkennbar und viele pure Domain-Funktionen sind ordentlich getestet.
 
-Die zuvor größten strukturellen Risiken wurden mit den vier Fundamenten gezielt reduziert: Der persistierbare Dokumentzustand und die Auswahl besitzen nun kanonische Stores, Vorlagen bilden vollständige Mehrseitendokumente ab und Gruppen werden als echte Canvas-Knoten gerendert. Die verbleibenden Hauptrisiken liegen in der Größe des Canvas-Orchestrators, der Speicherung großer Bild-Assets, der Barrierefreiheit komplexer Interaktionen und der noch schmalen visuellen Regressionstest-Abdeckung.
+Die zuvor größten strukturellen Risiken wurden gezielt reduziert: Der persistierbare Dokumentzustand und die Auswahl besitzen kanonische Stores, Vorlagen bilden vollständige Mehrseitendokumente ab, Gruppen werden als echte Canvas-Knoten gerendert und persistierte Formate besitzen explizite Migrationen. Sichere Variablen-Pipelines und Repeat-Gruppen decken die erste Template-Automation ab; gemeinsame Popover/Tabs, Ebenentastatur und responsive Drawer stabilisieren die Bedienung. Die verbleibenden Hauptrisiken liegen in der Größe des Canvas-Orchestrators, der Speicherung großer Bild-Assets, der Performance vollständiger Dokument-Snapshots und der noch schmalen visuellen Regressionstest-Abdeckung.
 
 Vor einem weiteren größeren Feature-Ausbau wurden vier Fundamente stabilisiert:
 
@@ -22,7 +22,7 @@ Vor einem weiteren größeren Feature-Ausbau wurden vier Fundamente stabilisiert
 1. **Kanonischer Pinia-Zustand:** Seiten, aktive Seite, serialisierbare Layouts und eine chronologische Dokumenthistorie liegen nun im `PublisherDocumentStore`. Die Historie umfasst Canvas-Änderungen, Seitenoperationen und atomare Vorlagenanwendungen; Öffnen und Neuanlegen setzen sie zurück. Die Auswahl ist mit einer aktiven Seiten-ID im `PublisherEditorStore` gebunden. Gemountete Canvas-Seiten besitzen keine parallele persistierbare Layout- oder Auswahlkopie mehr.
 2. **Mehrseitige Vorlagen:** Die Vorlagenbibliothek verwendet Schema-Version 4 und speichert vollständige Dokumente mit allen Seiten, Größen, Layouts, Gruppen, Repeat-Bindungen, Bildfokussen und aktiver Seite. Alte Bibliotheken und einseitige Version-1-Vorlagen werden beim Lesen migriert; ein defekter Einzeleintrag blockiert nicht mehr die restliche Bibliothek.
 3. **Rekursiver Canvas-Szenengraph:** `LayoutGroup` wird rekursiv als echter Konva-Gruppenknoten gerendert. Gruppendrag bewegt einen Container und schreibt erst am Ende die Kindgeometrie zurück. Gruppenrotation ist persistierbar. Schatten, Unschärfe, Deckkraft und Mischmodus können am kompositierten Gruppenknoten liegen, ohne die Effekte auf Kinder zu kopieren.
-4. **Browser-Regressionstests:** Playwright mit Chromium ist eingerichtet. Die erste Suite prüft leeren Start, frei dimensionierte leere Seiten, seitengebundene Auswahl, Gruppenziel/-effekte und den Roundtrip einer mehrseitigen Dokumentvorlage.
+4. **Browser-Regressionstests:** Playwright mit Chromium ist eingerichtet. Die Suite prüft leeren Start, frei dimensionierte leere Seiten, seitengebundene Auswahl, Gruppenziel/-effekte, den Roundtrip einer mehrseitigen Dokumentvorlage, Upload-Platzhalter, terminunabhängiges Speichern und responsive Drawer.
 
 Diese Umsetzung beseitigt nicht alle nachfolgenden Findings. Insbesondere ein offizieller ChurchTools-Assetpfad und weitere visuelle Regressionstests bleiben eigenständige Ausbauschritte.
 
@@ -35,9 +35,9 @@ Diese Umsetzung beseitigt nicht alle nachfolgenden Findings. Insbesondere ein of
 | Zustandsmanagement | mittel bis gut | Pinia ist die kanonische Quelle für Dokument, Historie und seitengebundene Auswahl; lokale UI-Zustände bleiben bewusst in Komponenten. |
 | Persistenz | mittel bis gut | Dokumente und terminneutrale Vorlagen verwenden eine austauschbare CCM-Repository-Schicht; `localStorage` enthält nur eine Recovery-Kopie. Der offizielle Assetpfad ist noch offen. |
 | Canvas-Interaktion | mittel bis gut | Echte rekursive Gruppen, konstante Transformer-Griffe, Panning und Fit-Ansichten stabilisieren die Kernpfade; weitere komplexe Pointer- und DnD-Szenarien fehlen noch. |
-| UI-Konsistenz | mittel | Design-Komponenten und ein konsistenter Grundaufbau existieren, einzelne Glyphen, Dialoge, Tabs und Responsive-Verhalten weichen ab. |
-| Barrierefreiheit | ausbaufähig | Viele Beschriftungen sind vorhanden; Canvas, Drag-and-drop, Tabs und modale Fokusführung sind nicht vollständig zugänglich. |
-| Testabdeckung | mittel bis gut | 52 Vitest-Dateien mit 249 Tests sowie sieben grüne Playwright-Kernflüsse; visuelle und breitere Interaktionsregressionen fehlen noch. |
+| UI-Konsistenz | mittel bis gut | Design-Komponenten, gemeinsame Popover/Tabs und responsive Drawer vereinheitlichen den Grundaufbau; ältere Spezialdialoge und der große globale Stilbestand bleiben. |
+| Barrierefreiheit | mittel | Beschriftungen, Fokusführung, Tabs, Drawer und Ebenentastatur sind vorhanden; der Canvas selbst besitzt noch keine vollständige semantische Alternative. |
+| Testabdeckung | mittel bis gut | 59 Vitest-Dateien mit 276 Tests sowie acht grüne Playwright-Kernflüsse; visuelle und breitere Interaktionsregressionen fehlen noch. |
 | Build und Performance | mittel | Build funktioniert; der Hauptchunk und mehrere synchrone Vollzustandsoperationen werden bei größeren Dokumenten problematisch. |
 | Sicherheit und Datenschutz | mittel | CCM-Schreibzugriffe liegen hinter einem Repository-Adapter; Rechte- und Konfliktverhalten müssen noch an einer echten ChurchTools-Instanz validiert werden. Abhängigkeitswarnungen bleiben offen. |
 | Dokumentation und Release-Reife | mittel | README, `AGENTS.md`, Audit und Store-Beschreibung sind aktualisiert; Versionierung, Changelog und Releaseprozess bleiben prototypisch. |
@@ -148,7 +148,7 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 ### Stabilisiert – Pinia war nicht die kanonische Editorquelle
 
 **Status:** der persistierbare Seiten-/Layoutzustand, Historien und die seitengebundene Auswahl sind in Pinia zentralisiert. Auswahl, Transformer, Transformationen, Gruppen/Auto-Layout und Elementstile sind aus `EventTemplate.vue` in getestete Composables verschoben.
-**Evidenz:** `App.vue` umfasst weiterhin mehr als 1.200 Zeilen und hält Dokumentworkflow, Persistenz, Daten, Vorlagen und Export. `EventTemplate.vue` ist von 3.024 auf 1.802 Zeilen gesunken, liest den serialisierbaren Layoutzustand über Store-Proxies und bindet die Auswahl an den Editor-Store. Die öffentliche Komponentenoberfläche besteht nur noch aus dem gebündelten `commands`-Adapter sowie `exportImage()` und `renderThumbnail()`.
+**Evidenz:** `App.vue` umfasst weiterhin mehr als 1.200 Zeilen und hält Dokumentworkflow, Persistenz, Daten, Vorlagen und Export. `EventTemplate.vue` ist von 3.024 auf ungefähr 1.870 Zeilen gesunken, liest den serialisierbaren Layoutzustand über Store-Proxies und bindet die Auswahl an den Editor-Store. Die öffentliche Komponentenoberfläche besteht nur noch aus dem gebündelten `commands`-Adapter sowie `exportImage()` und `renderThumbnail()`.
 
 **Auswirkung:** Die widersprüchlichen persistierbaren Zustandskopien sind beseitigt und zentrale Canvas-Verhalten sind isoliert testbar. `App.vue` benötigt den imperativen Befehlsadapter für die gemountete Seitendarstellung aber weiterhin.
 
@@ -359,21 +359,21 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 **Status:** die Kernaktionen sind tastaturbedienbar.
 **Beobachtung:** Pfeiltasten navigieren durch den sichtbaren Baum und öffnen oder schließen Gruppen. Auf dem Verschiebegriff ordnet Option/Alt + Pfeil oben/unten die Ebene um; Option/Alt + Pfeil rechts verschachtelt sie in die vorherige Gruppe. Das Lösen einer Gruppe ist über das tastaturbedienbare Ebenen-Popover erreichbar.
 
-**Auswirkung:** Die zentrale Hierarchiebearbeitung bleibt Nutzern ohne präzise Zeigerbedienung verschlossen.
+**Auswirkung:** Navigation, Sortierung, Verschachtelung und das Lösen von Gruppen sind ohne präzise Zeigerbedienung erreichbar. Eine direkte Tastaturaktion „aus Untergruppe herausziehen“ und eine gesprochene Erfolgsmeldung fehlen noch.
 
 **Empfehlung:** Nach einer Tastaturverschiebung zusätzlich eine kurze Live-Region-Rückmeldung ausgeben und das direkte Herausziehen aus einer Untergruppe als eigenen Befehl ergänzen.
 
 ### P2 – Canvas-Inhalte besitzen keine semantische Alternative
 
 **Status:** konzeptionelle Lücke.  
-**Beobachtung:** Konva rendert in ein Canvas; Elemente und Auswahl sind für Screenreader nicht als bearbeitbare Objekte vorhanden. Der Ebenenbaum könnte diese Rolle übernehmen, bietet aber noch keine vollständige Tastaturbearbeitung.
+**Beobachtung:** Konva rendert in ein Canvas; Elemente und Auswahl sind dort für Screenreader nicht als bearbeitbare Objekte vorhanden. Der Ebenenbaum stellt Typ, sichtbaren Wert, Hierarchie, Auswahl, Sichtbarkeit und Sperrung semantisch dar und unterstützt Navigation sowie Kernaktionen per Tastatur, bildet Geometrie und alle Canvas-Gesten aber noch nicht vollständig ab.
 
 **Empfehlung:** Ebenenbaum als zugängliche strukturelle Repräsentation ausbauen: Name/Wert, Typ per Icon plus zugänglichem Label, Zustand, Position, Auswahl, Umordnung und Inspector-Verknüpfung.
 
 ### P2 – Monolithische Dateien bremsen Änderungen
 
 **Status:** weiterhin relevant; die Canvas-Auswahl-, Transformations-, Gruppen- und Stilpfade sind inzwischen fachlich getrennt.
-**Evidenz:** `EventTemplate.vue` 1.802 Zeilen, `styles.css` 4.128, `App.vue` 1.277, `layoutEditing.ts` 1.107, `publisherDraft.ts` 687 und `LayoutInspector.vue` 500. In den UI-/Domain-Dateien existieren weiterhin zahlreiche direkte Hex-Farbwerte; Design-Tokens decken Abstände, Radien und Typografie nur teilweise ab.
+**Evidenz:** `EventTemplate.vue` 1.872 Zeilen, `styles.css` 4.149, `App.vue` 1.278, `layoutEditing.ts` 1.114, `publisherDraft.ts` 715 und `LayoutInspector.vue` 509. In den UI-/Domain-Dateien existieren weiterhin zahlreiche direkte Hex-Farbwerte; Design-Tokens decken Abstände, Radien und Typografie nur teilweise ab.
 
 **Auswirkung:** Fachgrenzen verschwimmen, Merge-Konflikte nehmen zu, Tests erfordern große Setups und kleine UI-Abweichungen entstehen leicht.
 
@@ -387,19 +387,19 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Umsetzungsstand:** Datenfeld-Drops liegen in `useCanvasDataFieldDrop`, Auswahlrechteck, Gruppendrilldown und Auswahlsynchronisierung in `useCanvasSelection`, die Konva-Transformer-Konfiguration in `useCanvasTransformer`, Drag-/Resize-/Rotate-Gesten in `useCanvasTransforms`, Gruppen und Auto-Layout in `useCanvasGroups` und Formatierungen in `useCanvasElementStyles`. Diese Grenzen besitzen isolierte Tests. Als nächste Schnitte bieten sich Asset-Laden, Konva-Konfiguration und Export an; parallel sollte `App.vue` nach Dokumentworkflow, Datenkontext, Persistenz und Export zerlegt werden.
 
-### P2 – README und Plan beschreiben einen früheren Prototyp
+### Behoben – README und Plan beschrieben einen früheren Prototyp
 
-**Status:** bestätigt.  
-**Evidenz:** README nennt zwei feste 1920-×-1080-Templates, maximal drei Textfelder und PNG-Einzelexport. Heute existieren freie Mehrseitenformate, zahlreiche Elemente, Variablen, Gruppen, dynamische Farben, Effekte und ZIP-Export. `PUBLISHER_LAYOUT_PLAN.md` enthält viele offene Checkboxen für längst umgesetzte Funktionen und ein veraltetes Zielbild.
+**Status:** aktuelle Architektur, Produktinvarianten und Store-Umfang sind dokumentiert.
+**Evidenz:** README beschreibt den Mehrseiteneditor, Stores, Szenengraph, Repository, Migrationen, Automationsfunktionen und die aktuellen Prüfkommandos. `EXTENSION_STORE.md` enthält eine redaktionelle Funktionsbeschreibung. Der frühere `PUBLISHER_LAYOUT_PLAN.md` ist ausdrücklich als historisches Konzept gekennzeichnet; der bewertete Restbacklog steht hier und in `docs/todos.md`.
 
 **Auswirkung:** Neue Entwickler treffen falsche Annahmen und können alte Architekturentscheidungen versehentlich reaktivieren.
 
-**Empfehlung:** README auf Setup und aktuelle Architektur reduzieren, Historie in Changelog/ADR verschieben und den alten Plan archivieren oder als „historisch“ markieren. `docs/todos.md` in priorisierten Produktbacklog überführen.
+**Empfehlung:** Sichtbare Produktänderungen weiterhin zeitgleich in README, Store-Text und diesem Audit nachführen.
 
-### P2 – Produktionsreife des Extension-Pakets ist nicht dokumentiert
+### Teilweise behoben – Produktionsreife des Extension-Pakets war nicht dokumentiert
 
-**Status:** Repository-Audit.  
-**Evidenz:** Paketversion ist `0.0.1`; es fehlen Changelog, Lizenzdatei, Store-Metadaten und ein dokumentierter Release-/Rollback-Prozess. `scripts/package.js` nutzt das Systemkommando `zip` und paketiert nur `dist/` (`package.json:1-12`, `scripts/package.js:26-67`).
+**Status:** Store-Inhalt und Beta-Grenzen sind dokumentiert; der technische Releaseprozess bleibt offen.
+**Evidenz:** `EXTENSION_STORE.md` enthält Beschreibung, Voraussetzungen, Datenschutz, Beta-Grenzen, Suchbegriffe und Screenshotplan. Paketversion ist weiterhin `0.0.1`; Changelog, Lizenzdatei und ein dokumentierter Release-/Rollback-Prozess fehlen. `scripts/package.js` nutzt das Systemkommando `zip` und paketiert nur `dist/`.
 
 **Auswirkung:** Veröffentlichungen sind schwer reproduzierbar, Plattformabhängigkeit bleibt unbemerkt und Store-Angaben können vom Produkt abweichen.
 
@@ -407,7 +407,7 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 ### P2 – Abhängigkeitswarnungen müssen vor Veröffentlichung geklärt werden
 
-**Status:** `npm audit --omit=dev` am 7. September 2026.  
+**Status:** `npm audit --omit=dev` am 9. September 2026.
 **Ergebnis:** sechs bekannte Schwachstellen, davon eine hohe und fünf mittlere. Die hohe Meldung betrifft `nanoid@3.3.16` über PostCSS/Vue/Vite. Die mittleren Meldungen betreffen `file-type@16.5.4` über `@jimp/core` und `node-vibrant`.
 
 **Auswirkung:** Der konkret ausnutzbare Pfad im reinen Browserbundle wurde in diesem Audit nicht bewiesen, aber ein Store-Release sollte keine ungeprüften High-Severity-Warnungen enthalten.
@@ -485,47 +485,17 @@ Die Analyse soll nicht nur Defizite festhalten. Mehrere Grundlagen sind solide u
 - Terminwechsel überschreibt das aktuelle Layout inzwischen ausdrücklich nicht mehr.
 - Verknüpfte Daten werden datensparsam erst auf Nutzeraktion geladen.
 
-## Empfohlene Umsetzungsreihenfolge
+## Umgesetztes Programm und nächste Reihenfolge
 
-### Phase 1 – Datenverlust und Regressionen verhindern
+Abgeschlossen sind die priorisierten Grundlagen gegen Datenverlust, der kanonische Dokument-/Auswahlzustand, mehrseitige Vorlagen, rekursive Canvas-Gruppen, Gruppeneffekte und Filter, explizite Persistenzmigrationen, sichere Variablen-Pipelines, Repeat-Gruppen, zielgrößenabhängiger Bildabruf, gemeinsame Popover/Tabs, Ebenentastatur und responsive Seitenbereiche.
 
-1. Gruppenrotation im Parser korrigieren und Roundtrip-Test ergänzen.
-2. Auswahl beim Seitenwechsel vollständig bereinigen.
-3. Blank-Page-Erzeugung zentralisieren; Entwurf löschen darf kein Standardlayout einsetzen.
-4. Vorlagenbibliothek fehlertolerant laden und konkrete Quota-/Parserfehler anzeigen.
-5. Browser-Smoke-Suite für diese vier Fehler ergänzen.
+Als nächste eigenständige Ausbauschritte bleiben in sinnvoller Reihenfolge:
 
-### Phase 2 – Dokumentmodell konsolidieren
-
-1. `PublisherDocument` und rekursiven `SceneNode` definieren.
-2. Dokumentoperationen in Store-Actions verschieben.
-3. ~~Auswahl, aktive Gruppe und eine dokumentweite Historie im Store ablegen.~~ Umgesetzt; die Historie führt Canvas-, Seiten- und Vorlagenaktionen chronologisch zusammen.
-4. `EventTemplate` schrittweise auf Storeprojektion und Gestenadapter reduzieren.
-5. ~~Explizite Persistenzmigrationen einführen.~~ Umgesetzt für Draft, Dokumentrecord, portable Datei, Vorlagenbibliothek und CCM-Envelope.
-
-### Phase 3 – Vorlagen und Assets produktionsfähig machen
-
-1. Mehrseitige Dokumentvorlagen einführen und alte Vorlagen migrieren.
-2. Eingebaute Vorlagen in dasselbe Modell überführen.
-3. Bilder in IndexedDB/Asset-Store verschieben.
-4. Dokumentautosave ohne Termin und explizites Öffnen terminbezogener Entwürfe anbieten.
-5. ~~Echte Seiten-Thumbnails generieren.~~ Umgesetzt, einschließlich Benennen, Duplizieren und Sortieren.
-
-### Phase 4 – Gruppen, Effekte und Automation
-
-1. Rekursive Konva-Gruppen mit lokalen Koordinaten und Transformmatrizen rendern.
-2. Gruppensnapping und Gruppentransform stabilisieren.
-3. gemeinsame Gruppeneffekte über Cache/Offscreen-Komposition implementieren.
-4. ~~Typisierten Filterstack für Ebenen und gemeinsam gerenderte Gruppen ergänzen.~~ Umgesetzt; Anpassungsebenen sind nicht vorgesehen.
-5. ~~Variablensyntax um sichere Fallback-, Listen- und Repeaterfunktionen erweitern.~~ Umgesetzt mit `v1`-Pipelines und renderseitig projizierten Repeat-Gruppen.
-
-### Phase 5 – Store- und Release-Reife
-
-1. Responsive Drawer und vollständige Tastaturbedienung.
-2. Dialog-/Popover-/Tabs-Primitiven plus Accessibility-Audit.
-3. Exportpresets, PDF-Evaluierung und Fortschritt/Abbruch.
-4. Abhängigkeitswarnungen, Lizenz, Versionierung, Changelog und reproduzierbares Packaging klären.
-5. README und Screenshots aktualisieren; Store-Text aus `EXTENSION_STORE.md` final redaktionell prüfen.
+1. offiziellen ChurchTools-Assetpfad festlegen und erst danach eigene Bild-Uploads wieder aktivieren;
+2. Snapshot-Historie und vollständiges Autosave mit großen Mehrseitendokumenten messen und bei Bedarf auf Patches umstellen;
+3. verbleibende Spezialdialoge sowie den Ebenenbaum vollständig auditieren und eine weitergehende semantische Canvas-Alternative definieren;
+4. Exportpresets und Namensschema umsetzen, anschließend PDF separat evaluieren;
+5. Abhängigkeitswarnungen, Dev-Zugangsdaten, Lizenz, SemVer, Changelog und reproduzierbares Packaging vor einem Store-Release klären.
 
 ## Vorgeschlagene Qualitätskriterien für eine erste Store-Version
 
@@ -541,13 +511,13 @@ Die Analyse soll nicht nur Defizite festhalten. Mehrere Grundlagen sind solide u
 
 ## Verifikation dieses Audits
 
-Am untersuchten Stand:
+Am aktuellen Stand:
 
-- `npm test`: 52 Dateien, 249 Tests erfolgreich
-- `npm run test:e2e`: 7 Browsertests erfolgreich
+- `npm test`: 59 Dateien, 276 Tests erfolgreich
+- `npm run test:e2e`: 8 Browsertests erfolgreich
 - `npm run typecheck`: erfolgreich
 - `npm run build`: erfolgreich
-- Vite meldet einen Hauptchunk von ungefähr 583 KB minifiziert beziehungsweise 179 KB gzip; Konva, ChurchTools, Vue und JSZip liegen in eigenen Chunks
+- Vite meldet einen Hauptchunk von ungefähr 619 KB minifiziert beziehungsweise 189 KB gzip; Konva, ChurchTools, Vue und JSZip liegen in eigenen Chunks
 - `npm audit --omit=dev`: 6 Meldungen, davon 1 hoch und 5 mittel
 
 Die Metriken sind Momentaufnahmen. Nach Änderungen an Abhängigkeiten oder Build-Splitting müssen sie neu erhoben werden.

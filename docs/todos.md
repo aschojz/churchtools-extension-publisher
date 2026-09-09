@@ -1,3 +1,1 @@
 - Eigene Bild-Uploads wieder aktivieren, sobald ein offizieller CCM-/ChurchTools-Assetpfad mit stabilen IDs und passenden Berechtigungen verfügbar ist
-- Ausrichten Popover: Icons von FA nutzen TBD; Einstiegspunkt vor undo/redo
-- Ebenen-Popover: ICons nutzen TBD; Einstiegspunkt vor undo/redo und vor ausrichten
