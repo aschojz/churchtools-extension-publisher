@@ -22,6 +22,7 @@ Der Publisher ist ein browserbasierter Layout-Editor innerhalb von ChurchTools. 
 npm run typecheck
 npm test
 npm run test:e2e
+npm run benchmark:state
 npm run build
 git diff --check
 ```
@@ -103,6 +104,7 @@ Es gibt aktuell keinen Lint-, Format- oder Visual-Regression-Runner. Playwright 
 
 - Jede Domainänderung erhält Unit-Tests für Normalfall, Grenzen und Persistenz-Roundtrip.
 - Store-Actions werden mit einem frischen Pinia getestet.
+- Änderungen an Historie, Klon- oder Speicherpfaden mit `npm run benchmark:state` gegen das große Mehrseitendokument messen; Momentwerte nur auf derselben Maschine direkt vergleichen.
 - Kritische Canvas-Flows brauchen browserbasierte Integrationstests: Auswahl, Handles am Rand, Gruppentransform, Seitenwechsel, Zoom, Drag-and-drop im Ebenenbaum, dynamisches Auto-Layout und Export.
 - Persistenztests müssen alte Versionen, beschädigte Einzeleinträge, große Dokumente und Schema-Migrationen abdecken.
 - Änderungen am Export prüfen mindestens PNG und JPEG, Transparenz beziehungsweise JPEG-Hintergrund, Seitenauswahl und exakte Pixelmaße.

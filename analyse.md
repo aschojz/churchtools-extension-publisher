@@ -8,7 +8,7 @@ Status: Audit plus Umsetzung der priorisierten Architektur-, Persistenz-, Automa
 
 Der Publisher ist kein kleiner Prototyp mehr, auch wenn Teile des Datenmodells noch aus dieser Phase stammen. Er ist bereits ein umfangreicher Mehrseiten-Editor mit eigener Szenenlogik, Hierarchie, Auto-Layout, Datenbindungen, dynamischen Farben, Effekten, CCM-Persistenz und Export-Pipeline. Die fachliche Breite ist gut erkennbar und viele pure Domain-Funktionen sind ordentlich getestet.
 
-Die zuvor größten strukturellen Risiken wurden gezielt reduziert: Der persistierbare Dokumentzustand und die Auswahl besitzen kanonische Stores, Vorlagen bilden vollständige Mehrseitendokumente ab, Gruppen werden als echte Canvas-Knoten gerendert und persistierte Formate besitzen explizite Migrationen. Sichere Variablen-Pipelines und Repeat-Gruppen decken die erste Template-Automation ab; gemeinsame Popover/Tabs, Ebenentastatur und responsive Drawer stabilisieren die Bedienung. Die verbleibenden Hauptrisiken liegen in der Größe des Canvas-Orchestrators, der Speicherung großer Bild-Assets, der Performance vollständiger Dokument-Snapshots und der noch schmalen visuellen Regressionstest-Abdeckung.
+Die zuvor größten strukturellen Risiken wurden gezielt reduziert: Der persistierbare Dokumentzustand und die Auswahl besitzen kanonische Stores, Vorlagen bilden vollständige Mehrseitendokumente ab, Gruppen werden als echte Canvas-Knoten gerendert und persistierte Formate besitzen explizite Migrationen. Sichere Variablen-Pipelines und Repeat-Gruppen decken die erste Template-Automation ab; gemeinsame Popover/Tabs, Ebenentastatur und responsive Drawer stabilisieren die Bedienung. Häufige Canvas-Änderungen verwenden inzwischen kompakte Seiten-Layout-Einträge statt vollständiger Dokument-Snapshots. Die verbleibenden Hauptrisiken liegen in der Größe des Canvas-Orchestrators, dem noch offenen ChurchTools-Assetpfad, vollständigen Remote-Speichervorgängen und der schmalen visuellen Regressionstest-Abdeckung.
 
 Vor einem weiteren größeren Feature-Ausbau wurden vier Fundamente stabilisiert:
 
@@ -19,7 +19,7 @@ Vor einem weiteren größeren Feature-Ausbau wurden vier Fundamente stabilisiert
 
 ## Umsetzungsstand der vier Fundamente
 
-1. **Kanonischer Pinia-Zustand:** Seiten, aktive Seite, serialisierbare Layouts und eine chronologische Dokumenthistorie liegen nun im `PublisherDocumentStore`. Die Historie umfasst Canvas-Änderungen, Seitenoperationen und atomare Vorlagenanwendungen; Öffnen und Neuanlegen setzen sie zurück. Die Auswahl ist mit einer aktiven Seiten-ID im `PublisherEditorStore` gebunden. Gemountete Canvas-Seiten besitzen keine parallele persistierbare Layout- oder Auswahlkopie mehr.
+1. **Kanonischer Pinia-Zustand:** Seiten, aktive Seite, serialisierbare Layouts und eine chronologische Dokumenthistorie liegen nun im `PublisherDocumentStore`. Die hybride Historie speichert für Canvas-Änderungen nur die betroffene Seiten-Layoutspur und für Seitenoperationen oder Vorlagenanwendungen vollständige Dokument-Snapshots; Öffnen und Neuanlegen setzen sie zurück. Die Auswahl ist mit einer aktiven Seiten-ID im `PublisherEditorStore` gebunden. Gemountete Canvas-Seiten besitzen keine parallele persistierbare Layout- oder Auswahlkopie mehr.
 2. **Mehrseitige Vorlagen:** Die Vorlagenbibliothek verwendet Schema-Version 4 und speichert vollständige Dokumente mit allen Seiten, Größen, Layouts, Gruppen, Repeat-Bindungen, Bildfokussen und aktiver Seite. Alte Bibliotheken und einseitige Version-1-Vorlagen werden beim Lesen migriert; ein defekter Einzeleintrag blockiert nicht mehr die restliche Bibliothek.
 3. **Rekursiver Canvas-Szenengraph:** `LayoutGroup` wird rekursiv als echter Konva-Gruppenknoten gerendert. Gruppendrag bewegt einen Container und schreibt erst am Ende die Kindgeometrie zurück. Gruppenrotation ist persistierbar. Schatten, Unschärfe, Deckkraft und Mischmodus können am kompositierten Gruppenknoten liegen, ohne die Effekte auf Kinder zu kopieren.
 4. **Browser-Regressionstests:** Playwright mit Chromium ist eingerichtet. Die Suite prüft leeren Start, frei dimensionierte leere Seiten, seitengebundene Auswahl, Gruppenziel/-effekte, den Roundtrip einer mehrseitigen Dokumentvorlage, Upload-Platzhalter, terminunabhängiges Speichern und responsive Drawer.
@@ -37,8 +37,8 @@ Diese Umsetzung beseitigt nicht alle nachfolgenden Findings. Insbesondere ein of
 | Canvas-Interaktion | mittel bis gut | Echte rekursive Gruppen, konstante Transformer-Griffe, Panning und Fit-Ansichten stabilisieren die Kernpfade; weitere komplexe Pointer- und DnD-Szenarien fehlen noch. |
 | UI-Konsistenz | mittel bis gut | Design-Komponenten, gemeinsame Popover/Tabs und responsive Drawer vereinheitlichen den Grundaufbau; ältere Spezialdialoge und der große globale Stilbestand bleiben. |
 | Barrierefreiheit | mittel | Beschriftungen, Fokusführung, Tabs, Drawer und Ebenentastatur sind vorhanden; der Canvas selbst besitzt noch keine vollständige semantische Alternative. |
-| Testabdeckung | mittel bis gut | 59 Vitest-Dateien mit 276 Tests sowie acht grüne Playwright-Kernflüsse; visuelle und breitere Interaktionsregressionen fehlen noch. |
-| Build und Performance | mittel | Build funktioniert; der Hauptchunk und mehrere synchrone Vollzustandsoperationen werden bei größeren Dokumenten problematisch. |
+| Testabdeckung | mittel bis gut | 59 Vitest-Dateien mit 279 Tests sowie acht grüne Playwright-Kernflüsse; visuelle und breitere Interaktionsregressionen fehlen noch. |
+| Build und Performance | mittel bis gut | Build funktioniert; die häufige Canvas-Historie ist layoutbezogen optimiert und reproduzierbar messbar. Hauptchunk, vollständige Recovery-/Remote-Speicherung und schwere Canvas-Kompositionen bleiben zu beobachten. |
 | Sicherheit und Datenschutz | mittel | CCM-Schreibzugriffe liegen hinter einem Repository-Adapter; Rechte- und Konfliktverhalten müssen noch an einer echten ChurchTools-Instanz validiert werden. Abhängigkeitswarnungen bleiben offen. |
 | Dokumentation und Release-Reife | mittel | README, `AGENTS.md`, Audit und Store-Beschreibung sind aktualisiert; Versionierung, Changelog und Releaseprozess bleiben prototypisch. |
 
@@ -280,14 +280,14 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Vor Freigabe mit der produktiven ChurchTools-Bild-API prüfen, ob gleichzeitige `w`-/`h`-Parameter nur skalieren oder serverseitig beschneiden. Der Canvas-Cover-Zuschnitt bleibt in jedem Fall die visuelle Quelle der Wahrheit.
 
-### P2 – Dokumenthistorie und Autosave skalieren schlecht
+### Stabilisiert – Dokumenthistorie und Autosave skalieren schlecht
 
-**Status:** aus Implementierung abgeleitet.  
-**Evidenz:** Die dokumentweite Historie hält bis zu 50 vollständige Mehrseiten-Snapshots und prüft Gleichheit synchron über `JSON.stringify` (`src/domain/publisherDocumentHistory.ts`). Autosave ist zwar auf 800 ms entprellt und asynchron, sendet aber weiterhin das vollständige mehrseitige Dokument an CCM und schreibt eine vollständige Recovery-Kopie.
+**Status:** der häufige History-Pfad ist strukturell geteilt und gemessen; vollständige Speichertransfers bleiben ein Infrastrukturthema.
+**Evidenz:** Die Undo-/Redo-Historie verwendet nun zwei typisierte Einträge: Canvas-Änderungen speichern nur `pageId`, Layoutspur, Layoutzustand und aktive Seite; Seitenoperationen und Vorlagenanwendungen speichern weiterhin einen vollständigen Dokumentsnapshot. Die Historie liegt als `shallowRef` in Pinia, damit alte Zustände nicht tief reaktiv werden. `npm run benchmark:state` misst reproduzierbar ein 1,00-MiB-Dokument mit 16 Seiten und 1.536 Elementen. Auf dem Audit-System sank das Erfassen einer typischen Layoutänderung von ungefähr 5,7 ms für den generischen Vollsnapshot-Commit auf 0,085 ms für den Layout-Eintrag; die vollständige Recovery-Serialisierung lag bei ungefähr 2,3 ms.
 
-**Auswirkung:** Viele Elemente und verschachtelte Gruppen verursachen weiterhin unnötige Serialisierung, Netzwerkvolumen und Speicherverbrauch. Data-URL-Bilder werden nicht mehr neu erzeugt.
+**Auswirkung:** Normale Verschiebe-, Stil-, Gruppen- und Transformationsaktionen vervielfachen nicht mehr das gesamte Mehrseitendokument in der Historie. Vollsnapshots entstehen nur bei echten Dokumentstrukturänderungen. Recovery und CCM-Autosave bleiben auf 800 ms entprellt, übertragen aber weiterhin das vollständige Dokument; deren Netzwerkvolumen hängt von der kommenden ChurchTools-API ab.
 
-**Empfehlung:** Commands oder strukturell geteilte Patches für Undo verwenden und serverseitig Patch-/Revisionsoperationen vorsehen. Performancebudgets mit großen Testdokumenten messen.
+**Empfehlung:** Den Benchmark bei Änderungen an Historie, Serialisierung oder großen Layoutstrukturen auf derselben Maschine vergleichen. Für die kommende ChurchTools-API Revisions- und Patchoperationen evaluieren; erst bei gemessenen UI-Pausen Worker-Serialisierung oder weitergehende Commands ergänzen. Große Bild-Data-URLs weiterhin nicht in Dokumente aufnehmen.
 
 ### Behoben – Destruktive Aktionen, Undo und Bestätigung
 
@@ -296,7 +296,7 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Auswirkung:** Änderungen am geöffneten Dokument lassen sich in ihrer tatsächlichen Reihenfolge zurückholen. Dauerhafte Bibliothekslöschungen können nicht mehr durch einen einzelnen unbeabsichtigten Klick ausgelöst werden.
 
-**Empfehlung:** Einen serverseitigen Papierkorb erst ergänzen, wenn die CCM-API dafür eine belastbare Semantik anbietet. Bei großen Dokumenten die Snapshot-Historie später durch Commands oder strukturell geteilte Patches ersetzen.
+**Empfehlung:** Einen serverseitigen Papierkorb erst ergänzen, wenn die CCM-API dafür eine belastbare Semantik anbietet. Die hybride Historie bei neuen Mutationstypen beibehalten: lokale Layoutänderung als kompakter Eintrag, echte Dokumentstrukturänderung als Vollsnapshot.
 
 ### Behoben – Farbpaletten und „zuletzt benutzt“ waren nur Sitzungsspeicher
 
@@ -492,9 +492,9 @@ Abgeschlossen sind die priorisierten Grundlagen gegen Datenverlust, der kanonisc
 Als nächste eigenständige Ausbauschritte bleiben in sinnvoller Reihenfolge:
 
 1. offiziellen ChurchTools-Assetpfad festlegen und erst danach eigene Bild-Uploads wieder aktivieren;
-2. Snapshot-Historie und vollständiges Autosave mit großen Mehrseitendokumenten messen und bei Bedarf auf Patches umstellen;
-3. verbleibende Spezialdialoge sowie den Ebenenbaum vollständig auditieren und eine weitergehende semantische Canvas-Alternative definieren;
-4. Exportpresets und Namensschema umsetzen, anschließend PDF separat evaluieren;
+2. verbleibende Spezialdialoge sowie den Ebenenbaum vollständig auditieren und eine weitergehende semantische Canvas-Alternative definieren;
+3. Exportpresets und Namensschema umsetzen, anschließend PDF separat evaluieren;
+4. vollständiges Remote-Autosave mit der kommenden ChurchTools-API auf Revisions-/Patchmöglichkeiten abstimmen;
 5. Abhängigkeitswarnungen, Dev-Zugangsdaten, Lizenz, SemVer, Changelog und reproduzierbares Packaging vor einem Store-Release klären.
 
 ## Vorgeschlagene Qualitätskriterien für eine erste Store-Version
@@ -513,9 +513,10 @@ Als nächste eigenständige Ausbauschritte bleiben in sinnvoller Reihenfolge:
 
 Am aktuellen Stand:
 
-- `npm test`: 59 Dateien, 276 Tests erfolgreich
+- `npm test`: 59 Dateien, 279 Tests erfolgreich
 - `npm run test:e2e`: 8 Browsertests erfolgreich
 - `npm run typecheck`: erfolgreich
+- `npm run benchmark:state`: 16 Seiten, 1.536 Elemente und 1,00 MiB; Layout-History-Eintrag im Mittel ungefähr 0,085 ms auf dem Audit-System
 - `npm run build`: erfolgreich
 - Vite meldet einen Hauptchunk von ungefähr 619 KB minifiziert beziehungsweise 189 KB gzip; Konva, ChurchTools, Vue und JSZip liegen in eigenen Chunks
 - `npm audit --omit=dev`: 6 Meldungen, davon 1 hoch und 5 mittel

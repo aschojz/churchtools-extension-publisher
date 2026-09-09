@@ -77,4 +77,4 @@ npx playwright install chromium
 - ChurchTools ist die Quelle für Dokumente und Vorlagen, der Browser hält lediglich eine Recovery-Kopie.
 - Gruppenhierarchie, Ebenen-Inspector und Canvas verwenden denselben rekursiven Szenengraphen.
 - PNG- und JPEG-Ausgaben werden pro Seite konfiguriert und gemeinsam als ZIP exportiert.
-- Canvas-Änderungen, Seitenoperationen und das Anwenden einer Vorlage werden chronologisch über dieselbe Undo-/Redo-Historie zurückgenommen; einen separaten Layout-Reset gibt es nicht.
+- Canvas-Änderungen, Seitenoperationen und das Anwenden einer Vorlage werden chronologisch über dieselbe Undo-/Redo-Historie zurückgenommen; häufige Canvas-Änderungen speichern dabei nur die betroffene Seiten-Layoutspur, echte Dokumentoperationen einen vollständigen Snapshot. Einen separaten Layout-Reset gibt es nicht.
