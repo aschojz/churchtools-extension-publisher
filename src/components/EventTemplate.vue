@@ -3,15 +3,17 @@ import type Konva from 'konva';
 import { Rect as KonvaRect } from 'konva/lib/shapes/Rect';
 import { Text as KonvaText } from 'konva/lib/shapes/Text';
 import QRCode from 'qrcode';
-import type { Box } from 'konva/lib/shapes/Transformer';
 import type { VueKonvaRef } from 'vue-konva';
-import { computed, nextTick, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, ref, shallowRef, toRef, watch } from 'vue';
 
 import EditableTextElement from './EditableTextElement.vue';
 import EditableVisualElement from './EditableVisualElement.vue';
 import CanvasGradientHandles from './CanvasGradientHandles.vue';
 import CanvasSceneTree from './CanvasSceneTree.vue';
 import { useCanvasDataFieldDrop } from '../composables/useCanvasDataFieldDrop';
+import { useCanvasSelection } from '../composables/useCanvasSelection';
+import { useCanvasTransformer } from '../composables/useCanvasTransformer';
+import { useCanvasTransforms } from '../composables/useCanvasTransforms';
 import type { EventTemplateProps } from '../domain/EventTemplateProps';
 import {
     publisherDataValue,
@@ -35,10 +37,6 @@ import { usePublisherEditorStore } from '../stores/publisherEditor';
 import {
     alignLayoutGeometry,
     applyLayoutGroupAutoLayout,
-    calculateSelectionDragSnap,
-    constrainLayoutGeometry,
-    constrainLayoutDelta,
-    constrainTransformerFrame,
     constrainFontSize,
     constrainLetterSpacing,
     constrainLineHeight,
@@ -48,27 +46,22 @@ import {
     createLayoutCustomElement,
     createLayoutOrder,
     createLayoutVisualStyles,
-    expandLayoutSelection,
     flattenLayoutGroups,
-    findLayoutGroupDepth,
     findLayoutGroupPath,
     groupLayoutElements,
     isHexColor,
     isFixedAspectRatioLayoutElement,
     isShapeLayoutElement,
     isTextLayoutElement,
-    keepRotatedFrameInDocument,
     layoutGroupElementIds,
     layoutGroupAnchor,
     layoutGroupBounds,
-    layoutFramesIntersect,
     type AlignmentGuide,
     type LayoutElementId,
     type LayoutElementEffects,
     type LayoutCustomElement,
     type LayoutCustomElementKind,
     type LayoutFrame,
-    type LayoutGeometry,
     type LayoutSelectionGeometry,
     type LayoutGroup,
     type LayoutGroupAutoLayout,
@@ -92,14 +85,8 @@ import {
     moveLayoutElementInOrder,
     moveLayoutOrderBlock,
     nestLayoutNodeInGroup,
-    normalizeRotation,
     distributeLayoutFrames,
     resizeLayoutFrame,
-    resizeLayoutFrameProportionally,
-    resolveLayoutSelectionTarget,
-    snapLayoutPoint,
-    snapLayoutSize,
-    snapRotation,
     sortLayoutGroupChildren,
     ungroupLayoutElements,
 } from '../domain/layoutEditing';
@@ -280,7 +267,6 @@ const selectedGroupId = computed<string | null>({
 });
 const isExporting = ref(false);
 const activeAlignmentGuides = ref<AlignmentGuide[]>([]);
-const selectionRectangle = ref<LayoutFrame | null>(null);
 const layoutOffsets = layoutSectionProxy('offsets');
 const layoutSizes = layoutSectionProxy('sizes');
 const layoutRotations = layoutSectionProxy('rotations');
@@ -298,21 +284,6 @@ const selectionContainsLockedElement = () => selectedElements.value.some(element
 const availableElements = computed(() =>
     layoutOrder.value[props.templateId].filter((elementId) => !deletedElements.value[props.templateId].includes(elementId)));
 let layoutGroupSequence = 0;
-let selectionStart: { x: number; y: number; additive: boolean } | null = null;
-let activeDrag: {
-    previousState: SerializableLayoutState;
-    startPosition: { x: number; y: number };
-    nodePositions: Partial<Record<LayoutElementId, { x: number; y: number }>>;
-    nodeBounds: Partial<Record<LayoutElementId, LayoutFrame>>;
-} | null = null;
-let activeGroupDrag: {
-    groupId: string;
-    previousState: SerializableLayoutState;
-    startPosition: { x: number; y: number };
-    startAbsolutePosition: { x: number; y: number };
-    startBounds: LayoutFrame;
-    elementFrames: Partial<Record<LayoutElementId, LayoutFrame>>;
-} | null = null;
 let activeGradientEdit: {
     elementId: LayoutElementId;
     field: 'color' | 'fill';
@@ -338,64 +309,61 @@ const selectedElementTouchesTopEdge = computed(() => {
     const rotation = layoutRotations.value[props.templateId][elementId] % 360;
     return rotation === 0 && (baseFrame.y + offset.y) * previewScale.value < 24;
 });
-const transformerConfig = computed(() => ({
-    rotateEnabled: Boolean(selectedGroupId.value) || selectedElements.value.length === 1,
-    flipEnabled: false,
-    keepRatio: selectedKeepsAspectRatio.value,
-    enabledAnchors: selectedGroupId.value
-        ? []
-        : selectedElements.value.length === 1
-        ? selectedLine.value
-            ? ['middle-left', 'middle-right']
-            : selectedKeepsAspectRatio.value
-            ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
-            : ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right']
-        : [],
-    anchorFill: '#ffffff',
-    anchorStroke: '#2479c5',
-    anchorSize: 7,
-    anchorStrokeWidth: 1,
-    anchorCornerRadius: 1.5,
-    borderStroke: '#2479c5',
-    borderStrokeWidth: 1,
-    anchorStyleFunc: (anchor: Konva.Rect) => {
-        anchor.hitStrokeWidth(22);
-        if (!selectedGroupId.value && selectedElements.value.length === 1 && selectedElement.value &&
-            layoutRotations.value[props.templateId][selectedElement.value] % 360 === 0) {
-            const stage = anchor.getStage();
-            const position = anchor.getAbsolutePosition();
-            const edgeThreshold = anchor.width() / 2 + anchor.strokeWidth();
-            const anchorName = anchor.name();
-            if (anchorName.includes('left') && position.x <= edgeThreshold) anchor.offsetX(0);
-            if (anchorName.includes('right') && stage && stage.width() - position.x <= edgeThreshold) anchor.offsetX(anchor.width());
-            if (anchorName.includes('top') && position.y <= edgeThreshold) anchor.offsetY(0);
-            if (anchorName.includes('bottom') && stage && stage.height() - position.y <= edgeThreshold) anchor.offsetY(anchor.height());
-        }
-        anchor.off('.publisher-autofit');
-        anchor.on('mousedown.publisher-autofit', (event) => {
-            if ('detail' in event.evt && event.evt.detail >= 2) {
-                transformerRef.value?.getNode()?.stopTransform();
-                handleTransformerDoubleClick(event);
-            }
-        });
-        anchor.on('mouseup.publisher-autofit', (event) => {
-            if ('detail' in event.evt && event.evt.detail >= 2) handleTransformerDoubleClick(event);
-        });
-        anchor.on('dblclick.publisher-autofit dbltap.publisher-autofit', handleTransformerDoubleClick);
+const snapEnabledRef = toRef(props, 'snapEnabled');
+const { syncTransformer, transformerConfig } = useCanvasTransformer({
+    documentSize,
+    elementIsLocked,
+    getElementRotation: (elementId) => layoutRotations.value[props.templateId][elementId],
+    isExporting,
+    onAutoFitTextFrame: (axis) => autoFitSelectedTextFrame(axis),
+    selectedElement,
+    selectedElementTouchesTopEdge,
+    selectedElements,
+    selectedGraphicText,
+    selectedGroupId,
+    selectedKeepsAspectRatio,
+    selectedLine,
+    snapEnabled: snapEnabledRef,
+    stageRef,
+    transformerRef,
+});
+const {
+    cancelSelectionRectangle,
+    clearSelection,
+    drillIntoElement,
+    finishSelectionRectangle,
+    handleStageDoubleClick,
+    handleStagePointer,
+    selectElement,
+    selectGroup,
+    selectionRectangle,
+    selectionSnapshot,
+    updateSelection,
+    updateSelectionRectangle,
+} = useCanvasSelection({
+    elementIsLocked,
+    getDeletedElements: () => deletedElements.value[props.templateId],
+    getLayoutGroups: () => layoutGroups.value[props.templateId],
+    getLayoutOrder: () => layoutOrder.value[props.templateId],
+    onSelectionDetailsChange: () => emitSelectionGeometry(),
+    onSelectionStateChange: (selection) => {
+        emit('selectionIdsChange', selection.elementIds);
+        emit('selectionChange', selection.elementId);
+        emit('selectionGroupPathChange', selection.groupPath);
+        emit('selectionGroupChange', selection.canGroup, selection.canUngroup, selection.groupDepth);
+        emit('layerPositionChange', selection.layerPosition, selection.layerTotal);
     },
-    rotateAnchorOffset: selectedElementTouchesTopEdge.value ? -18 : 18,
-    rotationSnaps: props.snapEnabled
-        ? [-180, -165, -150, -135, -120, -105, -90, -75, -60, -45, -30, -15, 0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180]
-        : [],
-    rotationSnapTolerance: 5,
-    boundBoxFunc: (oldBox: Box, newBox: Box) => {
-        const minimumSize = selectedGraphicText.value ? 12 : 1;
-        return {
-            ...newBox,
-            ...constrainTransformerFrame(oldBox, newBox, minimumSize, documentSize.value),
-        };
-    },
-}));
+    selectedElements,
+    selectedGroupId,
+    stageRef,
+    syncTransformer,
+    transformerRef,
+});
+
+const emitLayerPosition = () => {
+    const selection = selectionSnapshot();
+    emit('layerPositionChange', selection.layerPosition, selection.layerTotal);
+};
 
 const imageCrop = computed(() => {
     if (!image.value) {
@@ -1193,69 +1161,52 @@ const commitCurrentLayout = (previousState: SerializableLayoutState) => {
     emitSelectionGeometry();
 };
 
-const syncTransformer = async () => {
-    await nextTick();
-    const transformer = transformerRef.value?.getNode();
-    const stage = stageRef.value?.getNode();
-    if (!transformer || !stage) {
-        return;
-    }
-
-    const groupNode = selectedGroupId.value && !selectionContainsLockedElement()
-        ? stage.findOne(`#editable-group-${selectedGroupId.value}`)
-        : null;
-    const selectedNodes = groupNode
-        ? [groupNode]
-        : selectedElements.value
-            .filter((elementId) => !elementIsLocked(elementId))
-            .map((elementId) => stage.findOne(`#editable-${elementId}`))
-            .filter((node): node is Konva.Node => Boolean(node));
-    transformer.nodes(!isExporting.value ? selectedNodes : []);
-    transformer.getLayer()?.batchDraw();
-};
-
-const emitLayerPosition = () => {
-    if (!selectedElement.value || selectedElements.value.length !== 1) {
-        emit('layerPositionChange', 0, 0);
-        return;
-    }
-
-    const order = layoutOrder.value[props.templateId];
-    emit('layerPositionChange', order.indexOf(selectedElement.value) + 1, order.length);
-};
-
-const updateSelection = (elementIds: LayoutElementId[], groupId: string | null = null) => {
-    selectedElements.value = elementIds.filter(
-        (elementId, index) => layoutOrder.value[props.templateId].includes(elementId) && elementIds.indexOf(elementId) === index,
-    );
-    selectedGroupId.value = groupId;
-    emit('selectionIdsChange', [...selectedElements.value]);
-    emit('selectionChange', selectedElement.value);
-    emit(
-        'selectionGroupPathChange',
-        selectedElements.value[0]
-            ? findLayoutGroupPath(layoutGroups.value[props.templateId], selectedElements.value[0]).map(({ id }) => id)
-            : [],
-    );
-    const groups = flattenLayoutGroups(layoutGroups.value[props.templateId]);
-    const selectionIsOneGroup = groups.some((group) =>
-        layoutGroupElementIds(group).length === selectedElements.value.length &&
-        layoutGroupElementIds(group).every((elementId) => selectedElements.value.includes(elementId)),
-    );
-    emit(
-        'selectionGroupChange',
-        selectedElements.value.length >= 2 && !selectionIsOneGroup,
-        groups.some((group) =>
-            layoutGroupElementIds(group).every((elementId) => selectedElements.value.includes(elementId)),
-        ),
-        selectedGroupId.value
-            ? findLayoutGroupDepth(layoutGroups.value[props.templateId], selectedGroupId.value)
-            : 0,
-    );
-    emitLayerPosition();
-    emitSelectionGeometry();
-    void syncTransformer();
-};
+const {
+    alignElementWhileDragging,
+    alignGroupWhileDragging,
+    moveElement,
+    moveGroup,
+    nudgeSelectedElement,
+    resizeElement,
+    resizeSelectedElement,
+    rotateSelectedElement,
+    setSelectedElementGeometry,
+    startElementDrag,
+    startGroupDrag,
+    transformGroup,
+} = useCanvasTransforms({
+    activeAlignmentGuides,
+    captureLayoutState,
+    commitCurrentLayout,
+    documentSize,
+    elementFrame,
+    elementIsLocked,
+    getBaseFrame: (elementId) => templateElementFrames.value[props.templateId][elementId],
+    getCustomElement: customElementById,
+    getLayout: () => ({
+        groups: layoutGroups.value[props.templateId],
+        offsets: layoutOffsets.value[props.templateId],
+        order: layoutOrder.value[props.templateId],
+        rotations: layoutRotations.value[props.templateId],
+        sizes: layoutSizes.value[props.templateId],
+        styles: layoutTextStyles.value[props.templateId],
+    }),
+    onLayoutChange: () => emit('layoutChange', currentLayoutChanged.value),
+    onSelectionDetailsChange: emitSelectionGeometry,
+    reflowAutoLayoutGroups,
+    selectElement,
+    selectGroup,
+    selectedElement,
+    selectedElements,
+    selectedGroupId,
+    selectedGroupVisualBounds,
+    setLayoutGroups: (groups) => { layoutGroups.value[props.templateId] = groups; },
+    snapEnabled: snapEnabledRef,
+    stageRef,
+    syncGraphicTextSize,
+    syncSelectedAutoLayoutAnchor,
+    syncTransformer,
+});
 
 const createLayoutGroupId = () => `group-${Date.now()}-${layoutGroupSequence++}`;
 
@@ -1298,699 +1249,6 @@ const ungroupSelectedElements = () => {
     commitCurrentLayout(previousState);
     updateSelection(selectedElements.value);
     emit('layoutChange', currentLayoutChanged.value);
-};
-
-const selectElement = (elementId: LayoutElementId, additive = false) => {
-    const target = resolveLayoutSelectionTarget(
-        layoutGroups.value[props.templateId],
-        elementId,
-        selectedGroupId.value,
-        false,
-    );
-    if (!additive) {
-        updateSelection(target.elementIds, target.groupId);
-        return;
-    }
-
-    const groupSelection = expandLayoutSelection(
-        layoutGroups.value[props.templateId],
-        [elementId],
-        layoutOrder.value[props.templateId],
-    );
-    updateSelection(selectedElements.value.includes(elementId)
-        ? selectedElements.value.filter((candidate) => !groupSelection.includes(candidate))
-        : [...selectedElements.value, ...groupSelection]);
-};
-
-const drillIntoElement = (elementId: LayoutElementId) => {
-    const target = resolveLayoutSelectionTarget(
-        layoutGroups.value[props.templateId],
-        elementId,
-        selectedGroupId.value,
-        true,
-    );
-    updateSelection(target.elementIds, target.groupId);
-};
-
-const selectGroup = (groupId: string, additive = false) => {
-    const group = flattenLayoutGroups(layoutGroups.value[props.templateId])
-        .find((candidate) => candidate.id === groupId);
-    if (!group) {
-        return;
-    }
-    const elementIds = layoutGroupElementIds(group).filter((elementId) =>
-        !deletedElements.value[props.templateId].includes(elementId));
-    if (!additive) {
-        updateSelection(elementIds, groupId);
-        return;
-    }
-    const fullySelected = elementIds.every((elementId) => selectedElements.value.includes(elementId));
-    updateSelection(
-        fullySelected
-            ? selectedElements.value.filter((elementId) => !elementIds.includes(elementId))
-            : [...selectedElements.value, ...elementIds],
-        fullySelected ? null : groupId,
-    );
-};
-
-const clearSelection = () => {
-    updateSelection([]);
-};
-
-const eventIsAdditive = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) =>
-    'ctrlKey' in event.evt && (event.evt.ctrlKey || event.evt.metaKey || event.evt.shiftKey);
-
-const stagePointerPosition = () => {
-    const stage = stageRef.value?.getNode();
-    const pointer = stage?.getPointerPosition();
-    if (!stage || !pointer) {
-        return null;
-    }
-    return stage.getAbsoluteTransform().copy().invert().point(pointer);
-};
-
-const nodeDocumentPosition = (node: Konva.Node) => {
-    const stage = stageRef.value?.getNode();
-    return stage ? node.getAbsolutePosition(stage) : node.position();
-};
-
-const positionNodeAtDocumentPoint = (node: Konva.Node, point: { x: number; y: number }) => {
-    const stage = stageRef.value?.getNode();
-    const parent = node.getParent();
-    if (!stage || !parent) {
-        node.position(point);
-        return;
-    }
-    node.position(parent.getAbsoluteTransform(stage).copy().invert().point(point));
-};
-
-const cancelSelectionRectangle = () => {
-    selectionStart = null;
-    selectionRectangle.value = null;
-};
-
-const eventTargetsTransformer = (target: Konva.Node) => {
-    const transformer = transformerRef.value?.getNode();
-    return Boolean(transformer && (target === transformer || transformer.isAncestorOf(target)));
-};
-
-const handleStagePointer = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-    if (eventTargetsTransformer(event.target)) {
-        cancelSelectionRectangle();
-        return;
-    }
-
-    const editableGroup = event.target.findAncestor('.editable-element', true);
-    const elementId = editableGroup?.getAttr('layoutElementId') as LayoutElementId | undefined;
-
-    if (elementId) {
-        if (elementIsLocked(elementId)) {
-            cancelSelectionRectangle();
-            return;
-        }
-        selectElement(elementId, eventIsAdditive(event));
-        cancelSelectionRectangle();
-        return;
-    }
-
-    const layoutGroup = event.target.findAncestor('.editable-layout-group', true);
-    const groupId = layoutGroup?.getAttr('layoutGroupId') as string | undefined;
-    if (groupId) {
-        selectGroup(groupId, eventIsAdditive(event));
-        cancelSelectionRectangle();
-        return;
-    }
-
-    const pointer = stagePointerPosition();
-    if (!pointer) {
-        return;
-    }
-    selectionStart = { ...pointer, additive: eventIsAdditive(event) };
-    selectionRectangle.value = { x: pointer.x, y: pointer.y, width: 0, height: 0 };
-};
-
-const handleStageDoubleClick = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-    const editableGroup = event.target.findAncestor('.editable-element', true);
-    const elementId = editableGroup?.getAttr('layoutElementId') as LayoutElementId | undefined;
-    if (elementId && !elementIsLocked(elementId)) {
-        drillIntoElement(elementId);
-    }
-};
-
-const handleTransformerDoubleClick = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-    const anchorNames = event.target.name().split(/\s+/);
-    if (anchorNames.includes('bottom-center')) {
-        event.cancelBubble = true;
-        autoFitSelectedTextFrame('height');
-    } else if (anchorNames.includes('middle-right')) {
-        event.cancelBubble = true;
-        autoFitSelectedTextFrame('width');
-    }
-};
-
-const updateSelectionRectangle = () => {
-    const pointer = stagePointerPosition();
-    if (!selectionStart || !pointer) {
-        return;
-    }
-    selectionRectangle.value = {
-        x: Math.min(selectionStart.x, pointer.x),
-        y: Math.min(selectionStart.y, pointer.y),
-        width: Math.abs(pointer.x - selectionStart.x),
-        height: Math.abs(pointer.y - selectionStart.y),
-    };
-};
-
-const finishSelectionRectangle = () => {
-    const rectangle = selectionRectangle.value;
-    const start = selectionStart;
-    selectionStart = null;
-    selectionRectangle.value = null;
-    if (!rectangle || !start) {
-        return;
-    }
-    if (rectangle.width < 5 && rectangle.height < 5) {
-        if (!start.additive) {
-            clearSelection();
-        }
-        return;
-    }
-
-    const stage = stageRef.value?.getNode();
-    if (!stage) {
-        return;
-    }
-    const matches = layoutOrder.value[props.templateId].filter((elementId) => {
-        if (elementIsLocked(elementId)) return false;
-        const node = stage.findOne(`#editable-${elementId}`);
-        if (!node) {
-            return false;
-        }
-        const bounds = node.getClientRect({ relativeTo: stage });
-        return layoutFramesIntersect(rectangle, bounds);
-    });
-    const expandedMatches = expandLayoutSelection(
-        layoutGroups.value[props.templateId],
-        matches,
-        layoutOrder.value[props.templateId],
-    );
-    updateSelection(start.additive ? [...new Set([...selectedElements.value, ...expandedMatches])] : expandedMatches);
-};
-
-const startElementDrag = (elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
-    if (!selectedElements.value.includes(elementId)) {
-        selectElement(elementId);
-    }
-    const stage = stageRef.value?.getNode();
-    const parent = event.target.getParent();
-    if (!stage || !parent) {
-        return;
-    }
-    const nodePositions: Partial<Record<LayoutElementId, { x: number; y: number }>> = {};
-    const nodeBounds: Partial<Record<LayoutElementId, LayoutFrame>> = {};
-    for (const selectedId of selectedElements.value) {
-        const node = stage.findOne(`#editable-${selectedId}`);
-        if (node) {
-            nodePositions[selectedId] = { ...node.position() };
-            nodeBounds[selectedId] = node.getClientRect({ relativeTo: parent, skipStroke: true, skipShadow: true });
-        }
-    }
-    activeDrag = {
-        previousState: captureLayoutState(),
-        startPosition: { ...event.target.position() },
-        nodePositions,
-        nodeBounds,
-    };
-};
-
-const alignElementWhileDragging = (_elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
-    const node = event.target;
-    const parent = node.getParent();
-    const stage = stageRef.value?.getNode();
-    if (!parent || !stage) {
-        return;
-    }
-
-    const targetFrames = layoutOrder.value[props.templateId]
-        .filter((candidateId) => !selectedElements.value.includes(candidateId))
-        .map((candidateId) => stage.findOne(`#editable-${candidateId}`))
-        .filter((candidate): candidate is Konva.Node => Boolean(candidate))
-        .map((candidate) => candidate.getClientRect({ relativeTo: parent, skipStroke: true, skipShadow: true }));
-    if (!activeDrag) return;
-
-    const rawDelta = {
-        x: node.x() - activeDrag.startPosition.x,
-        y: node.y() - activeDrag.startPosition.y,
-    };
-    const bounds = Object.values(activeDrag.nodeBounds).filter((value): value is LayoutFrame => Boolean(value));
-    const selectionSnap = calculateSelectionDragSnap(
-        bounds,
-        rawDelta,
-        targetFrames,
-        props.snapEnabled,
-        10,
-        documentSize.value,
-    );
-    const delta = selectionSnap.offset;
-    activeAlignmentGuides.value = selectionSnap.guides;
-    for (const selectedId of selectedElements.value) {
-        const selectedNode = stage.findOne(`#editable-${selectedId}`);
-        const startPosition = activeDrag.nodePositions[selectedId];
-        if (selectedNode && startPosition) {
-            selectedNode.position({ x: startPosition.x + delta.x, y: startPosition.y + delta.y });
-        }
-    }
-};
-
-const moveElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<DragEvent>) => {
-    activeAlignmentGuides.value = [];
-    const previousState = activeDrag?.previousState ?? captureLayoutState();
-    const stage = stageRef.value?.getNode();
-    const movedIds = activeDrag ? selectedElements.value : [elementId];
-    for (const movedId of movedIds) {
-        const node = stage?.findOne(`#editable-${movedId}`) ?? (movedId === elementId ? event.target : null);
-        if (!node) {
-            continue;
-        }
-        const baseFrame = templateElementFrames.value[props.templateId][movedId];
-        const documentPosition = nodeDocumentPosition(node);
-        layoutOffsets.value[props.templateId][movedId] = {
-            x: documentPosition.x - baseFrame.x,
-            y: documentPosition.y - baseFrame.y,
-        };
-    }
-    activeDrag = null;
-    syncSelectedAutoLayoutAnchor();
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-    void syncTransformer();
-};
-
-const startGroupDrag = (groupId: string, event: Konva.KonvaEventObject<DragEvent>) => {
-    const group = flattenLayoutGroups(layoutGroups.value[props.templateId]).find(({ id }) => id === groupId);
-    const stage = stageRef.value?.getNode();
-    if (!group || !stage || layoutGroupElementIds(group).some(elementIsLocked)) return;
-    if (selectedGroupId.value !== groupId) selectGroup(groupId);
-    const elementFrames = Object.fromEntries(layoutGroupElementIds(group).map((elementId) => [
-        elementId,
-        { ...elementFrame(elementId) },
-    ])) as Partial<Record<LayoutElementId, LayoutFrame>>;
-    activeGroupDrag = {
-        groupId,
-        previousState: captureLayoutState(),
-        startPosition: { ...event.target.position() },
-        startAbsolutePosition: { ...event.target.getAbsolutePosition(stage) },
-        startBounds: event.target.getClientRect({ relativeTo: stage, skipStroke: true, skipShadow: true }),
-        elementFrames,
-    };
-};
-
-const alignGroupWhileDragging = (groupId: string, event: Konva.KonvaEventObject<DragEvent>) => {
-    const drag = activeGroupDrag;
-    const stage = stageRef.value?.getNode();
-    if (!drag || drag.groupId !== groupId || !stage) return;
-    const movingIds = new Set(Object.keys(drag.elementFrames));
-    const targetFrames = layoutOrder.value[props.templateId]
-        .filter((elementId) => !movingIds.has(elementId))
-        .map((elementId) => stage.findOne(`#editable-${elementId}`))
-        .filter((node): node is Konva.Node => Boolean(node))
-        .map((node) => node.getClientRect({ relativeTo: stage, skipStroke: true, skipShadow: true }));
-    const absolutePosition = event.target.getAbsolutePosition(stage);
-    const rawDelta = {
-        x: absolutePosition.x - drag.startAbsolutePosition.x,
-        y: absolutePosition.y - drag.startAbsolutePosition.y,
-    };
-    const snapped = calculateSelectionDragSnap(
-        [drag.startBounds],
-        rawDelta,
-        targetFrames,
-        props.snapEnabled,
-        10,
-        documentSize.value,
-    );
-    activeAlignmentGuides.value = snapped.guides;
-    event.target.position({
-        x: drag.startPosition.x + snapped.offset.x,
-        y: drag.startPosition.y + snapped.offset.y,
-    });
-};
-
-const moveGroup = (groupId: string, event: Konva.KonvaEventObject<DragEvent>) => {
-    const drag = activeGroupDrag;
-    const stage = stageRef.value?.getNode();
-    activeAlignmentGuides.value = [];
-    if (!drag || drag.groupId !== groupId || !stage) return;
-    const absolutePosition = event.target.getAbsolutePosition(stage);
-    const delta = {
-        x: absolutePosition.x - drag.startAbsolutePosition.x,
-        y: absolutePosition.y - drag.startAbsolutePosition.y,
-    };
-    event.target.position(drag.startPosition);
-    for (const [elementId, frame] of Object.entries(drag.elementFrames) as [LayoutElementId, LayoutFrame][]) {
-        const baseFrame = templateElementFrames.value[props.templateId][elementId];
-        layoutOffsets.value[props.templateId][elementId] = {
-            x: frame.x + delta.x - baseFrame.x,
-            y: frame.y + delta.y - baseFrame.y,
-        };
-    }
-    activeGroupDrag = null;
-    syncSelectedAutoLayoutAnchor();
-    commitCurrentLayout(drag.previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-    void syncTransformer();
-};
-
-const transformGroup = (groupId: string, event: Konva.KonvaEventObject<Event>) => {
-    const group = flattenLayoutGroups(layoutGroups.value[props.templateId]).find(({ id }) => id === groupId);
-    if (!group || layoutGroupElementIds(group).some(elementIsLocked)) return;
-    const rotation = normalizeRotation((group.rotation ?? 0) + event.target.rotation());
-    event.target.rotation(0);
-    event.target.scale({ x: 1, y: 1 });
-    selectGroup(groupId);
-    setSelectedGroupGeometry('rotation', rotation);
-};
-
-const resizeElement = (elementId: LayoutElementId, event: Konva.KonvaEventObject<Event>) => {
-    const node = event.target;
-    const baseFrame = templateElementFrames.value[props.templateId][elementId];
-    const currentFrame = elementFrame(elementId);
-    const snappedPosition = snapLayoutPoint(nodeDocumentPosition(node), props.snapEnabled);
-    const customElement = customElementById(elementId);
-
-    if (customElement?.kind === 'text' && customTextMode(customElement) === 'graphic') {
-        const previousState = captureLayoutState();
-        const currentStyle = layoutTextStyles.value[props.templateId][elementId];
-        const requestedScale = Math.max(Math.abs(node.scaleX()), Math.abs(node.scaleY()));
-        const nextFontSize = constrainFontSize(currentStyle.fontSize * requestedScale);
-        layoutTextStyles.value[props.templateId][elementId] = { ...currentStyle, fontSize: nextFontSize };
-        syncGraphicTextSize(elementId);
-        const measuredSize = layoutSizes.value[props.templateId][elementId];
-        const resizedFrame = {
-            x: snappedPosition.x,
-            y: snappedPosition.y,
-            ...measuredSize,
-        };
-        const rotatedLayout = keepRotatedFrameInDocument(
-            resizedFrame,
-            snapRotation(node.rotation(), props.snapEnabled),
-            documentSize.value,
-        );
-        if (!rotatedLayout) {
-            layoutTextStyles.value[props.templateId][elementId] = currentStyle;
-            layoutSizes.value[props.templateId][elementId] = { width: currentFrame.width, height: currentFrame.height };
-            node.scale({ x: 1, y: 1 });
-            positionNodeAtDocumentPoint(node, { x: currentFrame.x, y: currentFrame.y });
-            node.rotation(layoutRotations.value[props.templateId][elementId]);
-            void syncTransformer();
-            return;
-        }
-        node.scale({ x: 1, y: 1 });
-        positionNodeAtDocumentPoint(node, { x: rotatedLayout.frame.x, y: rotatedLayout.frame.y });
-        node.rotation(rotatedLayout.rotation);
-        layoutOffsets.value[props.templateId][elementId] = {
-            x: rotatedLayout.frame.x - baseFrame.x,
-            y: rotatedLayout.frame.y - baseFrame.y,
-        };
-        layoutSizes.value[props.templateId][elementId] = {
-            width: rotatedLayout.frame.width,
-            height: rotatedLayout.frame.height,
-        };
-        layoutRotations.value[props.templateId][elementId] = rotatedLayout.rotation;
-        reflowAutoLayoutGroups();
-        commitCurrentLayout(previousState);
-        emit('layoutChange', currentLayoutChanged.value);
-        void syncTransformer();
-        return;
-    }
-
-    const frameAtRequestedPosition = { ...currentFrame, ...snappedPosition };
-    const snappedSize = snapLayoutSize(
-        {
-            width: currentFrame.width * Math.abs(node.scaleX()),
-            height: currentFrame.height * Math.abs(node.scaleY()),
-        },
-        props.snapEnabled,
-    );
-    const requestedSize = customElement?.kind === 'line'
-        ? { width: snappedSize.width, height: currentFrame.height }
-        : snappedSize;
-    const resizedFrame = isFixedAspectRatioLayoutElement(elementId)
-        ? resizeLayoutFrameProportionally(frameAtRequestedPosition, requestedSize, documentSize.value)
-        : resizeLayoutFrame(frameAtRequestedPosition, requestedSize, documentSize.value);
-    const rotatedLayout = keepRotatedFrameInDocument(
-        resizedFrame,
-        snapRotation(node.rotation(), props.snapEnabled),
-        documentSize.value,
-    );
-
-    if (!rotatedLayout) {
-        node.scale({ x: 1, y: 1 });
-        positionNodeAtDocumentPoint(node, { x: currentFrame.x, y: currentFrame.y });
-        node.rotation(layoutRotations.value[props.templateId][elementId]);
-        void syncTransformer();
-        return;
-    }
-
-    const previousState = captureLayoutState();
-    node.scale({ x: 1, y: 1 });
-    positionNodeAtDocumentPoint(node, { x: rotatedLayout.frame.x, y: rotatedLayout.frame.y });
-    node.rotation(rotatedLayout.rotation);
-    layoutOffsets.value[props.templateId][elementId] = {
-        x: rotatedLayout.frame.x - baseFrame.x,
-        y: rotatedLayout.frame.y - baseFrame.y,
-    };
-    layoutSizes.value[props.templateId][elementId] = {
-        width: rotatedLayout.frame.width,
-        height: rotatedLayout.frame.height,
-    };
-    layoutRotations.value[props.templateId][elementId] = rotatedLayout.rotation;
-    reflowAutoLayoutGroups();
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-    void syncTransformer();
-};
-
-const nudgeSelectedElement = (deltaX: number, deltaY: number) => {
-    if (selectedElements.value.length === 0 || selectionContainsLockedElement()) {
-        return;
-    }
-
-    const previousState = captureLayoutState();
-    const frames = selectedElements.value.map(elementFrame);
-    const appliedDelta = constrainLayoutDelta(frames, { x: deltaX, y: deltaY }, documentSize.value);
-    for (const elementId of selectedElements.value) {
-        const offset = layoutOffsets.value[props.templateId][elementId];
-        layoutOffsets.value[props.templateId][elementId] = {
-            x: offset.x + appliedDelta.x,
-            y: offset.y + appliedDelta.y,
-        };
-    }
-    syncSelectedAutoLayoutAnchor();
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-    void syncTransformer();
-};
-
-const resizeSelectedElement = (deltaWidth: number, deltaHeight: number) => {
-    if (selectedElements.value.length === 0 || selectionContainsLockedElement()) {
-        return;
-    }
-
-    const previousState = captureLayoutState();
-    for (const elementId of selectedElements.value) {
-        const frame = elementFrame(elementId);
-        const requestedSize = {
-            width: frame.width + deltaWidth,
-            height: customElementById(elementId)?.kind === 'line' ? frame.height : frame.height + deltaHeight,
-        };
-        const resizedFrame = isFixedAspectRatioLayoutElement(elementId)
-            ? resizeLayoutFrameProportionally(frame, requestedSize, documentSize.value)
-            : resizeLayoutFrame(frame, requestedSize, documentSize.value);
-        layoutSizes.value[props.templateId][elementId] = {
-            width: resizedFrame.width,
-            height: resizedFrame.height,
-        };
-    }
-    reflowAutoLayoutGroups();
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-    void syncTransformer();
-};
-
-const rotateSelectedElement = (deltaRotation: number) => {
-    if (selectedElements.value.length === 0 || selectionContainsLockedElement()) {
-        return;
-    }
-
-    const rotations = selectedElements.value.map((elementId) => ({
-        elementId,
-        layout: keepRotatedFrameInDocument(
-            elementFrame(elementId),
-            layoutRotations.value[props.templateId][elementId] + deltaRotation,
-            documentSize.value,
-        ),
-    }));
-    if (rotations.some(({ layout }) => !layout)) {
-        return;
-    }
-
-    const previousState = captureLayoutState();
-    for (const { elementId, layout } of rotations) {
-        if (!layout) continue;
-        const baseFrame = templateElementFrames.value[props.templateId][elementId];
-        layoutOffsets.value[props.templateId][elementId] = {
-            x: layout.frame.x - baseFrame.x,
-            y: layout.frame.y - baseFrame.y,
-        };
-        layoutRotations.value[props.templateId][elementId] = layout.rotation;
-    }
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-    void syncTransformer();
-};
-
-const commitSelectedGeometry = (geometry: LayoutGeometry) => {
-    if (!selectedElement.value) {
-        return;
-    }
-    const elementId = selectedElement.value;
-    const previousState = captureLayoutState();
-    const baseFrame = templateElementFrames.value[props.templateId][elementId];
-    layoutOffsets.value[props.templateId][elementId] = {
-        x: geometry.x - baseFrame.x,
-        y: geometry.y - baseFrame.y,
-    };
-    layoutSizes.value[props.templateId][elementId] = {
-        width: geometry.width,
-        height: geometry.height,
-    };
-    layoutRotations.value[props.templateId][elementId] = geometry.rotation;
-    reflowAutoLayoutGroups();
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-    void syncTransformer();
-};
-
-const setSelectedGroupGeometry = (field: keyof LayoutGeometry, value: number) => {
-    if (!selectedGroupId.value || !Number.isFinite(value)) return;
-    const group = flattenLayoutGroups(layoutGroups.value[props.templateId])
-        .find(({ id }) => id === selectedGroupId.value);
-    const bounds = group ? selectedGroupVisualBounds(group) : null;
-    if (!group || !bounds || field === 'width' || field === 'height') {
-        emitSelectionGeometry();
-        return;
-    }
-
-    const elementIds = layoutGroupElementIds(group);
-    const previousState = captureLayoutState();
-    if (field === 'x' || field === 'y') {
-        const requestedDelta = {
-            x: field === 'x' ? value - bounds.x : 0,
-            y: field === 'y' ? value - bounds.y : 0,
-        };
-        const delta = constrainLayoutDelta([bounds], requestedDelta, documentSize.value);
-        for (const elementId of elementIds) {
-            const frame = elementFrame(elementId);
-            const baseFrame = templateElementFrames.value[props.templateId][elementId];
-            layoutOffsets.value[props.templateId][elementId] = {
-                x: frame.x + delta.x - baseFrame.x,
-                y: frame.y + delta.y - baseFrame.y,
-            };
-        }
-        syncSelectedAutoLayoutAnchor();
-    } else {
-        const currentRotation = group.rotation ?? 0;
-        const deltaRotation = normalizeRotation(value - currentRotation);
-        const radians = deltaRotation * Math.PI / 180;
-        const cosine = Math.cos(radians);
-        const sine = Math.sin(radians);
-        const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
-        const updates = elementIds.map((elementId) => {
-            const frame = elementFrame(elementId);
-            const relative = { x: frame.x - center.x, y: frame.y - center.y };
-            const requestedFrame = {
-                ...frame,
-                x: center.x + relative.x * cosine - relative.y * sine,
-                y: center.y + relative.x * sine + relative.y * cosine,
-            };
-            const rotation = normalizeRotation(layoutRotations.value[props.templateId][elementId] + deltaRotation);
-            const constrained = keepRotatedFrameInDocument(requestedFrame, rotation, documentSize.value);
-            const remainsRigid = constrained &&
-                Math.abs(constrained.frame.x - requestedFrame.x) < 0.01 &&
-                Math.abs(constrained.frame.y - requestedFrame.y) < 0.01;
-            return remainsRigid ? { elementId, frame: requestedFrame, rotation } : null;
-        });
-        if (updates.some((update) => !update)) {
-            emitSelectionGeometry();
-            return;
-        }
-        for (const update of updates) {
-            if (!update) continue;
-            const baseFrame = templateElementFrames.value[props.templateId][update.elementId];
-            layoutOffsets.value[props.templateId][update.elementId] = {
-                x: update.frame.x - baseFrame.x,
-                y: update.frame.y - baseFrame.y,
-            };
-            layoutRotations.value[props.templateId][update.elementId] = update.rotation;
-        }
-        const rotateGroupMetadata = (candidate: LayoutGroup): LayoutGroup => ({
-            ...candidate,
-            rotation: normalizeRotation((candidate.rotation ?? 0) + deltaRotation),
-            children: candidate.children.map((child) =>
-                typeof child === 'string' ? child : rotateGroupMetadata(child)),
-        });
-        layoutGroups.value[props.templateId] = updateLayoutGroup(
-            layoutGroups.value[props.templateId],
-            group.id,
-            rotateGroupMetadata,
-        );
-        syncSelectedAutoLayoutAnchor();
-    }
-
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-    void syncTransformer();
-};
-
-const setSelectedElementGeometry = (
-    field: keyof LayoutGeometry,
-    value: number,
-) => {
-    if (selectionContainsLockedElement()) return;
-    if (selectedGroupId.value) {
-        setSelectedGroupGeometry(field, value);
-        return;
-    }
-    if (!selectedElement.value || !Number.isFinite(value)) {
-        return;
-    }
-
-    const elementId = selectedElement.value;
-    if (customElementById(elementId)?.kind === 'line' && field === 'height') {
-        emitSelectionGeometry();
-        return;
-    }
-    const currentFrame = elementFrame(elementId);
-    const requestedFrame = isFixedAspectRatioLayoutElement(elementId) && (field === 'width' || field === 'height')
-        ? resizeLayoutFrameProportionally(
-            currentFrame,
-            field === 'width'
-                ? { width: value, height: value / (currentFrame.width / currentFrame.height) }
-                : { width: value * (currentFrame.width / currentFrame.height), height: value },
-            documentSize.value,
-        )
-        : { ...currentFrame, [field]: value };
-    const geometry = constrainLayoutGeometry({
-        ...requestedFrame,
-        rotation: layoutRotations.value[props.templateId][elementId],
-        ...(field === 'rotation' ? { rotation: value } : {}),
-    }, documentSize.value);
-    if (!geometry) {
-        emitSelectionGeometry();
-        return;
-    }
-
-    commitSelectedGeometry(geometry);
 };
 
 const setSelectedElementTextStyle = (

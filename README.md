@@ -12,7 +12,7 @@ Eine vollständige Produktbeschreibung steht in [EXTENSION_STORE.md](EXTENSION_S
 - Vitest für Domain-, Store- und Komponententests
 - Playwright für kritische Browser-Interaktionen
 
-Der `PublisherDocumentStore` ist die kanonische Quelle für Seiten, Layoutzustände und die gemeinsame Dokumenthistorie. Der `PublisherEditorStore` hält Werkzeug-, Zoom- und seitengebundene Auswahlzustände. Canvas-Gruppen werden rekursiv als echte Konva-Gruppen gerendert; persistierte Daten enthalten ausschließlich serialisierbare Domain-Werte und keine Konva-Nodes.
+Der `PublisherDocumentStore` ist die kanonische Quelle für Seiten, Layoutzustände und die gemeinsame Dokumenthistorie. Der `PublisherEditorStore` hält Werkzeug-, Zoom- und seitengebundene Auswahlzustände. Auswahlgesten, Transformer-Konfiguration, Transformationen und Datenfeld-Drops liegen in getrennten Canvas-Composables; `EventTemplate.vue` verbindet diese mit dem rekursiven Konva-Szenengraphen. Persistierte Daten enthalten ausschließlich serialisierbare Domain-Werte und keine Konva-Nodes.
 
 Dokumente und terminneutrale Vorlagen werden über ein `PublisherRepository` gespeichert. Der produktive Adapter nutzt zwei Custom-Data-Kategorien des Publisher-CCM-Moduls: `publisher_documents` und `publisher_templates`. Dokumente besitzen eine eigene UUID und können optional auf einen Termin verweisen; Vorlagen enthalten nie einen Terminbezug. `localStorage` hält nur den zuletzt bearbeiteten Stand als Recovery-Kopie und ist nicht mehr die Vorlagen- oder Dokumentquelle.
 

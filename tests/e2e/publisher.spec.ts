@@ -9,7 +9,7 @@ test('starts with an empty transparent page without opening the appointment dial
     await expect(page.getByText('Publisher', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Termin auswählen' })).toHaveCount(0);
     await expect(page.locator('.publisher-page-entry')).toHaveCount(1);
-    await expect(page.locator('.publisher-page-card__preview-empty')).toHaveText('Leere Seite');
+    await expect(page.locator('.publisher-page-card__preview img')).toHaveCount(1);
     await expect(page.locator('.template-preview canvas')).toHaveCount(3);
 });
 
@@ -69,11 +69,14 @@ test('saves and reapplies a complete multi-page document template', async ({ pag
 
     await page.getByLabel('Vorlagenname').fill('Mehrseiten-Test');
     await page.getByRole('button', { name: 'Aktuelles Dokument speichern' }).click();
-    const savedTemplate = page.locator('.design-template-list article').filter({ hasText: 'Mehrseiten-Test' });
+    let savedTemplate = page.locator('.design-template-list article').filter({ hasText: 'Mehrseiten-Test' });
     await expect(savedTemplate).toContainText('2 Seiten · 1920 × 1080, 600 × 600');
 
+    await page.getByRole('button', { name: 'Dialog schließen' }).click();
     await page.getByRole('button', { name: 'Seite 2 löschen' }).click();
     await expect(page.locator('.publisher-page-entry')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Vorlagen', exact: true }).click();
+    savedTemplate = page.locator('.design-template-list article').filter({ hasText: 'Mehrseiten-Test' });
     await savedTemplate.getByRole('button', { name: 'Anwenden' }).click();
 
     await expect(page.locator('.publisher-page-entry')).toHaveCount(2);

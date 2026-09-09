@@ -37,7 +37,7 @@ Diese Umsetzung beseitigt nicht alle nachfolgenden Findings. Insbesondere ein of
 | Canvas-Interaktion | mittel bis gut | Echte rekursive Gruppen, konstante Transformer-Griffe, Panning und Fit-Ansichten stabilisieren die Kernpfade; weitere komplexe Pointer- und DnD-Szenarien fehlen noch. |
 | UI-Konsistenz | mittel | Design-Komponenten und ein konsistenter Grundaufbau existieren, einzelne Glyphen, Dialoge, Tabs und Responsive-Verhalten weichen ab. |
 | Barrierefreiheit | ausbaufähig | Viele Beschriftungen sind vorhanden; Canvas, Drag-and-drop, Tabs und modale Fokusführung sind nicht vollständig zugänglich. |
-| Testabdeckung | mittel bis gut | 49 Vitest-Dateien mit 242 Tests sowie sieben grüne Playwright-Kernflüsse; visuelle und breitere Interaktionsregressionen fehlen noch. |
+| Testabdeckung | mittel bis gut | 52 Vitest-Dateien mit 249 Tests sowie sieben grüne Playwright-Kernflüsse; visuelle und breitere Interaktionsregressionen fehlen noch. |
 | Build und Performance | mittel | Build funktioniert; der Hauptchunk und mehrere synchrone Vollzustandsoperationen werden bei größeren Dokumenten problematisch. |
 | Sicherheit und Datenschutz | mittel | CCM-Schreibzugriffe liegen hinter einem Repository-Adapter; Rechte- und Konfliktverhalten müssen noch an einer echten ChurchTools-Instanz validiert werden. Abhängigkeitswarnungen bleiben offen. |
 | Dokumentation und Release-Reife | mittel | README, `AGENTS.md`, Audit und Store-Beschreibung sind aktualisiert; Versionierung, Changelog und Releaseprozess bleiben prototypisch. |
@@ -147,8 +147,8 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 ### Stabilisiert – Pinia war nicht die kanonische Editorquelle
 
-**Status:** der persistierbare Seiten-/Layoutzustand, Historien und die seitengebundene Auswahl sind in Pinia zentralisiert; weitere fachliche Canvas-Actions können schrittweise aus `EventTemplate.vue` herausgezogen werden.
-**Evidenz:** `App.vue` umfasst weiterhin mehr als 1.200 Zeilen und hält Dokumentworkflow, Persistenz, Daten, Vorlagen und Export. `EventTemplate.vue` umfasst mehr als 3.000 Zeilen, liest den serialisierbaren Layoutzustand inzwischen über Store-Proxies und bindet die Auswahl an den Editor-Store, bietet aber weiterhin eine große imperative `defineExpose()`-Oberfläche für fachliche Canvas-Aktionen.
+**Status:** der persistierbare Seiten-/Layoutzustand, Historien und die seitengebundene Auswahl sind in Pinia zentralisiert. Auswahlrechteck und Gruppendrilldown, Transformer-Konfiguration sowie Drag-, Resize- und Rotate-Gesten sind aus `EventTemplate.vue` in getestete Composables verschoben.
+**Evidenz:** `App.vue` umfasst weiterhin mehr als 1.200 Zeilen und hält Dokumentworkflow, Persistenz, Daten, Vorlagen und Export. `EventTemplate.vue` ist von 3.024 auf 2.282 Zeilen gesunken, liest den serialisierbaren Layoutzustand über Store-Proxies und bindet die Auswahl an den Editor-Store, bietet aber weiterhin eine große imperative `defineExpose()`-Oberfläche für weitere fachliche Canvas-Aktionen.
 
 **Auswirkung:** Die widersprüchlichen persistierbaren Zustandskopien sind beseitigt. Die große Orchestrierungs- und Methodenoberfläche macht komplexe Canvas-Änderungen aber weiterhin schwer isoliert testbar und erhöht die Kopplung zwischen App, Inspector und Renderer.
 
@@ -372,8 +372,8 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 ### P2 – Monolithische Dateien bremsen Änderungen
 
-**Status:** weiterhin relevant; ein erster Interaktionspfad ist extrahiert.
-**Evidenz:** `EventTemplate.vue` 2.878 Zeilen, `styles.css` 3.835, `App.vue` 1.140, `layoutEditing.ts` 1.143, `publisherDraft.ts` 651 und `LayoutInspector.vue` 489. In den UI-/Domain-Dateien existieren rund 245 direkte Hex-Farbwerte; Design-Tokens decken Abstände, Radien und Typografie nur teilweise ab.
+**Status:** weiterhin relevant; die Canvas-Auswahl- und Transformationspfade sind inzwischen fachlich getrennt.
+**Evidenz:** `EventTemplate.vue` 2.282 Zeilen, `styles.css` 4.128, `App.vue` 1.273, `layoutEditing.ts` 1.107, `publisherDraft.ts` 687 und `LayoutInspector.vue` 500. In den UI-/Domain-Dateien existieren weiterhin zahlreiche direkte Hex-Farbwerte; Design-Tokens decken Abstände, Radien und Typografie nur teilweise ab.
 
 **Auswirkung:** Fachgrenzen verschwimmen, Merge-Konflikte nehmen zu, Tests erfordern große Setups und kleine UI-Abweichungen entstehen leicht.
 
@@ -385,7 +385,7 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 - `publisherDraft.ts`: Schemas und Migrationen je Version
 - `styles.css`: Tokens, Shell, Canvas, Inspectoren, Dialoge und einzelne Komponenten
 
-**Umsetzungsstand:** Das Parsen, Validieren und Positionieren von auf den Canvas gezogenen Datenfeldern liegt nun im getesteten Composable `useCanvasDataFieldDrop`; `EventTemplate.vue` delegiert diese Geste nur noch. Weitere Schnitte sollten demselben Muster folgen.
+**Umsetzungsstand:** Datenfeld-Drops liegen in `useCanvasDataFieldDrop`, Auswahlrechteck, Gruppendrilldown und Auswahlsynchronisierung in `useCanvasSelection`, die Konva-Transformer-Konfiguration in `useCanvasTransformer` und Drag-, Resize-, Rotate- sowie Transform-Inspector-Mutationen in `useCanvasTransforms`. Alle vier Grenzen besitzen isolierte Tests. Als nächste Schnitte bieten sich Gruppen-/Auto-Layout-Kommandos und Element-Styling an; danach kann die imperative `defineExpose()`-Oberfläche verkleinert werden.
 
 ### P2 – README und Plan beschreiben einen früheren Prototyp
 
@@ -543,11 +543,11 @@ Die Analyse soll nicht nur Defizite festhalten. Mehrere Grundlagen sind solide u
 
 Am untersuchten Stand:
 
-- `npm test`: 49 Dateien, 242 Tests erfolgreich
+- `npm test`: 52 Dateien, 249 Tests erfolgreich
 - `npm run test:e2e`: 7 Browsertests erfolgreich
 - `npm run typecheck`: erfolgreich
 - `npm run build`: erfolgreich
-- Vite meldet einen Hauptchunk von ungefähr 538 KB minifiziert beziehungsweise 166 KB gzip; Konva, ChurchTools, Vue und JSZip liegen in eigenen Chunks
+- Vite meldet einen Hauptchunk von ungefähr 583 KB minifiziert beziehungsweise 179 KB gzip; Konva, ChurchTools, Vue und JSZip liegen in eigenen Chunks
 - `npm audit --omit=dev`: 6 Meldungen, davon 1 hoch und 5 mittel
 
 Die Metriken sind Momentaufnahmen. Nach Änderungen an Abhängigkeiten oder Build-Splitting müssen sie neu erhoben werden.
