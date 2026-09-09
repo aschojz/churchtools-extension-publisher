@@ -347,21 +347,21 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 ### P2 – Modale Komponenten und Tabs sind nicht vollständig zugänglich
 
-**Status:** Code-Audit.  
-**Evidenz:** Terminauswahl verwendet ein natives `<dialog>`, Seiten-, Export-, Daten- und Effektdialoge verwenden dagegen individuelle `div`-Backdrops mit `role="dialog"`. Fokusfalle, initialer Fokus und Rückgabe an den Auslöser sind nicht zentral implementiert. `DesignTabs` setzt `role="tab"` und `aria-selected`, aber keine `aria-controls`, Panel-Verknüpfung, roving `tabindex` oder Pfeiltasten (`src/components/design/DesignTabs.vue:11-22`).
+**Status:** teilweise behoben.
+**Evidenz:** `DesignTabs` verknüpft Tabs und Panels, verwendet roving `tabindex` und unterstützt Pfeiltasten sowie Home/End. Neue und bereits umgestellte Modale verwenden `DesignDialog` mit Fokusfalle, initialem Fokus, Escape und Fokus-Rückgabe. Die Terminauswahl und einzelne ältere Spezialdialoge verwenden noch eigene Implementierungen.
 
 **Auswirkung:** Tastatur- und Screenreader-Nutzung ist inkonsistent; Fokus kann hinter einen offenen Dialog geraten oder nach Schließen verloren gehen.
 
-**Empfehlung:** Gemeinsames Dialog-Primitiv und vollständiges Tabs-Primitiv bauen. Mit axe-core und echter Tastaturnavigation testen.
+**Empfehlung:** Verbliebene Spezialdialoge auf `DesignDialog` umstellen und anschließend mit axe-core sowie echter Tastaturnavigation testen.
 
-### P2 – Ebenen-Drag-and-drop ist nicht tastaturbedienbar
+### Teilweise behoben – Ebenen-Drag-and-drop war nicht tastaturbedienbar
 
-**Status:** UI-Lücke.  
-**Beobachtung:** Sortieren und Verschachteln erfolgen über HTML5-Drag-and-drop und ein sichtbares Handle. Es gibt keine äquivalenten Tastaturaktionen zum Verschieben vor/nach/in eine Gruppe.
+**Status:** die Kernaktionen sind tastaturbedienbar.
+**Beobachtung:** Pfeiltasten navigieren durch den sichtbaren Baum und öffnen oder schließen Gruppen. Auf dem Verschiebegriff ordnet Option/Alt + Pfeil oben/unten die Ebene um; Option/Alt + Pfeil rechts verschachtelt sie in die vorherige Gruppe. Das Lösen einer Gruppe ist über das tastaturbedienbare Ebenen-Popover erreichbar.
 
 **Auswirkung:** Die zentrale Hierarchiebearbeitung bleibt Nutzern ohne präzise Zeigerbedienung verschlossen.
 
-**Empfehlung:** Aktionen „nach oben“, „nach unten“, „in Gruppe“, „aus Gruppe“ im Ebenen-Popover anbieten und Live-Region-Feedback ergänzen.
+**Empfehlung:** Nach einer Tastaturverschiebung zusätzlich eine kurze Live-Region-Rückmeldung ausgeben und das direkte Herausziehen aus einer Untergruppe als eigenen Befehl ergänzen.
 
 ### P2 – Canvas-Inhalte besitzen keine semantische Alternative
 

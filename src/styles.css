@@ -1372,6 +1372,11 @@
     object-fit: cover;
 }
 
+.inspector-layer-list__icon svg {
+    width: 12px;
+    height: 12px;
+}
+
 .inspector-layer-list__icon.is-shape,
 .inspector-layer-list__icon.is-icon,
 .inspector-layer-list__icon.is-qr {

@@ -197,4 +197,39 @@ describe('LayoutLayerTree', () => {
             'inside',
         ]]);
     });
+
+    it('navigates the visible tree and collapses groups with arrow keys', async () => {
+        const wrapper = mount(LayoutLayerTree, {
+            attachTo: document.body,
+            props: { elementLabels, nodes: nestedNodes, selectedElementIds: [] },
+        });
+        const group = wrapper.get('.inspector-layer-list__select--group');
+        (group.element as HTMLElement).focus();
+
+        await group.trigger('keydown', { key: 'ArrowRight' });
+        expect(document.activeElement).toBe(wrapper.findAll('[data-layer-select]')[1]!.element);
+        await group.trigger('keydown', { key: 'ArrowLeft' });
+        expect(wrapper.text()).not.toContain('Titel');
+        wrapper.unmount();
+    });
+
+    it('reorders and nests layers from the drag handle with Alt plus arrow keys', async () => {
+        const nodes: LayoutLayerTreeNode[] = [
+            nestedNodes[0]!,
+            { kind: 'element', id: 'image', elementId: 'image' },
+            { kind: 'element', id: 'accent', elementId: 'accent' },
+        ];
+        const wrapper = mount(LayoutLayerTree, {
+            props: { elementLabels, nodes, selectedElementIds: [] },
+        });
+        const imageHandle = wrapper.get('[aria-label="Bild verschieben"]');
+
+        await imageHandle.trigger('keydown', { altKey: true, key: 'ArrowDown' });
+        await imageHandle.trigger('keydown', { altKey: true, key: 'ArrowRight' });
+
+        expect(wrapper.emitted('moveLayer')).toEqual([
+            [{ kind: 'element', id: 'image' }, { kind: 'element', id: 'accent' }, 'after'],
+            [{ kind: 'element', id: 'image' }, { kind: 'group', id: 'outer' }, 'inside'],
+        ]);
+    });
 });

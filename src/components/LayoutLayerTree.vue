@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { faAngleDown, faAngleRight, faEye, faEyeSlash, faGripVertical, faLock, faRepeat, faSliders, faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons';
+import { nextTick, ref, watch } from 'vue';
+import { faAngleDown, faAngleRight, faEye, faEyeSlash, faFont, faGripVertical, faIcons, faImage, faLayerGroup, faLock, faQrcode, faRepeat, faShapes, faSliders, faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 
 import type {
@@ -66,11 +66,11 @@ const groupIsLocked = (elementIds: LayoutElementId[]) =>
     elementIds.length > 0 && elementIds.every(elementIsLocked);
 const groupContainsLocked = (elementIds: LayoutElementId[]) => elementIds.some(elementIsLocked);
 const elementPresentation = (elementId: LayoutElementId) => {
-    if (elementId === 'image' || elementId.startsWith('image-')) return { icon: '▧', kind: 'Bild' };
-    if (elementId.startsWith('icon-')) return { icon: '★', kind: 'Icon' };
-    if (elementId.startsWith('qr-')) return { icon: '▦', kind: 'QR-Code' };
-    if (['background', 'accent'].includes(elementId) || elementId.startsWith('shape-')) return { icon: '◆', kind: 'Form' };
-    return { icon: 'T', kind: 'Text' };
+    if (elementId === 'image' || elementId.startsWith('image-')) return { icon: faImage, kind: 'Bild' };
+    if (elementId.startsWith('icon-')) return { icon: faIcons, kind: 'Icon' };
+    if (elementId.startsWith('qr-')) return { icon: faQrcode, kind: 'QR-Code' };
+    if (['background', 'accent'].includes(elementId) || elementId.startsWith('shape-')) return { icon: faShapes, kind: 'Form' };
+    return { icon: faFont, kind: 'Text' };
 };
 const previewStyle = (elementId: LayoutElementId) => {
     const color = props.elementPreviews[elementId]?.color;
@@ -109,31 +109,109 @@ const dropClass = (target: LayoutLayerDragNode) => {
     const state = activeDrop.value;
     return state?.target === `${target.kind}-${target.id}` ? `is-drop-${state.placement}` : '';
 };
+const dragNode = (node: LayoutLayerTreeNode): LayoutLayerDragNode => ({
+    kind: node.kind,
+    id: node.kind === 'element' ? node.elementId : node.id,
+});
+const moveLayerWithKeyboard = (node: LayoutLayerTreeNode, index: number, event: KeyboardEvent) => {
+    if (!event.altKey || !['ArrowUp', 'ArrowDown', 'ArrowRight'].includes(event.key)) return;
+    const source = dragNode(node);
+    if (event.key === 'ArrowUp' && index > 0) {
+        event.preventDefault();
+        emit('moveLayer', source, dragNode(props.nodes[index - 1]!), 'before');
+    } else if (event.key === 'ArrowDown' && index < props.nodes.length - 1) {
+        event.preventDefault();
+        emit('moveLayer', source, dragNode(props.nodes[index + 1]!), 'after');
+    } else if (event.key === 'ArrowRight') {
+        const previousGroup = props.nodes.slice(0, index).reverse().find(
+            (candidate): candidate is Extract<LayoutLayerTreeNode, { kind: 'group' }> => candidate.kind === 'group',
+        );
+        if (previousGroup) {
+            event.preventDefault();
+            emit('moveLayer', source, { kind: 'group', id: previousGroup.id }, 'inside');
+        }
+    }
+};
+const parentGroupSelect = (row: HTMLElement, nodeKind: LayoutLayerTreeNode['kind']) => {
+    const ownGroup = nodeKind === 'group'
+        ? row.parentElement?.closest<HTMLElement>('.inspector-layer-group')
+        : row.closest<HTMLElement>('.inspector-layer-group');
+    if (!ownGroup) return null;
+    const parentRow = [...ownGroup.children].find((child) =>
+        child instanceof HTMLElement && child.classList.contains('inspector-layer-list__row'));
+    return parentRow?.querySelector<HTMLButtonElement>('[data-layer-select]') ?? null;
+};
+const handleTreeNavigation = async (node: LayoutLayerTreeNode, event: KeyboardEvent) => {
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || event.altKey) return;
+    const current = event.currentTarget as HTMLButtonElement;
+    const tree = current.closest<HTMLElement>('[role="tree"]');
+    if (!tree) return;
+    const buttons = [...tree.querySelectorAll<HTMLButtonElement>('[data-layer-select]')];
+    const index = buttons.indexOf(current);
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'Home' || event.key === 'End') {
+        event.preventDefault();
+        const nextIndex = event.key === 'Home' ? 0
+            : event.key === 'End' ? buttons.length - 1
+                : Math.min(buttons.length - 1, Math.max(0, index + (event.key === 'ArrowDown' ? 1 : -1)));
+        buttons[nextIndex]?.focus();
+        return;
+    }
+    if (node.kind === 'group') {
+        if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            if (collapsedGroups.value.has(node.id)) {
+                toggleGroup(node.id);
+                await nextTick();
+            }
+            const updatedButtons = [...tree.querySelectorAll<HTMLButtonElement>('[data-layer-select]')];
+            updatedButtons[updatedButtons.indexOf(current) + 1]?.focus();
+            return;
+        }
+        if (event.key === 'ArrowLeft' && !collapsedGroups.value.has(node.id)) {
+            event.preventDefault();
+            toggleGroup(node.id);
+            return;
+        }
+    }
+    if (event.key === 'ArrowLeft') {
+        const parent = parentGroupSelect(current.closest('.inspector-layer-list__row')!, node.kind);
+        if (parent) {
+            event.preventDefault();
+            parent.focus();
+        }
+    }
+};
 </script>
 
 <template>
-    <div class="inspector-layer-tree" :class="{ 'is-nested': depth > 0 }">
-        <template v-for="node in nodes" :key="`${node.kind}-${node.id}`">
+    <div class="inspector-layer-tree" :class="{ 'is-nested': depth > 0 }" :role="depth === 0 ? 'tree' : 'group'" :aria-label="depth === 0 ? 'Ebenen' : undefined">
+        <span v-if="depth === 0" id="publisher-layer-keyboard-help" class="sr-only">Mit den Pfeiltasten navigieren und Gruppen auf- oder zuklappen. Mit Wahltaste beziehungsweise Alt und Pfeil nach oben oder unten verschieben, mit Wahltaste beziehungsweise Alt und Pfeil nach rechts in die vorherige Gruppe verschachteln.</span>
+        <template v-for="(node, nodeIndex) in nodes" :key="`${node.kind}-${node.id}`">
             <div
                 v-if="node.kind === 'element'"
                 class="inspector-layer-list__row"
                 :class="[{ 'is-selected': selectedElementIds.includes(node.elementId), 'is-hidden': elementIsHidden(node.elementId) }, dropClass({ kind: 'element', id: node.elementId })]"
                 :style="{ '--layer-depth': depth }"
+                role="treeitem"
+                :aria-level="depth + 1"
+                :aria-selected="selectedElementIds.includes(node.elementId)"
                 @dragover.prevent.stop="updateDrop({ kind: 'element', id: node.elementId }, $event)"
                 @dragleave.self="activeDrop = null"
                 @drop.prevent.stop="finishDrop({ kind: 'element', id: node.elementId }, $event)"
             >
-                <button type="button" class="inspector-layer-list__drag" :disabled="elementIsLocked(node.elementId)" :draggable="!elementIsLocked(node.elementId)" :aria-label="`${elementLabels[node.elementId]} verschieben`" @dragstart="startLayerDrag({ kind: 'element', id: node.elementId }, $event)" @dragend="activeDrop = null"><FontAwesomeIcon :icon="faGripVertical" aria-hidden="true" /></button>
+                <button type="button" class="inspector-layer-list__drag" :disabled="elementIsLocked(node.elementId)" :draggable="!elementIsLocked(node.elementId)" :aria-label="`${elementLabels[node.elementId]} verschieben`" aria-describedby="publisher-layer-keyboard-help" @dragstart="startLayerDrag({ kind: 'element', id: node.elementId }, $event)" @dragend="activeDrop = null" @keydown="moveLayerWithKeyboard(node, nodeIndex, $event)"><FontAwesomeIcon :icon="faGripVertical" aria-hidden="true" /></button>
                 <button
                     type="button"
                     class="inspector-layer-list__select"
+                    data-layer-select
                     :aria-pressed="selectedElementIds.includes(node.elementId)"
                     @click="emit('selectElement', node.elementId, $event)"
                     @dblclick="emit('drillIntoElement', node.elementId)"
+                    @keydown="handleTreeNavigation(node, $event)"
                 >
                     <span class="inspector-layer-list__icon" :class="`is-${elementPreviews[node.elementId]?.kind ?? elementPresentation(node.elementId).kind.toLowerCase()}`" :style="previewStyle(node.elementId)">
                         <img v-if="elementPreviews[node.elementId]?.imageSource" :src="elementPreviews[node.elementId]?.imageSource" alt="" />
-                        <span v-else>{{ elementPresentation(node.elementId).icon }}</span>
+                        <FontAwesomeIcon v-else :icon="elementPresentation(node.elementId).icon" aria-hidden="true" />
                     </span>
                     <span :title="elementLabels[node.elementId]">{{ elementLabels[node.elementId] }}</span>
                 </button>
@@ -145,11 +223,11 @@ const dropClass = (target: LayoutLayerDragNode) => {
                 <DesignIconButton class="inspector-layer-list__visibility" :label="elementIsHidden(node.elementId) ? `${elementLabels[node.elementId]} einblenden` : `${elementLabels[node.elementId]} ausblenden`" @click="emit('toggleVisibility', [node.elementId])"><FontAwesomeIcon :icon="elementIsHidden(node.elementId) ? faEyeSlash : faEye" aria-hidden="true" /></DesignIconButton>
             </div>
 
-            <div v-else class="inspector-layer-group" :style="{ '--layer-depth': depth }">
+            <div v-else class="inspector-layer-group" :style="{ '--layer-depth': depth }" role="treeitem" :aria-level="depth + 1" :aria-expanded="!collapsedGroups.has(node.id)" :aria-selected="groupIsSelected(node.elementIds)">
                 <div class="inspector-layer-list__row inspector-layer-list__row--group" :class="[{ 'is-selected': groupIsSelected(node.elementIds), 'is-hidden': groupIsHidden(node.elementIds) }, dropClass({ kind: 'group', id: node.id })]" @dragover.prevent.stop="updateDrop({ kind: 'group', id: node.id }, $event)" @dragleave.self="activeDrop = null" @drop.prevent.stop="finishDrop({ kind: 'group', id: node.id }, $event)">
-                    <button type="button" class="inspector-layer-list__drag" :disabled="groupContainsLocked(node.elementIds)" :draggable="!groupContainsLocked(node.elementIds)" aria-label="Gruppe verschieben" @dragstart="startLayerDrag({ kind: 'group', id: node.id }, $event)" @dragend="activeDrop = null"><FontAwesomeIcon :icon="faGripVertical" aria-hidden="true" /></button>
+                    <button type="button" class="inspector-layer-list__drag" :disabled="groupContainsLocked(node.elementIds)" :draggable="!groupContainsLocked(node.elementIds)" aria-label="Gruppe verschieben" aria-describedby="publisher-layer-keyboard-help" @dragstart="startLayerDrag({ kind: 'group', id: node.id }, $event)" @dragend="activeDrop = null" @keydown="moveLayerWithKeyboard(node, nodeIndex, $event)"><FontAwesomeIcon :icon="faGripVertical" aria-hidden="true" /></button>
                     <DesignIconButton class="inspector-layer-group__toggle" :label="collapsedGroups.has(node.id) ? 'Gruppe aufklappen' : 'Gruppe zuklappen'" :aria-expanded="!collapsedGroups.has(node.id)" @click="toggleGroup(node.id)"><FontAwesomeIcon :icon="collapsedGroups.has(node.id) ? faAngleRight : faAngleDown" aria-hidden="true" /></DesignIconButton>
-                    <button type="button" class="inspector-layer-list__select inspector-layer-list__select--group" :aria-pressed="groupIsSelected(node.elementIds)" @click="emit('selectGroup', node.id, $event)"><span class="inspector-layer-list__icon">▰</span><span>{{ depth === 0 ? 'Gruppe' : 'Untergruppe' }}</span></button>
+                    <button type="button" class="inspector-layer-list__select inspector-layer-list__select--group" data-layer-select :aria-pressed="groupIsSelected(node.elementIds)" @click="emit('selectGroup', node.id, $event)" @keydown="handleTreeNavigation(node, $event)"><span class="inspector-layer-list__icon"><FontAwesomeIcon :icon="faLayerGroup" aria-hidden="true" /></span><span>{{ depth === 0 ? 'Gruppe' : 'Untergruppe' }}</span></button>
                     <span class="inspector-layer-list__indicators">
                         <span v-if="repeatGroupIds.includes(node.id)" class="inspector-layer-list__repeat" title="Datenabhängige Wiederholung"><FontAwesomeIcon :icon="faRepeat" aria-hidden="true" /><span class="sr-only">Datenabhängige Wiederholung</span></span>
                         <DesignIconButton v-if="effectElementIds.includes(node.id)" class="inspector-layer-list__effect" label="Gruppeneffekte bearbeiten" @click="emit('editEffects', node.id)"><FontAwesomeIcon :icon="faWandMagicSparkles" aria-hidden="true" /></DesignIconButton>
