@@ -271,14 +271,14 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Künftige Datenquellen ebenfalls als austauschbaren Kontext behandeln und Layoutverfügbarkeit nicht an deren Ladezustand koppeln.
 
-### P2 – Bildabruf ist fest auf 1920 × 1080 zugeschnitten
+### Behoben – Bildabruf war fest auf 1920 × 1080 zugeschnitten
 
-**Status:** im Code bestätigt.  
-**Evidenz:** `createPublisherImageUrl()` setzt immer `w=1920`, `h=1080`, `q=100` (`src/domain/mapAppointmentToTemplateProps.ts:24-40`), obwohl Seiten frei bis 8192 Pixel und in beliebigen Seitenverhältnissen angelegt werden können.
+**Status:** behoben; Datenmapping und Renderanforderung sind getrennt.
+**Evidenz:** Termindaten behalten die stabile ursprüngliche Asset-URL. `EventTemplate` erzeugt daraus erst beim Laden eine Ziel-URL anhand des tatsächlichen Elementrahmens, des Bildfokus und der benötigten Anzeigedichte. Bestehende Queryparameter und Hashes bleiben erhalten, Bildparameter werden ersetzt und auf 8192 Pixel begrenzt.
 
-**Auswirkung:** Große Exporte können sichtbar unscharf werden. Quadratische oder extrem breite Seiten erhalten unter Umständen eine ungünstig vorbeschnittene Ressource, obwohl das Element später einen eigenen Cover-Zuschnitt berechnet.
+**Auswirkung:** Quadratische, breite und große Bildrahmen fordern eine passende Ressource an. Ein Fokus-Zoom lädt genügend Quelldetails nach; Data- und Blob-URLs bleiben unverändert. Größenänderungen sowie Zoomwechsel aktualisieren die Anforderung, ohne die gespeicherte Bindung umzuschreiben.
 
-**Empfehlung:** Asset-URL getrennt vom Datenmapping erzeugen und anhand des größten tatsächlichen Renderziels anfordern. Wenn die ChurchTools-Bild-API Seitenverhältnisse vorbeschneidet, nur eine ausreichend große Quelle oder passende Zielmaße pro Element laden und cachen.
+**Empfehlung:** Vor Freigabe mit der produktiven ChurchTools-Bild-API prüfen, ob gleichzeitige `w`-/`h`-Parameter nur skalieren oder serverseitig beschneiden. Der Canvas-Cover-Zuschnitt bleibt in jedem Fall die visuelle Quelle der Wahrheit.
 
 ### P2 – Dokumenthistorie und Autosave skalieren schlecht
 

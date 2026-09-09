@@ -62,7 +62,7 @@ npx playwright install chromium
 - Seiten dürfen unterschiedliche Größen besitzen und liegen untereinander auf einer gemeinsamen zoombaren Arbeitsfläche.
 - Die Arbeitsfläche lässt sich über das Handwerkzeug oder temporär mit der Leertaste verschieben; aktive Seite, Auswahl und 100-Prozent-Ansicht können direkt zentriert werden.
 - Seiten besitzen echte Canvas-Vorschauen und können benannt, dupliziert sowie per Drag-and-drop sortiert werden.
-- Bilder werden im Cover-Modus zugeschnitten; Icons und QR-Codes bleiben proportional.
+- Bilder werden im Cover-Modus zugeschnitten und passend zur tatsächlichen Rahmen-, Fokus- und Anzeigegröße angefordert; Icons und QR-Codes bleiben proportional.
 - Lineare und radiale Verläufe lassen sich über Start-, End-, Radius- und Farbstop-Griffe direkt auf dem Canvas bearbeiten.
 - Ebenen und Gruppen unterstützen geordnete Filter für Helligkeit, Kontrast, HSL, Graustufen, Sepia, Invertieren, Pixelierung und Rauschen.
 - Vorlagen speichern das vollständige mehrseitige Dokument und behalten dynamische Daten- und Farbbindungen.

@@ -64,18 +64,45 @@ describe('mapAppointmentToTemplateProps', () => {
         expect(result.location).toBe('Gemeindehaus, Kirchweg 1, 12345 Musterstadt, DE');
     });
 
-    it('requests the appointment image in the export dimensions and full quality', () => {
+    it('keeps the original appointment image reference independent from the canvas target', () => {
         const result = mapAppointmentToTemplateProps(
             makeAppointment({ image: { imageUrl: 'https://example.test/event.jpg' } }),
             { locale: 'en-US', timeZone: 'UTC' },
         );
 
-        expect(result.imageUrl).toBe('https://example.test/event.jpg?w=1920&h=1080&q=100');
+        expect(result.imageUrl).toBe('https://example.test/event.jpg');
     });
 
-    it('replaces existing image transformation parameters without dropping other parameters', () => {
-        expect(createPublisherImageUrl('/images/event.jpg?token=abc&w=200&q=60#preview')).toBe(
-            '/images/event.jpg?token=abc&w=1920&q=100&h=1080#preview',
+    it('requests the actual render size and replaces transformations without dropping other parameters', () => {
+        expect(createPublisherImageUrl('/images/event.jpg?token=abc&w=200&q=60#preview', {
+            width: 600,
+            height: 400,
+            quality: 92,
+        })).toBe(
+            '/images/event.jpg?token=abc&w=600&q=92&h=400#preview',
+        );
+    });
+
+    it('accounts for focus zoom and display density while respecting the image service limit', () => {
+        expect(createPublisherImageUrl('/images/event.jpg', {
+            width: 1200,
+            height: 800,
+            focusZoom: 150,
+            pixelRatio: 2,
+        })).toBe('/images/event.jpg?w=3600&h=2400&q=100');
+        expect(createPublisherImageUrl('/images/event.jpg', {
+            width: 8000,
+            height: 6000,
+            focusZoom: 300,
+            pixelRatio: 2,
+        })).toBe('/images/event.jpg?w=8192&h=8192&q=100');
+    });
+
+    it('does not append transformations to local browser image sources', () => {
+        const source = 'data:image/png;base64,abc';
+        expect(createPublisherImageUrl(source, { width: 100, height: 100 })).toBe(source);
+        expect(createPublisherImageUrl('blob:https://example.test/id', { width: 100, height: 100 })).toBe(
+            'blob:https://example.test/id',
         );
     });
 });

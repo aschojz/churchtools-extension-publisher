@@ -21,21 +21,33 @@ export interface AppointmentMappingOptions {
     timeZone?: string;
 }
 
-const PUBLISHER_IMAGE_WIDTH = 1920;
-const PUBLISHER_IMAGE_HEIGHT = 1080;
-const PUBLISHER_IMAGE_QUALITY = 100;
+export interface PublisherImageRequest {
+    width: number;
+    height: number;
+    focusZoom?: number;
+    pixelRatio?: number;
+    quality?: number;
+}
 
-export const createPublisherImageUrl = (imageUrl: string) => {
+const normalizeImageDimension = (value: number) => Math.min(8192, Math.max(1, Math.ceil(value)));
+
+export const createPublisherImageUrl = (imageUrl: string, request: PublisherImageRequest) => {
+    if (/^(?:blob:|data:)/i.test(imageUrl)) return imageUrl;
     const hashIndex = imageUrl.indexOf('#');
     const hash = hashIndex >= 0 ? imageUrl.slice(hashIndex) : '';
     const urlWithoutHash = hashIndex >= 0 ? imageUrl.slice(0, hashIndex) : imageUrl;
     const queryIndex = urlWithoutHash.indexOf('?');
     const baseUrl = queryIndex >= 0 ? urlWithoutHash.slice(0, queryIndex) : urlWithoutHash;
     const searchParams = new URLSearchParams(queryIndex >= 0 ? urlWithoutHash.slice(queryIndex + 1) : '');
+    const density = Math.max(1, Number.isFinite(request.pixelRatio) ? request.pixelRatio ?? 1 : 1);
+    const focusScale = Math.max(1, Number.isFinite(request.focusZoom) ? (request.focusZoom ?? 100) / 100 : 1);
+    const width = normalizeImageDimension(request.width * density * focusScale);
+    const height = normalizeImageDimension(request.height * density * focusScale);
+    const quality = Math.min(100, Math.max(1, Math.round(request.quality ?? 100)));
 
-    searchParams.set('w', String(PUBLISHER_IMAGE_WIDTH));
-    searchParams.set('h', String(PUBLISHER_IMAGE_HEIGHT));
-    searchParams.set('q', String(PUBLISHER_IMAGE_QUALITY));
+    searchParams.set('w', String(width));
+    searchParams.set('h', String(height));
+    searchParams.set('q', String(quality));
 
     return `${baseUrl}?${searchParams.toString()}${hash}`;
 };
@@ -80,6 +92,6 @@ export const mapAppointmentToTemplateProps = (
             ? ''
             : formatWithOptionalTimeZone(startDate, locale, { timeStyle: 'short' }, timeZone),
         location: formatLocation(appointment.base.address),
-        imageUrl: appointment.base.image ? createPublisherImageUrl(appointment.base.image.imageUrl) : null,
+        imageUrl: appointment.base.image?.imageUrl ?? null,
     };
 };

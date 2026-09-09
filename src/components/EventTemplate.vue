@@ -23,6 +23,7 @@ import {
     type PublisherDataValues,
 } from '../domain/appointmentDataFields';
 import { calculateCoverCrop, type ImageFocus } from '../domain/imageFocus';
+import { createPublisherImageUrl } from '../domain/mapAppointmentToTemplateProps';
 import { layoutGradientFillConfig } from '../domain/layoutGradient';
 import {
     layoutFilterStackHasEnabled,
@@ -142,6 +143,7 @@ const customElements = computed(() => new Proxy({} as Record<TemplateId, LayoutC
 }));
 const customImageNodes = shallowRef<Record<string, HTMLImageElement>>({});
 const customQrNodes = shallowRef<Record<string, HTMLImageElement>>({});
+const customImageRenderRevisions = new Map<LayoutElementId, number>();
 
 const scaledTemplateDefinitions = computed(() => ({
     split: scaleTemplateDefinition(BUILT_IN_TEMPLATE_DEFINITIONS.split, props.documentWidth, props.documentHeight),
@@ -652,20 +654,53 @@ const customImageConfig = (element: LayoutCustomElement) => {
 const resolvedCustomImageSource = (element: LayoutCustomElement) =>
     element.dataBinding ? publisherDataValue(props.dataValues, element.dataBinding) : element.imageSource;
 
+const imageRequestPixelRatio = () => {
+    const displayDensity = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+    return Math.max(1, Math.min(2, previewScale.value * displayDensity));
+};
+
+const requestedImageSource = (
+    source: string,
+    frame: Pick<LayoutFrame, 'width' | 'height'>,
+    focusZoom = 100,
+) => createPublisherImageUrl(source, {
+    width: frame.width,
+    height: frame.height,
+    focusZoom,
+    pixelRatio: imageRequestPixelRatio(),
+});
+
 const loadCustomImage = (element: LayoutCustomElement) => {
     const source = resolvedCustomImageSource(element);
-    if (element.kind !== 'image' || !source) return;
+    if (element.kind !== 'image') return;
+    const revision = (customImageRenderRevisions.get(element.id) ?? 0) + 1;
+    customImageRenderRevisions.set(element.id, revision);
+    if (!source) {
+        const { [element.id]: _, ...remaining } = customImageNodes.value;
+        customImageNodes.value = remaining;
+        return;
+    }
+    const renderSource = requestedImageSource(source, elementFrame(element.id));
     const nextImage = new Image();
-    if (/^https?:\/\//i.test(source)) nextImage.crossOrigin = 'anonymous';
+    if (/^https?:\/\//i.test(renderSource)) nextImage.crossOrigin = 'anonymous';
     nextImage.onload = () => {
+        if (customImageRenderRevisions.get(element.id) !== revision) return;
         customImageNodes.value = { ...customImageNodes.value, [element.id]: nextImage };
         emit('renderContentChange');
     };
-    nextImage.src = source;
+    nextImage.onerror = () => {
+        if (customImageRenderRevisions.get(element.id) !== revision) return;
+        const { [element.id]: _, ...remaining } = customImageNodes.value;
+        customImageNodes.value = remaining;
+    };
+    nextImage.src = renderSource;
 };
 
 const loadCustomImages = (elements: LayoutCustomElement[]) => {
-    customImageNodes.value = {};
+    const imageIds = new Set<string>(elements.filter(({ kind }) => kind === 'image').map(({ id }) => id));
+    customImageNodes.value = Object.fromEntries(
+        Object.entries(customImageNodes.value).filter(([elementId]) => imageIds.has(elementId)),
+    );
     elements.forEach(loadCustomImage);
 };
 const reloadAllCustomImages = () => loadCustomImages([
@@ -764,6 +799,19 @@ const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
         height: size.height,
     };
 };
+
+const appointmentImageRenderSource = computed(() => props.template.imageUrl
+    ? requestedImageSource(props.template.imageUrl, elementFrame('image'), props.imageFocus.zoom)
+    : null);
+
+const customImageRenderSources = computed(() => Object.fromEntries(
+    customElements.value[props.templateId]
+        .filter(({ kind }) => kind === 'image')
+        .map((element) => {
+            const source = resolvedCustomImageSource(element);
+            return [element.id, source ? requestedImageSource(source, elementFrame(element.id)) : ''];
+        }),
+));
 
 const gradientPaintFrame = (elementId: LayoutElementId, frame: LayoutFrame): LayoutFrame => {
     const element = customElementById(elementId);
@@ -1422,7 +1470,7 @@ const restoreDraftLayouts = () => {
 };
 
 watch(
-    () => props.template.imageUrl,
+    appointmentImageRenderSource,
     (imageUrl, _, onCleanup) => {
         image.value = null;
 
@@ -1452,9 +1500,10 @@ watch(
     { immediate: true },
 );
 
+watch(customImageRenderSources, reloadAllCustomImages, { deep: true });
+
 watch(imageStatus, (status) => emit('imageStatus', status), { immediate: true });
 watch(() => props.dataValues, () => {
-    reloadAllCustomImages();
     reloadCurrentCustomQrs();
     syncAllGraphicTextSizes();
     if (flattenLayoutGroups(layoutGroups.value[props.templateId]).some(({ autoLayout }) => autoLayout)) {
