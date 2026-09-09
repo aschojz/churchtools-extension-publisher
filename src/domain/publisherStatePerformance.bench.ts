@@ -14,6 +14,8 @@ import {
     clonePublisherDocumentSnapshot,
     commitPublisherDocumentHistory,
     createPublisherDocumentHistory,
+    recordPublisherDocumentHistorySnapshot,
+    recordPublisherPageLayoutHistory,
     type PublisherDocumentSnapshot,
 } from './publisherDocumentHistory';
 import { PUBLISHER_DRAFT_VERSION, type PublisherDraft } from './publisherDraft';
@@ -133,16 +135,34 @@ const snapshot = createLargeSnapshot();
 const changedSnapshot = clonePublisherDocumentSnapshot(snapshot);
 changedSnapshot.pages[0]!.layouts.split!.offsets[changedSnapshot.pages[0]!.layouts.split!.order[0]!] = { x: 1, y: 0 };
 const record = createLargeRecord(snapshot);
+const serializedRecordSize = new TextEncoder().encode(JSON.stringify(record)).byteLength;
 let serializedRecovery = '';
 const storage = { setItem: (_key: string, value: string) => { serializedRecovery = value; } };
 
-describe(`publisher state (${PAGE_COUNT} pages × ${ELEMENTS_PER_PAGE} elements)`, () => {
+describe(`publisher state (${PAGE_COUNT} pages × ${ELEMENTS_PER_PAGE} elements, ${(serializedRecordSize / 1024 / 1024).toFixed(2)} MiB)`, () => {
     bench('clone complete document snapshot', () => {
         clonePublisherDocumentSnapshot(snapshot);
     }, { time: 500, iterations: 5 });
 
     bench('commit one changed complete-document history snapshot', () => {
         commitPublisherDocumentHistory(createPublisherDocumentHistory(), snapshot, changedSnapshot);
+    }, { time: 500, iterations: 5 });
+
+    bench('capture and record one known document change', () => {
+        recordPublisherDocumentHistorySnapshot(
+            createPublisherDocumentHistory(),
+            clonePublisherDocumentSnapshot(snapshot),
+        );
+    }, { time: 500, iterations: 5 });
+
+    bench('record one changed page layout', () => {
+        recordPublisherPageLayoutHistory(
+            createPublisherDocumentHistory(),
+            snapshot.pages[0]!.id,
+            'split',
+            snapshot.pages[0]!.layouts.split!,
+            snapshot.activePageId,
+        );
     }, { time: 500, iterations: 5 });
 
     bench('serialize complete recovery document', () => {

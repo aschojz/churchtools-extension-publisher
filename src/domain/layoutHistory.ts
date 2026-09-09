@@ -85,7 +85,7 @@ export const cloneLayoutState = (state: SerializableLayoutState): SerializableLa
         : {}),
 });
 
-const layoutStatesEqual = (left: SerializableLayoutState, right: SerializableLayoutState) =>
+export const layoutStatesEqual = (left: SerializableLayoutState, right: SerializableLayoutState) =>
     JSON.stringify(left) === JSON.stringify(right);
 
 export const commitLayoutHistory = (

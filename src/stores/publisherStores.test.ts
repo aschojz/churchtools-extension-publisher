@@ -76,8 +76,10 @@ describe('publisher stores', () => {
 
         document.commitPageLayout(pageId, 'split', previous, current);
         expect(document.activePage.layouts.split?.offsets.title).toEqual({ x: 80, y: 40 });
+        expect(document.documentHistory.past[0]?.kind).toBe('page-layout');
         const secondPage = document.addPage(600, 600, 'split');
         expect(document.activePageId).toBe(secondPage.id);
+        expect(document.documentHistory.past[1]?.kind).toBe('document');
 
         expect(document.undoDocument()).toBe(true);
         expect(document.pages).toHaveLength(1);
@@ -110,6 +112,15 @@ describe('publisher stores', () => {
         expect(document.activePage.layouts.split?.offsets.title).toEqual({ x: 0, y: 0 });
         expect(document.activePage.layouts.split?.rotations.title).toBe(0);
         expect(document.mutatePageLayout(pageId, 'split', () => undefined)).toBe(false);
+    });
+
+    it('does not add a document history entry for an unchanged canvas commit', () => {
+        const document = usePublisherDocumentStore();
+        const pageId = document.activePageId;
+        const layout = cloneLayoutState(document.activePage.layouts.split!);
+
+        expect(document.commitPageLayout(pageId, 'split', layout, cloneLayoutState(layout))).toBe(false);
+        expect(document.documentHistory.past).toHaveLength(0);
     });
 
     it('undoes page rename, reorder, duplicate and removal as complete snapshots', () => {

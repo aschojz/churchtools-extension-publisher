@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
-import { computed, ref } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 
-import { cloneLayoutState, type SerializableLayoutState } from '../domain/layoutHistory';
+import { cloneLayoutState, layoutStatesEqual, type SerializableLayoutState } from '../domain/layoutHistory';
 import {
     clonePublisherPage,
     createBlankPublisherPage,
@@ -11,10 +11,12 @@ import {
 } from '../domain/publisherPage';
 import {
     clonePublisherDocumentSnapshot,
-    commitPublisherDocumentHistory,
     createPublisherDocumentHistory,
+    recordPublisherDocumentHistorySnapshot,
+    recordPublisherPageLayoutHistory,
     redoPublisherDocumentHistory,
     undoPublisherDocumentHistory,
+    type PublisherDocumentHistoryEntry,
     type PublisherDocumentSnapshot,
 } from '../domain/publisherDocumentHistory';
 import type { TemplateId } from '../domain/templates';
@@ -25,7 +27,7 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
     const pages = ref<PublisherPage[]>([initialPage]);
     const activePageId = ref(initialPage.id);
     const revision = ref(0);
-    const documentHistory = ref(createPublisherDocumentHistory());
+    const documentHistory = shallowRef(createPublisherDocumentHistory());
     const canUndoDocument = computed(() => documentHistory.value.past.length > 0);
     const canRedoDocument = computed(() => documentHistory.value.future.length > 0);
     const activePage = computed(() => pages.value.find(({ id }) => id === activePageId.value) ?? pages.value[0]!);
@@ -63,10 +65,9 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
     };
 
     const commitDocumentMutation = (previousSnapshot: PublisherDocumentSnapshot) => {
-        documentHistory.value = commitPublisherDocumentHistory(
+        documentHistory.value = recordPublisherDocumentHistorySnapshot(
             documentHistory.value,
             previousSnapshot,
-            captureDocumentSnapshot(),
         );
     };
 
@@ -116,7 +117,7 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         const previous = cloneLayoutState(current);
         const next = cloneLayoutState(current);
         mutate(next);
-        if (JSON.stringify(previous) === JSON.stringify(next)) return false;
+        if (layoutStatesEqual(previous, next)) return false;
         return commitPageLayout(pageId, templateId, previous, next);
     };
 
@@ -128,18 +129,15 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
     ) => {
         const page = pageById(pageId);
         if (!page) return false;
+        if (layoutStatesEqual(previousState, currentState)) return false;
 
-        const currentSnapshot = captureDocumentSnapshot();
-        const previousSnapshot = clonePublisherDocumentSnapshot(currentSnapshot);
-        const previousPage = previousSnapshot.pages.find(({ id }) => id === pageId)!;
-        const currentPage = currentSnapshot.pages.find(({ id }) => id === pageId)!;
-        previousPage.layouts = { ...previousPage.layouts, [templateId]: cloneLayoutState(previousState) };
-        currentPage.layouts = { ...currentPage.layouts, [templateId]: cloneLayoutState(currentState) };
         page.layouts = { ...page.layouts, [templateId]: cloneLayoutState(currentState) };
-        documentHistory.value = commitPublisherDocumentHistory(
+        documentHistory.value = recordPublisherPageLayoutHistory(
             documentHistory.value,
-            previousSnapshot,
-            currentSnapshot,
+            pageId,
+            templateId,
+            previousState,
+            activePageId.value,
         );
         revision.value += 1;
         return true;
@@ -261,19 +259,32 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         documentHistory.value = createPublisherDocumentHistory();
     };
 
+    const applyDocumentHistoryEntry = (entry: PublisherDocumentHistoryEntry) => {
+        if (entry.kind === 'document') {
+            applyDocumentSnapshot(entry.snapshot);
+            return true;
+        }
+        const page = pageById(entry.pageId);
+        if (!page) return false;
+        page.layouts = { ...page.layouts, [entry.templateId]: cloneLayoutState(entry.state) };
+        if (pages.value.some(({ id }) => id === entry.activePageId)) activePageId.value = entry.activePageId;
+        revision.value += 1;
+        return true;
+    };
+
     const undoDocument = () => {
         const result = undoPublisherDocumentHistory(documentHistory.value, captureDocumentSnapshot());
         if (!result) return false;
+        if (!applyDocumentHistoryEntry(result.entry)) return false;
         documentHistory.value = result.history;
-        applyDocumentSnapshot(result.snapshot);
         return true;
     };
 
     const redoDocument = () => {
         const result = redoPublisherDocumentHistory(documentHistory.value, captureDocumentSnapshot());
         if (!result) return false;
+        if (!applyDocumentHistoryEntry(result.entry)) return false;
         documentHistory.value = result.history;
-        applyDocumentSnapshot(result.snapshot);
         return true;
     };
 
