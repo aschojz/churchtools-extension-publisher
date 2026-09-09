@@ -18,7 +18,7 @@ const mountContextBar = () => {
     editorStore.selectedLayoutElements = ['title', 'accent', 'dateTime'];
     editorStore.selectedLayoutGroupDepth = 1;
     return mount(PublisherContextBar, {
-        props: { hasImage: false, hasTemplate: true, hasTemplateOverrides: false },
+        props: { hasImage: false },
         global: { plugins: [pinia] },
     });
 };
@@ -36,7 +36,7 @@ const mountTextContextBar = () => {
         { id: 'date', label: 'Datum', type: 'text', value: '1. Dezember 2026', placeholder: '{{date}}', formatType: 'date', rawValue: '2026-12-01T10:00:00+01:00', locale: 'de-DE', timeZone: 'Europe/Berlin' },
     ];
     return mount(PublisherContextBar, {
-        props: { hasImage: false, hasTemplate: true, hasTemplateOverrides: false },
+        props: { hasImage: false },
         global: { plugins: [pinia] },
     });
 };
@@ -60,6 +60,7 @@ describe('PublisherContextBar alignment popover', () => {
         ]);
         await layerPopover.findAll('button')[0]!.trigger('click');
         expect(wrapper.emitted('changeLayer')).toEqual([[-1]]);
+        expect(wrapper.text()).not.toContain('Zurücksetzen');
     });
 
     it('offers one-time equal distribution on both axes', async () => {
@@ -100,11 +101,27 @@ describe('PublisherContextBar content controls', () => {
     it('offers date formatting variants through one dropdown', async () => {
         const wrapper = mountTextContextBar();
 
-        const formatter = wrapper.get('[aria-label="Datum oder Uhrzeit formatieren"]');
+        const formatter = wrapper.get('[aria-label="Datum, Uhrzeit oder Liste formatieren"]');
         expect(formatter.text()).toContain('Datum: 01.12.2026');
         await formatter.setValue('{{date|date:DD.MM.YYYY}}');
 
         expect(wrapper.emitted('updateTextContent')).toEqual([['{{date|date:DD.MM.YYYY}}']]);
+    });
+
+    it('offers safe list rendering for service assignments', async () => {
+        const wrapper = mountTextContextBar();
+        usePublisherAppointmentsStore().dataFields.push({
+            id: 'eventService-12', label: 'Predigt', type: 'text',
+            value: 'Ada Lovelace, Grace Hopper', values: ['Ada Lovelace', 'Grace Hopper'],
+            placeholder: '{{eventService-12}}', formatType: 'list', locale: 'de-DE',
+        });
+        await wrapper.vm.$nextTick();
+
+        const formatter = wrapper.get('[aria-label="Datum, Uhrzeit oder Liste formatieren"]');
+        expect(formatter.text()).toContain('Predigt: • Ada Lovelace');
+        await formatter.setValue('{{eventService-12|list:lines}}');
+
+        expect(wrapper.emitted('updateTextContent')).toEqual([['{{eventService-12|list:lines}}']]);
     });
 
     it('shows the resolved URL of a selected QR code for editing', async () => {
@@ -123,7 +140,7 @@ describe('PublisherContextBar content controls', () => {
             { id: 'link', label: 'Link', type: 'text', value: 'https://church.tools', placeholder: '{{link}}', formatType: 'url' },
         ];
         const wrapper = mount(PublisherContextBar, {
-            props: { hasImage: false, hasTemplate: true, hasTemplateOverrides: false },
+            props: { hasImage: false },
             global: { plugins: [pinia] },
         });
 

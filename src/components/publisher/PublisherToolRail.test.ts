@@ -7,7 +7,7 @@ import PublisherToolRail from './PublisherToolRail.vue';
 
 describe('PublisherToolRail', () => {
     it('adds text and shape elements from the toolbar', async () => {
-        const wrapper = mount(PublisherToolRail, { props: { disabled: false } });
+        const wrapper = mount(PublisherToolRail);
 
         await wrapper.get('[aria-label="Grafiktext hinzufügen"]').trigger('click');
         await wrapper.get('[aria-label="Rahmentext hinzufügen"]').trigger('click');
@@ -25,10 +25,9 @@ describe('PublisherToolRail', () => {
         expect(wrapper.emitted('addQr')).toEqual([[]]);
     });
 
-    it('disables every insertion action without an active document', () => {
-        const wrapper = mount(PublisherToolRail, { props: { disabled: true } });
+    it('keeps insertion available on a termin-independent blank document', () => {
+        const wrapper = mount(PublisherToolRail);
 
-        expect(wrapper.findAll('button').every((button) => button.attributes('disabled') !== undefined)).toBe(true);
-        expect(wrapper.get('[aria-label="Bild hinzufügen"]').attributes('disabled')).toBeDefined();
+        expect(wrapper.findAll('button').every((button) => button.attributes('disabled') === undefined)).toBe(true);
     });
 });

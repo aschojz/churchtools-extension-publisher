@@ -9,11 +9,11 @@ import { computed, nextTick, ref, shallowRef, watch } from 'vue';
 
 import EditableTextElement from './EditableTextElement.vue';
 import EditableVisualElement from './EditableVisualElement.vue';
+import CanvasGradientHandles from './CanvasGradientHandles.vue';
 import CanvasSceneTree from './CanvasSceneTree.vue';
+import { useCanvasDataFieldDrop } from '../composables/useCanvasDataFieldDrop';
 import type { EventTemplateProps } from '../domain/EventTemplateProps';
 import {
-    PUBLISHER_DATA_TRANSFER_TYPE,
-    parsePublisherDataTransfer,
     publisherDataValue,
     resolvePublisherPlaceholders,
     type PublisherDataValues,
@@ -21,6 +21,12 @@ import {
 import { calculateCoverCrop, type ImageFocus } from '../domain/imageFocus';
 import type { LayoutColorBinding } from '../domain/imagePalette';
 import { layoutGradientFillConfig, normalizeLayoutGradient, type LayoutGradient } from '../domain/layoutGradient';
+import {
+    cloneLayoutFilter,
+    layoutFilterStackHasEnabled,
+    normalizeLayoutFilterStack,
+    type LayoutFilterStack,
+} from '../domain/layoutFilters';
 import { publisherIcon, type PublisherIconName } from '../domain/publisherIcons';
 import { usePublisherImagePalettesStore } from '../stores/publisherImagePalettes';
 import { usePublisherColorsStore } from '../stores/publisherColors';
@@ -40,10 +46,7 @@ import {
     createCustomVisualStyle,
     createLayoutLayerTree,
     createLayoutCustomElement,
-    createLayoutGroups,
     createLayoutOrder,
-    createLayoutOffsets,
-    createLayoutRotations,
     createLayoutVisualStyles,
     expandLayoutSelection,
     flattenLayoutGroups,
@@ -51,7 +54,6 @@ import {
     findLayoutGroupPath,
     groupLayoutElements,
     isHexColor,
-    isBuiltInLayoutElement,
     isFixedAspectRatioLayoutElement,
     isShapeLayoutElement,
     isTextLayoutElement,
@@ -76,7 +78,6 @@ import {
     type LayoutLayerDropPlacement,
     type LayoutVerticalOrigin,
     type LayoutGroups,
-    type LayoutSizes,
     type LayoutAlignment,
     type LayoutTextStyle,
     type LayoutTextMode,
@@ -104,7 +105,6 @@ import {
 } from '../domain/layoutEditing';
 import {
     cloneLayoutState,
-    createLayoutHistory,
     type SerializableLayoutState,
 } from '../domain/layoutHistory';
 import type { TemplateId } from '../domain/templates';
@@ -142,7 +142,6 @@ const editorStore = usePublisherEditorStore();
 
 const emit = defineEmits<{
     imageStatus: [status: ImageStatus];
-    historyChange: [canUndo: boolean, canRedo: boolean];
     layoutChange: [changed: boolean];
     layoutStateChange: [templateId: TemplateId, state: SerializableLayoutState];
     renderContentChange: [];
@@ -152,7 +151,6 @@ const emit = defineEmits<{
     selectionIdsChange: [elementIds: LayoutElementId[]];
     selectionGroupChange: [canGroup: boolean, canUngroup: boolean, groupDepth: number];
     selectionGroupPathChange: [groupIds: string[]];
-    selectionDefaultChange: [changed: boolean];
     selectionGeometryChange: [geometry: LayoutSelectionGeometry | null];
     selectionStyleChange: [style: (LayoutTextStyle & { elementId: LayoutElementId }) | null];
     selectionTextContentChange: [content: string | null];
@@ -203,12 +201,6 @@ const allElementIds = (templateId: TemplateId) => [
     ...LAYOUT_ELEMENT_IDS,
     ...customElements.value[templateId].map(({ id }) => id),
 ];
-const createPageLayoutSizes = (templateId: TemplateId) => Object.fromEntries(
-    allElementIds(templateId).map((elementId) => [elementId, {
-        width: templateElementFrames.value[templateId][elementId].width,
-        height: templateElementFrames.value[templateId][elementId].height,
-    }]),
-) as LayoutSizes;
 const createPageLayoutTextStyles = (templateId: TemplateId) => Object.fromEntries(
     [
         ...TEMPLATE_TEXT_BINDINGS.map((binding) => [binding, {
@@ -297,6 +289,7 @@ const layoutTextStyles = layoutSectionProxy('styles');
 const layoutVisualStyles = layoutSectionProxy('visualStyles');
 const layoutGroups = layoutSectionProxy('groups');
 const layoutEffects = layoutSectionProxy('effects');
+const layoutFilters = layoutSectionProxy('filters');
 const deletedElements = layoutSectionProxy('deleted');
 const hiddenElements = layoutSectionProxy('hidden');
 const lockedElements = layoutSectionProxy('locked');
@@ -304,16 +297,6 @@ const elementIsLocked = (elementId: LayoutElementId) => lockedElements.value[pro
 const selectionContainsLockedElement = () => selectedElements.value.some(elementIsLocked);
 const availableElements = computed(() =>
     layoutOrder.value[props.templateId].filter((elementId) => !deletedElements.value[props.templateId].includes(elementId)));
-const layoutHistories = computed(() => new Proxy({} as Record<TemplateId, ReturnType<typeof createLayoutHistory>>, {
-    get: (_target, property) => property === 'split' || property === 'poster'
-        ? documentStore.getPageLayoutHistory(props.pageId, property)
-        : undefined,
-    set: (_target, property, value: ReturnType<typeof createLayoutHistory>) => {
-        if (property !== 'split' && property !== 'poster') return false;
-        documentStore.replacePageLayoutHistory(props.pageId, property, value);
-        return true;
-    },
-}));
 let layoutGroupSequence = 0;
 let selectionStart: { x: number; y: number; additive: boolean } | null = null;
 let activeDrag: {
@@ -329,6 +312,11 @@ let activeGroupDrag: {
     startAbsolutePosition: { x: number; y: number };
     startBounds: LayoutFrame;
     elementFrames: Partial<Record<LayoutElementId, LayoutFrame>>;
+} | null = null;
+let activeGradientEdit: {
+    elementId: LayoutElementId;
+    field: 'color' | 'fill';
+    previousState: SerializableLayoutState;
 } | null = null;
 
 const previewScale = computed(() => calculatePreviewScale(props.documentWidth, props.previewZoom, props.documentWidth));
@@ -454,6 +442,8 @@ const visualPaintConfig = (elementId: LayoutElementId, style: LayoutVisualStyle)
 };
 const elementEffects = (targetId: string) =>
     normalizeLayoutElementEffects(layoutEffects.value[props.templateId][targetId]);
+const elementFilters = (targetId: string) =>
+    normalizeLayoutFilterStack(layoutFilters.value[props.templateId][targetId]);
 
 const decorationConfig = (decoration: TemplateDecoration, origin = { x: 0, y: 0 }) => ({
     ...decoration.frame,
@@ -808,6 +798,7 @@ const currentLayoutChanged = computed(() => {
     });
     return geometryChanged || orderChanged || textStyleChanged || visualStyleChanged ||
         Object.values(layoutEffects.value[props.templateId]).some(layoutElementHasEffects) ||
+        Object.values(layoutFilters.value[props.templateId]).some(layoutFilterStackHasEnabled) ||
         customElements.value[props.templateId].length > 0 ||
         deletedElements.value[props.templateId].length > 0 ||
         hiddenElements.value[props.templateId].length > 0 ||
@@ -827,6 +818,46 @@ const elementFrame = (elementId: LayoutElementId): LayoutFrame => {
         height: size.height,
     };
 };
+
+const gradientPaintFrame = (elementId: LayoutElementId, frame: LayoutFrame): LayoutFrame => {
+    const element = customElementById(elementId);
+    if (element?.kind !== 'icon' || !element.iconName) return frame;
+    const definition = publisherIcon(element.iconName).icon;
+    const sourceWidth = definition.icon[0];
+    const sourceHeight = definition.icon[1];
+    const scale = Math.min(frame.width / sourceWidth, frame.height / sourceHeight);
+    const width = sourceWidth * scale;
+    const height = sourceHeight * scale;
+    return {
+        x: frame.x + (frame.width - width) / 2,
+        y: frame.y + (frame.height - height) / 2,
+        width,
+        height,
+    };
+};
+
+const activeCanvasGradient = computed(() => {
+    if (selectedGroupId.value || selectedElements.value.length !== 1 || !selectedElement.value ||
+        elementIsLocked(selectedElement.value)) return null;
+    const elementId = selectedElement.value;
+    const textGradient = isTextLayoutElement(elementId)
+        ? layoutTextStyles.value[props.templateId][elementId]?.colorGradient
+        : undefined;
+    const fillGradient = isShapeLayoutElement(elementId)
+        ? layoutVisualStyles.value[props.templateId][elementId]?.fillGradient
+        : undefined;
+    const gradient = textGradient ?? fillGradient;
+    if (!gradient) return null;
+    const frame = elementFrame(elementId);
+    return {
+        elementId,
+        field: textGradient ? 'color' as const : 'fill' as const,
+        frame: gradientPaintFrame(elementId, frame),
+        gradient,
+        rotation: layoutRotations.value[props.templateId][elementId],
+        rotationOrigin: { x: frame.x, y: frame.y },
+    };
+});
 
 const currentElementFrames = () => Object.fromEntries(
     layoutOrder.value[props.templateId]
@@ -1079,29 +1110,6 @@ const setSelectedGroupAutoLayout = (settings: {
     emit('layoutChange', currentLayoutChanged.value);
 };
 
-const elementIsDefault = (elementId: LayoutElementId) => {
-    if (!isBuiltInLayoutElement(elementId)) return false;
-    const frame = elementFrame(elementId);
-    const baseFrame = templateElementFrames.value[props.templateId][elementId];
-    const geometryChanged = frame.x !== baseFrame.x || frame.y !== baseFrame.y ||
-        frame.width !== baseFrame.width || frame.height !== baseFrame.height ||
-        layoutRotations.value[props.templateId][elementId] !== 0 ||
-        layoutOrder.value[props.templateId].indexOf(elementId) !== createLayoutOrder().indexOf(elementId);
-    if (isTextLayoutElement(elementId)) {
-        const textId = elementId as typeof TEXT_LAYOUT_ELEMENT_IDS[number];
-        const style = layoutTextStyles.value[props.templateId][textId];
-        const defaultStyle = createPageLayoutTextStyles(props.templateId)[textId];
-        return !geometryChanged && JSON.stringify(style) === JSON.stringify(defaultStyle);
-    }
-    if (isShapeLayoutElement(elementId)) {
-        const shapeId = elementId as typeof SHAPE_LAYOUT_ELEMENT_IDS[number];
-        const style = layoutVisualStyles.value[props.templateId][shapeId];
-        const defaultStyle = createPageLayoutVisualStyles(props.templateId)[shapeId];
-        return !geometryChanged && JSON.stringify(style) === JSON.stringify(defaultStyle);
-    }
-    return !geometryChanged;
-};
-
 const emitSelectionGeometry = () => {
     if (!selectedElement.value) {
         emit('selectionGeometryChange', null);
@@ -1109,7 +1117,6 @@ const emitSelectionGeometry = () => {
         emit('selectionVisualStyleChange', null);
         emit('selectionTextContentChange', null);
         emit('selectionTextModeChange', null);
-        emit('selectionDefaultChange', false);
         return;
     }
 
@@ -1128,7 +1135,6 @@ const emitSelectionGeometry = () => {
         emit('selectionVisualStyleChange', null);
         emit('selectionTextContentChange', null);
         emit('selectionTextModeChange', null);
-        emit('selectionDefaultChange', true);
         return;
     }
     if (selectedElements.value.length > 1) {
@@ -1139,7 +1145,6 @@ const emitSelectionGeometry = () => {
         emit('selectionVisualStyleChange', shapeId ? { elementId, ...layoutVisualStyles.value[props.templateId][shapeId] } : null);
         emit('selectionTextContentChange', null);
         emit('selectionTextModeChange', null);
-        emit('selectionDefaultChange', selectedElements.value.some((selectedId) => !elementIsDefault(selectedId)));
         return;
     }
 
@@ -1156,7 +1161,6 @@ const emitSelectionGeometry = () => {
     emit('selectionTextContentChange', elementId.startsWith('text-') ? customElementById(elementId)?.text ?? '' : null);
     const customText = elementId.startsWith('text-') ? customElementById(elementId) : null;
     emit('selectionTextModeChange', customText?.kind === 'text' ? customTextMode(customText) : null);
-    emit('selectionDefaultChange', !elementIsDefault(elementId));
 };
 
 const captureLayoutState = (): SerializableLayoutState =>
@@ -1173,41 +1177,20 @@ const captureLayoutState = (): SerializableLayoutState =>
         locked: lockedElements.value[props.templateId],
         customElements: customElements.value[props.templateId],
         effects: layoutEffects.value[props.templateId],
+        filters: layoutFilters.value[props.templateId],
     });
 
 const getLayoutState = () => captureLayoutState();
 
-const emitHistoryState = () => {
-    const history = layoutHistories.value[props.templateId];
-    emit('historyChange', history.past.length > 0, history.future.length > 0);
-};
-
 const commitCurrentLayout = (previousState: SerializableLayoutState) => {
-    const history = documentStore.commitPageLayout(
+    documentStore.commitPageLayout(
         props.pageId,
         props.templateId,
         previousState,
         captureLayoutState(),
     );
-    layoutHistories.value[props.templateId] = history;
     emit('layoutStateChange', props.templateId, captureLayoutState());
     emitSelectionGeometry();
-    emitHistoryState();
-};
-
-const restoreLayoutState = (state: SerializableLayoutState) => {
-    const restored = cloneLayoutState(state);
-    documentStore.replacePageLayout(props.pageId, props.templateId, restored);
-    reloadAllCustomImages();
-    reloadCurrentCustomQrs();
-    emit('availableElementsChange', availableElements.value);
-    emit('layoutStateChange', props.templateId, captureLayoutState());
-    emit('layoutChange', currentLayoutChanged.value);
-    const restoredGroupId = flattenLayoutGroups(restored.groups)
-        .some((group) => group.id === selectedGroupId.value)
-        ? selectedGroupId.value
-        : null;
-    updateSelection(selectedElements.value, restoredGroupId);
 };
 
 const syncTransformer = async () => {
@@ -2182,6 +2165,42 @@ const setSelectedElementGradient = (field: 'color' | 'fill', gradient: LayoutGra
     emit('layoutChange', currentLayoutChanged.value);
 };
 
+const beginCanvasGradientEdit = () => {
+    const active = activeCanvasGradient.value;
+    if (!active || activeGradientEdit) return;
+    activeGradientEdit = {
+        elementId: active.elementId,
+        field: active.field,
+        previousState: captureLayoutState(),
+    };
+};
+
+const updateCanvasGradient = (gradient: LayoutGradient) => {
+    const edit = activeGradientEdit;
+    if (!edit || elementIsLocked(edit.elementId)) return;
+    const normalized = normalizeLayoutGradient(gradient);
+    if (edit.field === 'color' && isTextLayoutElement(edit.elementId)) {
+        const style = layoutTextStyles.value[props.templateId][edit.elementId];
+        if (!style) return;
+        style.colorGradient = normalized;
+        delete style.colorBinding;
+    } else if (edit.field === 'fill' && isShapeLayoutElement(edit.elementId)) {
+        const style = layoutVisualStyles.value[props.templateId][edit.elementId];
+        if (!style) return;
+        style.fillGradient = normalized;
+        delete style.fillBinding;
+    }
+    emitSelectionGeometry();
+};
+
+const finishCanvasGradientEdit = () => {
+    const edit = activeGradientEdit;
+    if (!edit) return;
+    activeGradientEdit = null;
+    commitCurrentLayout(edit.previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
 const alignSelectedElement = (alignment: LayoutAlignment) => {
     if (selectedElements.value.length === 0) {
         return;
@@ -2347,6 +2366,9 @@ const pruneEffectsForCurrentTargets = () => {
     layoutEffects.value[props.templateId] = Object.fromEntries(
         Object.entries(layoutEffects.value[props.templateId]).filter(([targetId]) => validTargets.has(targetId)),
     );
+    layoutFilters.value[props.templateId] = Object.fromEntries(
+        Object.entries(layoutFilters.value[props.templateId]).filter(([targetId]) => validTargets.has(targetId)),
+    );
 };
 
 const addElement = (
@@ -2410,24 +2432,7 @@ const addElement = (
     emit('layoutChange', true);
 };
 
-const handleDataFieldDrop = (event: DragEvent) => {
-    const transferred = parsePublisherDataTransfer(event.dataTransfer?.getData(PUBLISHER_DATA_TRANSFER_TYPE) ?? '');
-    if (!transferred || (transferred.type === 'image' && !transferred.value)) return;
-    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const preferredOffset = transferred.type === 'image' ? { x: 240, y: 160 } : { x: 260, y: 70 };
-    const position = {
-        x: (event.clientX - bounds.left) / previewScale.value - preferredOffset.x,
-        y: (event.clientY - bounds.top) / previewScale.value - preferredOffset.y,
-    };
-    addElement(transferred.type, {
-        name: transferred.label,
-        imageSource: transferred.type === 'image' ? transferred.value : undefined,
-        text: transferred.type === 'text' ? `{{${transferred.id}}}` : undefined,
-        textMode: transferred.type === 'text' ? 'frame' : undefined,
-        dataBinding: transferred.id,
-        position,
-    });
-};
+const { handleDataFieldDrop } = useCanvasDataFieldDrop(() => previewScale.value, addElement);
 
 const setSelectedElementTextContent = (value: string) => {
     const elementId = selectedElement.value;
@@ -2522,6 +2527,33 @@ const setElementEffects = (targetIds: string[], effects: LayoutElementEffects) =
     emit('layoutChange', currentLayoutChanged.value);
 };
 
+const setElementFilters = (targetIds: string[], filters: LayoutFilterStack) => {
+    const groupsById = new Map(flattenLayoutGroups(layoutGroups.value[props.templateId]).map((group) => [group.id, group]));
+    const existingIds = targetIds.filter((targetId) => {
+        const group = groupsById.get(targetId);
+        return group
+            ? !layoutGroupElementIds(group).some(elementIsLocked)
+            : (
+                layoutOrder.value[props.templateId].includes(targetId as LayoutElementId) &&
+                !elementIsLocked(targetId as LayoutElementId)
+            );
+    });
+    if (existingIds.length === 0) return;
+    const previousState = captureLayoutState();
+    const nextFilters = { ...layoutFilters.value[props.templateId] };
+    const normalized = normalizeLayoutFilterStack(filters);
+    for (const targetId of existingIds) {
+        if (layoutFilterStackHasEnabled(normalized)) {
+            nextFilters[targetId] = normalized.map(cloneLayoutFilter);
+        } else {
+            delete nextFilters[targetId];
+        }
+    }
+    layoutFilters.value[props.templateId] = nextFilters;
+    commitCurrentLayout(previousState);
+    emit('layoutChange', currentLayoutChanged.value);
+};
+
 const deleteElements = (elementIds: LayoutElementId[]) => {
     const existingIds = elementIds.filter((elementId) =>
         layoutOrder.value[props.templateId].includes(elementId) && !elementIsLocked(elementId));
@@ -2537,6 +2569,9 @@ const deleteElements = (elementIds: LayoutElementId[]) => {
         .filter((elementId) => !deleted.has(elementId));
     layoutEffects.value[props.templateId] = Object.fromEntries(
         Object.entries(layoutEffects.value[props.templateId]).filter(([elementId]) => !deleted.has(elementId as LayoutElementId)),
+    );
+    layoutFilters.value[props.templateId] = Object.fromEntries(
+        Object.entries(layoutFilters.value[props.templateId]).filter(([elementId]) => !deleted.has(elementId as LayoutElementId)),
     );
     layoutOrder.value[props.templateId] = layoutOrder.value[props.templateId].filter((elementId) => !deleted.has(elementId));
     layoutGroups.value[props.templateId] = pruneDeletedElementsFromGroups(layoutGroups.value[props.templateId], deleted);
@@ -2579,134 +2614,8 @@ const toggleElementsLock = (elementIds: LayoutElementId[]) => {
     void syncTransformer();
 };
 
-const resetLayout = () => {
-    const previousState = captureLayoutState();
-    customElements.value[props.templateId] = [];
-    reloadAllCustomImages();
-    customQrNodes.value = {};
-    layoutOffsets.value[props.templateId] = createLayoutOffsets();
-    layoutSizes.value[props.templateId] = createPageLayoutSizes(props.templateId);
-    layoutRotations.value[props.templateId] = createLayoutRotations();
-    layoutOrder.value[props.templateId] = createLayoutOrder();
-    layoutTextStyles.value[props.templateId] = createPageLayoutTextStyles(props.templateId);
-    layoutVisualStyles.value[props.templateId] = createPageLayoutVisualStyles(props.templateId);
-    layoutGroups.value[props.templateId] = createLayoutGroups();
-    layoutEffects.value[props.templateId] = {};
-    deletedElements.value[props.templateId] = [];
-    hiddenElements.value[props.templateId] = [];
-    lockedElements.value[props.templateId] = [];
-    commitCurrentLayout(previousState);
-    selectedElements.value = [];
-    selectedGroupId.value = null;
-    activeAlignmentGuides.value = [];
-    emit('selectionChange', null);
-    emit('selectionIdsChange', []);
-    emit('selectionGroupChange', false, false, 0);
-    emitLayerPosition();
-    emitSelectionGeometry();
-    emit('availableElementsChange', availableElements.value);
-    emit('layoutChange', false);
-};
-
-const resetSelectedElement = () => {
-    if (selectedElements.value.length === 0) {
-        return;
-    }
-
-    const previousState = captureLayoutState();
-    const reset = selectedElements.value.reduce<SerializableLayoutState>(
-        (state, elementId) => {
-            const defaultOrder = isBuiltInLayoutElement(elementId)
-                ? createLayoutOrder()
-                : layoutOrder.value[props.templateId];
-            const order = state.order.filter((candidate) => candidate !== elementId);
-            order.splice(defaultOrder.indexOf(elementId), 0, elementId);
-            return {
-                ...state,
-                offsets: { ...state.offsets, [elementId]: { x: 0, y: 0 } },
-                sizes: {
-                    ...state.sizes,
-                    [elementId]: {
-                        width: templateElementFrames.value[props.templateId][elementId].width,
-                        height: templateElementFrames.value[props.templateId][elementId].height,
-                    },
-                },
-                rotations: { ...state.rotations, [elementId]: 0 },
-                order,
-                styles: {
-                    ...state.styles,
-                    ...(isTextLayoutElement(elementId)
-                        ? { [elementId]: isBuiltInLayoutElement(elementId)
-                            ? { ...createPageLayoutTextStyles(props.templateId)[elementId] }
-                            : createCustomTextStyle() }
-                        : {}),
-                },
-                visualStyles: {
-                    ...state.visualStyles,
-                    ...(isShapeLayoutElement(elementId)
-                        ? { [elementId]: isBuiltInLayoutElement(elementId)
-                            ? { ...createPageLayoutVisualStyles(props.templateId)[elementId] }
-                            : createCustomVisualStyle() }
-                        : {}),
-                },
-                effects: Object.fromEntries(
-                    Object.entries(state.effects ?? {}).filter(([id]) => id !== elementId),
-                ),
-                groups: state.groups,
-            };
-        },
-        previousState,
-    );
-    layoutOffsets.value[props.templateId] = reset.offsets;
-    layoutSizes.value[props.templateId] = reset.sizes;
-    layoutRotations.value[props.templateId] = reset.rotations;
-    layoutOrder.value[props.templateId] = reset.order;
-    layoutTextStyles.value[props.templateId] = reset.styles;
-    layoutVisualStyles.value[props.templateId] = reset.visualStyles;
-    layoutEffects.value[props.templateId] = reset.effects ?? {};
-    if (selectedGroupId.value) {
-        const resetGroupRotation = (group: LayoutGroup): LayoutGroup => ({
-            ...group,
-            rotation: 0,
-            children: group.children.map((child) =>
-                typeof child === 'string' ? child : resetGroupRotation(child)),
-        });
-        layoutGroups.value[props.templateId] = updateLayoutGroup(
-            reset.groups,
-            selectedGroupId.value,
-            resetGroupRotation,
-        );
-    }
-    selectedElements.value.forEach(syncGraphicTextSize);
-    commitCurrentLayout(previousState);
-    emit('layoutChange', currentLayoutChanged.value);
-    emitLayerPosition();
-    void syncTransformer();
-};
-
-const undoLayout = () => {
-    const result = documentStore.undoPageLayout(props.pageId, props.templateId);
-    if (!result) {
-        return;
-    }
-
-    restoreLayoutState(result.state);
-    emitHistoryState();
-};
-
-const redoLayout = () => {
-    const result = documentStore.redoPageLayout(props.pageId, props.templateId);
-    if (!result) {
-        return;
-    }
-
-    restoreLayoutState(result.state);
-    emitHistoryState();
-};
-
 const restoreDraftLayouts = () => {
     documentStore.ensurePageLayout(props.pageId, props.templateId, () => createPageLayoutState(props.templateId));
-    documentStore.resetPageLayoutHistory(props.pageId, props.templateId);
     reloadAllCustomImages();
     reloadCurrentCustomQrs();
     selectedElements.value = [];
@@ -2717,7 +2626,6 @@ const restoreDraftLayouts = () => {
     emit('selectionGroupChange', false, false, 0);
     emitLayerPosition();
     emitSelectionGeometry();
-    emitHistoryState();
     emit('availableElementsChange', availableElements.value);
     emit('layoutChange', currentLayoutChanged.value);
     syncAllGraphicTextSizes();
@@ -2789,7 +2697,6 @@ watch(
         emit('selectionGroupChange', false, false, 0);
         emitLayerPosition();
         emitSelectionGeometry();
-        emitHistoryState();
         emit('availableElementsChange', availableElements.value);
         emit('layoutChange', currentLayoutChanged.value);
         void syncTransformer();
@@ -2889,15 +2796,13 @@ defineExpose({
     getLayoutState,
     moveLayerNode,
     nudgeSelectedElement,
-    redoLayout,
-    resetLayout,
-    resetSelectedElement,
     renderThumbnail,
     resizeSelectedElement,
     rotateSelectedElement,
     setSelectedElementGeometry,
     setSelectedElementGradient,
     setElementEffects,
+    setElementFilters,
     setSelectedElementColorBinding,
     setSelectedElementStaticColor,
     setSelectedElementTextStyle,
@@ -2910,7 +2815,6 @@ defineExpose({
     toggleElementsVisibility,
     selectElement,
     selectGroup,
-    undoLayout,
     ungroupSelectedElements,
 });
 </script>
@@ -2936,6 +2840,7 @@ defineExpose({
                     :draggable-group-ids="draggableGroupIds"
                     :editor-scale="previewScale"
                     :effects="layoutEffects[templateId]"
+                    :filters="layoutFilters[templateId]"
                     :group-frames="canvasGroupFrames"
                     :locked-element-ids="lockedElements[templateId]"
                     :nodes="canvasSceneNodes"
@@ -2965,6 +2870,7 @@ defineExpose({
                         :rotation="layoutRotations[templateId].background"
                         :selected="selectedElements.includes('background') && !isExporting"
                         :effects="elementEffects('background')"
+                        :filters="elementFilters('background')"
                         :visual-config="visualConfig('background')"
                         @drag-start="startElementDrag"
                         @dragging="alignElementWhileDragging"
@@ -2981,6 +2887,7 @@ defineExpose({
                         :rotation="layoutRotations[templateId].image"
                         :selected="selectedElements.includes('image') && !isExporting"
                         :effects="elementEffects('image')"
+                        :filters="elementFilters('image')"
                         @drag-start="startElementDrag"
                         @dragging="alignElementWhileDragging"
                         @move="moveElement"
@@ -2995,6 +2902,7 @@ defineExpose({
                         :rotation="layoutRotations[templateId].accent"
                         :selected="selectedElements.includes('accent') && !isExporting"
                         :effects="elementEffects('accent')"
+                        :filters="elementFilters('accent')"
                         :visual-config="visualConfig('accent')"
                         @drag-start="startElementDrag"
                         @dragging="alignElementWhileDragging"
@@ -3012,6 +2920,7 @@ defineExpose({
                         :rotation="layoutRotations[templateId][item.id]"
                         :selected="selectedElements.includes(item.id) && !isExporting"
                         :effects="elementEffects(item.id)"
+                        :filters="elementFilters(item.id)"
                         :text-config="editableTextConfig(item.id)"
                         @drag-start="startElementDrag"
                         @dragging="alignElementWhileDragging"
@@ -3029,6 +2938,7 @@ defineExpose({
                         :rotation="layoutRotations[templateId][item.element.id]"
                         :selected="selectedElements.includes(item.element.id) && !isExporting"
                         :effects="elementEffects(item.element.id)"
+                        :filters="elementFilters(item.element.id)"
                         :text-config="customTextConfig(item.element)"
                         @drag-start="startElementDrag"
                         @dragging="alignElementWhileDragging"
@@ -3050,6 +2960,7 @@ defineExpose({
                         :rotation="layoutRotations[templateId][item.element.id]"
                         :selected="selectedElements.includes(item.element.id) && !isExporting"
                         :effects="elementEffects(item.element.id)"
+                        :filters="elementFilters(item.element.id)"
                         :shape="customShapeType(item.element)"
                         :visual-config="item.element.kind === 'image' || item.element.kind === 'qr' ? null : customVisualConfig(item.element.id)"
                         @drag-start="startElementDrag"
@@ -3095,6 +3006,18 @@ defineExpose({
             </v-layer>
             <v-layer>
                 <v-transformer ref="transformerRef" :config="transformerConfig" @transformstart="cancelSelectionRectangle" />
+            </v-layer>
+            <v-layer v-if="!isExporting && activeCanvasGradient">
+                <CanvasGradientHandles
+                    :editor-scale="previewScale"
+                    :frame="activeCanvasGradient.frame"
+                    :gradient="activeCanvasGradient.gradient"
+                    :rotation="activeCanvasGradient.rotation"
+                    :rotation-origin="activeCanvasGradient.rotationOrigin"
+                    @edit-start="beginCanvasGradientEdit"
+                    @update="updateCanvasGradient"
+                    @edit-end="finishCanvasGradientEdit"
+                />
             </v-layer>
         </v-stage>
     </div>

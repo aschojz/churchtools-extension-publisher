@@ -41,7 +41,12 @@ describe('LayoutGradientEditor', () => {
         const imagePalettes = usePublisherImagePalettesStore();
         imagePalettes.syncSources([{ id: 'image-1', label: 'Titelbild', source: 'data:image/png;base64,image' }]);
         imagePalettes.palettes['image-1'] = {
-            colors: [], primary: '#f05a28', background: '#221811', foreground: '#ffffff',
+            colors: [
+                { id: 'primary', label: 'Primärfarbe', hex: '#f05a28' },
+                { id: 'background', label: 'Hintergrundfarbe', hex: '#221811' },
+                { id: 'foreground', label: 'Vordergrundfarbe', hex: '#ffffff' },
+            ],
+            primary: '#f05a28', background: '#221811', foreground: '#ffffff',
         };
         const gradient = createLayoutGradient('#123456');
         const wrapper = mount(LayoutGradientEditor, {

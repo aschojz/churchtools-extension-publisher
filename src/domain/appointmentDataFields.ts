@@ -3,7 +3,7 @@ import type { AppointmentCalculatedWithIncludes } from '@churchtools/api-types';
 import { mapAppointmentToTemplateProps, type AppointmentMappingOptions } from './mapAppointmentToTemplateProps';
 
 export type PublisherDataFieldType = 'text' | 'image';
-export type PublisherDataFormatType = 'date' | 'time' | 'url';
+export type PublisherDataFormatType = 'date' | 'time' | 'url' | 'list';
 
 export interface PublisherDataValue {
     value: string;
@@ -11,6 +11,7 @@ export interface PublisherDataValue {
     rawValue?: string;
     locale?: string;
     timeZone?: string;
+    values?: string[];
 }
 
 export type PublisherDataValues = Record<string, string | PublisherDataValue>;
@@ -26,6 +27,7 @@ export interface PublisherDataField {
     rawValue?: string;
     locale?: string;
     timeZone?: string;
+    values?: string[];
     sourceId?: string;
     sourceLabel?: string;
     editable?: boolean;
@@ -169,6 +171,20 @@ export const formatPublisherDataValue = (data: PublisherDataValue, formatter: st
             'H Uhr': `${hour} Uhr`,
         } as Record<string, string>)[pattern] ?? data.value;
     }
+    if (formatter === 'list' && data.formatType === 'list' && data.values) {
+        const values = data.values.map((value) => value.trim()).filter(Boolean);
+        if (pattern === 'lines') return values.join('\n');
+        if (pattern === 'bullets') return values.map((value) => `• ${value}`).join('\n');
+        if (pattern === 'first') return values[0] ?? '';
+        if (pattern === 'and') {
+            try {
+                return new Intl.ListFormat(data.locale ?? 'de-DE', { style: 'long', type: 'conjunction' }).format(values);
+            } catch {
+                return values.join(', ');
+            }
+        }
+        if (pattern === 'comma') return values.join(', ');
+    }
     return data.value;
 };
 
@@ -203,6 +219,14 @@ export const publisherPlaceholderOptions = (field: PublisherDataField): Publishe
         { label: '10.00', placeholder: `{{${field.id}|time:HH.mm}}` },
         { label: '10:00 kurz', placeholder: `{{${field.id}|time:H:mm}}` },
         { label: '10 Uhr', placeholder: `{{${field.id}|time:H Uhr}}` },
+    ];
+    if (field.formatType === 'list') return [
+        ...base,
+        { label: 'Kommagetrennt', placeholder: `{{${field.id}|list:comma}}` },
+        { label: 'Eine Person pro Zeile', placeholder: `{{${field.id}|list:lines}}` },
+        { label: 'Aufzählung', placeholder: `{{${field.id}|list:bullets}}` },
+        { label: 'Mit „und“', placeholder: `{{${field.id}|list:and}}` },
+        { label: 'Nur erste Person', placeholder: `{{${field.id}|list:first}}` },
     ];
     return base;
 };

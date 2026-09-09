@@ -34,9 +34,10 @@ import type { TemplateId } from './templates';
 import { DOCUMENT_HEIGHT, DOCUMENT_WIDTH } from '../utils/stageDimensions';
 import { isPublisherIconName } from './publisherIcons';
 import { normalizeLayoutGradient, type LayoutGradient } from './layoutGradient';
+import { parseLayoutFilterStack, type LayoutFilters } from './layoutFilters';
 import { MAX_PUBLISHER_PAGE_NAME_LENGTH } from './publisherPage';
 
-export const PUBLISHER_DRAFT_VERSION = 1;
+export const PUBLISHER_DRAFT_VERSION = 2;
 export const publisherDraftStorageKey = (appointmentKey: string) =>
     `churchtools-publisher:draft:${appointmentKey}`;
 
@@ -378,6 +379,19 @@ const parseLayoutEffects = (value: unknown, validElementIds: Set<string>): Layou
     return effects;
 };
 
+const parseLayoutFilters = (value: unknown, validElementIds: Set<string>): LayoutFilters | null => {
+    if (value === undefined) return {};
+    if (!isRecord(value)) return null;
+    const filters: LayoutFilters = {};
+    for (const [targetId, candidate] of Object.entries(value)) {
+        if (!validElementIds.has(targetId)) return null;
+        const stack = parseLayoutFilterStack(candidate);
+        if (!stack) return null;
+        filters[targetId] = stack;
+    }
+    return filters;
+};
+
 export const parsePublisherLayoutState = (
     value: unknown,
     templateId: TemplateId,
@@ -476,7 +490,8 @@ export const parsePublisherLayoutState = (
         ...flattenLayoutGroups(groups ?? []).map(({ id }) => id),
     ]);
     const effects = parseLayoutEffects(value.effects, effectTargetIds);
-    if (!geometryIsValid || !orderIsValid || !styles || !visualStyles || !groups || !effects) {
+    const filters = parseLayoutFilters(value.filters, effectTargetIds);
+    if (!geometryIsValid || !orderIsValid || !styles || !visualStyles || !groups || !effects || !filters) {
         return null;
     }
 
@@ -493,6 +508,7 @@ export const parsePublisherLayoutState = (
         ...(value.locked !== undefined ? { locked } : {}),
         ...(value.customElements !== undefined ? { customElements } : {}),
         ...(value.effects !== undefined ? { effects } : {}),
+        filters,
     };
 };
 
@@ -582,8 +598,12 @@ export const parsePublisherDraft = (value: string | null): PublisherDraft | null
     }
 
     try {
-        const parsed: unknown = JSON.parse(value);
-        if (!isRecord(parsed) || parsed.version !== PUBLISHER_DRAFT_VERSION ||
+        const source: unknown = JSON.parse(value);
+        if (!isRecord(source) || (source.version !== 1 && source.version !== PUBLISHER_DRAFT_VERSION)) return null;
+        const parsed = source.version === 1
+            ? { ...source, version: PUBLISHER_DRAFT_VERSION }
+            : source;
+        if (
             (parsed.selectedTemplateId !== 'split' && parsed.selectedTemplateId !== 'poster') ||
             typeof parsed.snapEnabled !== 'boolean' || !isFiniteNumber(parsed.previewZoomPercent) ||
             parsed.previewZoomPercent < 25 || parsed.previewZoomPercent > 400 ||

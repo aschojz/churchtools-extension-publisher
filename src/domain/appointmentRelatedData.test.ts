@@ -58,6 +58,7 @@ describe('appointment related data', () => {
 
         expect(fields.find(({ id }) => id === 'eventService-12')).toMatchObject({
             label: 'Predigt', value: 'Ada Lovelace, Grace Hopper', placeholder: '{{eventService-12}}',
+            formatType: 'list', values: ['Ada Lovelace', 'Grace Hopper'], multiline: true,
         });
         expect(fields.some(({ id }) => id.startsWith('eventService-12-1'))).toBe(false);
         expect(fields.filter(({ id }) => id.startsWith('eventService-'))).toHaveLength(1);

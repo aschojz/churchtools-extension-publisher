@@ -5,6 +5,9 @@ import { createPinia, setActivePinia } from 'pinia';
 import { describe, expect, it } from 'vitest';
 
 import type { LayoutTextStyle } from '../../../domain/layoutEditing';
+import { createLayoutFilterStack } from '../../../domain/layoutFilters';
+import { createStandardPublisherLayout } from '../../../domain/publisherPage';
+import { usePublisherDocumentStore } from '../../../stores/publisherDocument';
 import { usePublisherEditorStore } from '../../../stores/publisherEditor';
 import { usePublisherImagePalettesStore } from '../../../stores/publisherImagePalettes';
 import { usePublisherColorsStore } from '../../../stores/publisherColors';
@@ -39,7 +42,10 @@ const mountInspector = (style: LayoutTextStyle & { elementId: 'title' }) => {
     editorStore.selectedLayoutGeometry = { elementId: 'title', x: 10, y: 20, width: 300, height: 80, rotation: 0 };
     editorStore.selectedLayerPosition = 1;
     editorStore.selectedLayerTotal = 1;
-    return mount(LayoutInspector, { global: { plugins: [pinia], stubs: { teleport: true } } });
+    return mount(LayoutInspector, {
+        props: { template: { title: '', date: '', time: '', location: '', imageUrl: null } },
+        global: { plugins: [pinia], stubs: { teleport: true } },
+    });
 };
 
 const openTab = async (wrapper: ReturnType<typeof mountInspector>, label: string) => {
@@ -219,6 +225,63 @@ describe('LayoutInspector typography controls', () => {
         expect(wrapper.emitted('updateEffects')?.[0]?.[0]).toEqual(['group-1']);
     });
 
+    it('configures ordered filters from the sticky footer for a selected layer', async () => {
+        const wrapper = mountInspector(textStyle());
+        await openTab(wrapper, 'Ebenen');
+
+        const footerButtons = wrapper.findAll('.inspector-layer-footer button');
+        expect(footerButtons.map((button) => button.attributes('aria-label'))).toEqual([
+            'Ebeneneffekte', 'Ebenenfilter', 'Auswahl sperren', 'Auswahl löschen',
+        ]);
+        await wrapper.get('.inspector-layer-footer [aria-label="Ebenenfilter"]').trigger('click');
+        expect(wrapper.get('[role="dialog"]').text()).toContain('Ebenenfilter');
+
+        await wrapper.findAll('.publisher-filters-dialog nav button')
+            .find((button) => button.text().includes('Kontrast'))!
+            .trigger('click');
+        await wrapper.get('[aria-label="Kontrast aktivieren"]').setValue(true);
+        await wrapper.get('button[aria-label="Filter nach oben verschieben"]').trigger('click');
+        await wrapper.get('.publisher-filters-dialog').trigger('submit');
+
+        const update = wrapper.emitted('updateFilters')?.[0];
+        expect(update?.[0]).toEqual(['title']);
+        expect((update?.[1] as { type: string }[])[0]?.type).toBe('contrast');
+        expect(update?.[1]).toEqual(expect.arrayContaining([
+            expect.objectContaining({ type: 'contrast', enabled: true, amount: 20 }),
+        ]));
+    });
+
+    it('targets a selected group with one shared filter stack', async () => {
+        const wrapper = mountInspector(textStyle());
+        const store = usePublisherEditorStore();
+        store.selectedLayoutGroupDepth = 1;
+        store.selectedLayoutGroupId = 'group-1';
+        await openTab(wrapper, 'Ebenen');
+
+        await wrapper.get('.inspector-layer-footer [aria-label="Ebenenfilter"]').trigger('click');
+        await wrapper.get('[aria-label="Graustufen aktivieren"]').setValue(true);
+        await wrapper.get('.publisher-filters-dialog').trigger('submit');
+
+        expect(wrapper.emitted('updateFilters')?.[0]?.[0]).toEqual(['group-1']);
+    });
+
+    it('marks a filtered layer and reopens its filter stack from the layer row', async () => {
+        const wrapper = mountInspector(textStyle());
+        const documentStore = usePublisherDocumentStore();
+        const layout = createStandardPublisherLayout('split');
+        const filters = createLayoutFilterStack();
+        filters.find(({ type }) => type === 'sepia')!.enabled = true;
+        layout.filters = { title: filters };
+        documentStore.replacePageLayout(documentStore.activePage.id, 'split', layout);
+        await openTab(wrapper, 'Ebenen');
+
+        const button = wrapper.get('[aria-label="Filter von Titel bearbeiten"]');
+        await button.trigger('click');
+
+        expect(wrapper.get('[role="dialog"]').text()).toContain('Ebenenfilter');
+        expect((wrapper.get('[aria-label="Sepia aktivieren"]').element as HTMLInputElement).checked).toBe(true);
+    });
+
     it('groups extracted colors by image and emits static or dynamic color choices', async () => {
         const wrapper = mountInspector(textStyle({
             colorBinding: { imageId: 'data:image', token: 'primary' },
@@ -226,7 +289,11 @@ describe('LayoutInspector typography controls', () => {
         const paletteStore = usePublisherImagePalettesStore();
         paletteStore.syncSources([{ id: 'data:image', label: 'Terminbild', source: 'data:image/png;base64,image' }]);
         paletteStore.palettes['data:image'] = {
-            colors: [{ id: 'Vibrant', label: 'Kräftig', hex: '#f05a28' }],
+            colors: [
+                { id: 'Vibrant', label: 'Kräftig', hex: '#f05a28' },
+                { id: 'Dark', label: 'Dunkel', hex: '#221811' },
+                { id: 'Light', label: 'Hell', hex: '#ffffff' },
+            ],
             primary: '#f05a28', background: '#221811', foreground: '#ffffff',
         };
         paletteStore.statuses['data:image'] = 'ready';
@@ -236,8 +303,8 @@ describe('LayoutInspector typography controls', () => {
         expect(palette.text()).not.toContain('Terminbild');
         expect(palette.get('.inspector-image-palette__preview img').attributes('src')).toBe('data:image/png;base64,image');
         expect(palette.get('[aria-label="Primär aus Terminbild dynamisch verwenden"] svg').classes()).toContain('fa-star');
-        expect(palette.get('[aria-label="Hintergrund aus Terminbild dynamisch verwenden"] .inspector-image-palette__role').classes()).toContain('is-background');
-        expect(palette.get('[aria-label="Vordergrund aus Terminbild dynamisch verwenden"] .inspector-image-palette__role').classes()).toContain('is-foreground');
+        expect(palette.get('[aria-label="Hintergrund aus Terminbild dynamisch verwenden"] .publisher-image-palette-swatches__role').classes()).toContain('is-background');
+        expect(palette.get('[aria-label="Vordergrund aus Terminbild dynamisch verwenden"] .publisher-image-palette-swatches__role').classes()).toContain('is-foreground');
         expect(palette.get('[aria-label="Terminbild erneut analysieren"]').attributes('title')).toBe('Terminbild erneut analysieren');
         expect(palette.get('[aria-label="Primär aus Terminbild dynamisch verwenden"]').attributes('aria-pressed')).toBe('true');
         expect(wrapper.find('.inspector-color-binding').exists()).toBe(false);

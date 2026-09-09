@@ -1,7 +1,7 @@
 import { parsePublisherDesignTemplate, type PublisherDesignTemplate } from './publisherDesignTemplate';
 import { parsePublisherDraft, type PublisherDraft } from './publisherDraft';
 
-export const PUBLISHER_RECORD_VERSION = 1;
+export const PUBLISHER_RECORD_VERSION = 2;
 
 export interface PublisherAppointmentReference {
     appointmentId: number;
@@ -67,31 +67,35 @@ export const appointmentKeyFromReference = (reference: PublisherAppointmentRefer
     reference ? `${reference.appointmentId}:${reference.occurrenceStart}` : '';
 
 export const parsePublisherDocumentRecord = (value: unknown): PublisherDocumentRecord | null => {
-    if (!isRecord(value) || value.version !== PUBLISHER_RECORD_VERSION || typeof value.id !== 'string' || !value.id ||
-        typeof value.name !== 'string' || !value.name.trim() || typeof value.revision !== 'number' ||
-        !Number.isInteger(value.revision) || value.revision < 0 || typeof value.createdAt !== 'string' ||
-        typeof value.updatedAt !== 'string') return null;
+    if (!isRecord(value) || (value.version !== 1 && value.version !== PUBLISHER_RECORD_VERSION)) return null;
+    const candidate = value.version === 1
+        ? { ...value, version: PUBLISHER_RECORD_VERSION }
+        : value;
+    if (typeof candidate.id !== 'string' || !candidate.id ||
+        typeof candidate.name !== 'string' || !candidate.name.trim() || typeof candidate.revision !== 'number' ||
+        !Number.isInteger(candidate.revision) || candidate.revision < 0 || typeof candidate.createdAt !== 'string' ||
+        typeof candidate.updatedAt !== 'string') return null;
     let appointment: PublisherAppointmentReference | null = null;
-    if (value.appointment !== null) {
-        if (!isRecord(value.appointment) || typeof value.appointment.appointmentId !== 'number' ||
-            !Number.isInteger(value.appointment.appointmentId) || value.appointment.appointmentId <= 0 ||
-            typeof value.appointment.occurrenceStart !== 'string' || !value.appointment.occurrenceStart) return null;
+    if (candidate.appointment !== null) {
+        if (!isRecord(candidate.appointment) || typeof candidate.appointment.appointmentId !== 'number' ||
+            !Number.isInteger(candidate.appointment.appointmentId) || candidate.appointment.appointmentId <= 0 ||
+            typeof candidate.appointment.occurrenceStart !== 'string' || !candidate.appointment.occurrenceStart) return null;
         appointment = {
-            appointmentId: value.appointment.appointmentId,
-            occurrenceStart: value.appointment.occurrenceStart,
+            appointmentId: candidate.appointment.appointmentId,
+            occurrenceStart: candidate.appointment.occurrenceStart,
         };
     }
-    const draft = parsePublisherDraft(JSON.stringify(value.draft));
+    const draft = parsePublisherDraft(JSON.stringify(candidate.draft));
     if (!draft) return null;
     return {
         version: PUBLISHER_RECORD_VERSION,
-        id: value.id,
-        name: value.name.trim(),
-        revision: value.revision,
+        id: candidate.id,
+        name: candidate.name.trim(),
+        revision: candidate.revision,
         appointment,
         draft,
-        createdAt: value.createdAt,
-        updatedAt: value.updatedAt,
+        createdAt: candidate.createdAt,
+        updatedAt: candidate.updatedAt,
     };
 };
 

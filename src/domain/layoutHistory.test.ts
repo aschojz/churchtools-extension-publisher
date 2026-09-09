@@ -16,6 +16,7 @@ import {
     type SerializableLayoutState,
     undoLayoutHistory,
 } from './layoutHistory';
+import { createLayoutFilterStack } from './layoutFilters';
 
 const createState = (): SerializableLayoutState => ({
     offsets: createLayoutOffsets(),
@@ -115,5 +116,19 @@ describe('layout history', () => {
 
         effects.shadow.blur = 99;
         expect(redone?.state.effects?.title?.shadow.blur).toBe(16);
+    });
+
+    it('deep-clones ordered layer filters in history snapshots', () => {
+        const initial = createState();
+        const styled = createState();
+        const filters = createLayoutFilterStack();
+        filters[0]!.enabled = true;
+        styled.filters = { title: filters };
+        const history = commitLayoutHistory(createLayoutHistory(), initial, styled);
+        const undone = undoLayoutHistory(history, styled);
+        const redone = undone && redoLayoutHistory(undone.history, undone.state);
+
+        filters[0]!.enabled = false;
+        expect(redone?.state.filters?.title?.[0]).toMatchObject({ type: 'brightness', enabled: true });
     });
 });

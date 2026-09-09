@@ -11,6 +11,7 @@ import type {
     LayoutTextStyles,
     LayoutVisualStyles,
 } from './layoutEditing';
+import { cloneLayoutFilter, type LayoutFilters } from './layoutFilters';
 
 export interface SerializableLayoutState {
     offsets: LayoutOffsets;
@@ -25,6 +26,7 @@ export interface SerializableLayoutState {
     locked?: LayoutElementId[];
     customElements?: LayoutCustomElement[];
     effects?: LayoutEffects;
+    filters?: LayoutFilters;
 }
 
 export interface LayoutHistory {
@@ -73,6 +75,12 @@ export const cloneLayoutState = (state: SerializableLayoutState): SerializableLa
             shadow: { ...effects.shadow },
             blur: { ...effects.blur },
         }])) }
+        : {}),
+    ...(state.filters
+        ? { filters: Object.fromEntries(Object.entries(state.filters).map(([id, filters]) => [
+            id,
+            filters.map(cloneLayoutFilter),
+        ])) }
         : {}),
 });
 

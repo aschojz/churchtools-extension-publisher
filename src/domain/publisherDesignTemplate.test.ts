@@ -37,6 +37,7 @@ const createLayout = (): SerializableLayoutState => ({
     visualStyles: createLayoutVisualStyles('split'),
     groups: createLayoutGroups(),
     deleted: [],
+    filters: {},
 });
 
 const createTemplate = (id = 'template-1'): PublisherDesignTemplate => ({
@@ -81,7 +82,7 @@ describe('publisher design templates', () => {
     it('rejects malformed containers and isolates malformed or duplicate entries', () => {
         const template = createTemplate();
         expect(parsePublisherDesignTemplateLibrary('{invalid')).toBeNull();
-        expect(parsePublisherDesignTemplateLibrary(JSON.stringify({ version: 3, templates: [] }))).toBeNull();
+        expect(parsePublisherDesignTemplateLibrary(JSON.stringify({ version: 99, templates: [] }))).toBeNull();
         expect(parsePublisherDesignTemplateLibrary(JSON.stringify({ version: 2, templates: [template, template] })))
             .toEqual([template]);
         expect(parsePublisherDesignTemplateLibrary(JSON.stringify({
@@ -144,6 +145,6 @@ describe('publisher design templates', () => {
             .toEqual(createLayoutOrder().filter((elementId) => !['background', 'image'].includes(elementId)));
         expect(savePublisherDesignTemplate(storage, { ...createTemplate('template-2'), name: 'Neue Vorlage' }))
             .toHaveLength(2);
-        expect(storage.getItem(PUBLISHER_DESIGN_TEMPLATE_STORAGE_KEY)).toContain('"version":2');
+        expect(storage.getItem(PUBLISHER_DESIGN_TEMPLATE_STORAGE_KEY)).toContain('"version":3');
     });
 });

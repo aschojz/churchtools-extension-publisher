@@ -10,11 +10,10 @@ import {
     type LayoutVisualStyle,
 } from '../domain/layoutEditing';
 
-export type EditorToolId = 'appointments' | 'templates' | 'data' | 'layout';
+export type EditorToolId = 'appointments' | 'data' | 'layout';
 
 const editorToolLabels: Record<EditorToolId, string> = {
     appointments: 'Termine',
-    templates: 'Vorlagen',
     data: 'Termindaten',
     layout: 'Layout',
 };
@@ -26,8 +25,6 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
     const previewZoomPercent = ref(100);
     const availableLayoutElements = ref<LayoutElementId[]>([...LAYOUT_ELEMENT_IDS]);
     const layoutChanged = ref(false);
-    const canUndoLayout = ref(false);
-    const canRedoLayout = ref(false);
     const activeCanvasPageId = ref<string | null>(null);
     const pageThumbnails = ref<Record<string, string>>({});
     const selectedLayoutElement = ref<LayoutElementId | null>(null);
@@ -37,7 +34,6 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
     const selectedLayoutTextContent = ref<string | null>(null);
     const selectedLayoutTextMode = ref<LayoutTextMode | null>(null);
     const selectedLayoutVisualStyle = ref<(LayoutVisualStyle & { elementId: LayoutElementId }) | null>(null);
-    const selectedLayoutElementChanged = ref(false);
     const canGroupLayoutSelection = ref(false);
     const canUngroupLayoutSelection = ref(false);
     const selectedLayoutGroupDepth = ref(0);
@@ -79,10 +75,6 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
         return true;
     };
 
-    const updateLayoutHistory = (canUndo: boolean, canRedo: boolean) => {
-        canUndoLayout.value = canUndo;
-        canRedoLayout.value = canRedo;
-    };
     const updateLayoutGrouping = (canGroup: boolean, canUngroup: boolean, depth: number) => {
         canGroupLayoutSelection.value = canGroup;
         canUngroupLayoutSelection.value = canUngroup;
@@ -112,8 +104,6 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
         activateCanvasPage,
         availableLayoutElements,
         canGroupLayoutSelection,
-        canRedoLayout,
-        canUndoLayout,
         canUngroupLayoutSelection,
         clearSelectionState,
         hasLayoutSelection,
@@ -125,7 +115,6 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
         selectedLayerPosition,
         selectedLayerTotal,
         selectedLayoutElement,
-        selectedLayoutElementChanged,
         selectedLayoutElements,
         selectedLayoutGeometry,
         selectedLayoutGroupDepth,
@@ -141,6 +130,5 @@ export const usePublisherEditorStore = defineStore('publisherEditor', () => {
         retainPageThumbnails,
         updateLayerPosition,
         updateLayoutGrouping,
-        updateLayoutHistory,
     };
 });

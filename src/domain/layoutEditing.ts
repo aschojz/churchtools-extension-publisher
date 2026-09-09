@@ -805,42 +805,6 @@ export const constrainLetterSpacing = (letterSpacing: number) =>
 
 export const isHexColor = (color: string) => /^#[0-9a-f]{6}$/i.test(color);
 
-export const resetLayoutElementState = (
-    templateId: TemplateId,
-    elementId: LayoutElementId,
-    state: LayoutElementState,
-): LayoutElementState => {
-    if (!isBuiltInLayoutElement(elementId)) return state;
-    const defaultOrder = createLayoutOrder();
-    const orderWithoutElement = state.order.filter((candidate) => candidate !== elementId);
-    orderWithoutElement.splice(defaultOrder.indexOf(elementId), 0, elementId);
-
-    return {
-        offsets: { ...state.offsets, [elementId]: { x: 0, y: 0 } },
-        sizes: {
-            ...state.sizes,
-            [elementId]: {
-                width: TEMPLATE_ELEMENT_FRAMES[templateId][elementId].width,
-                height: TEMPLATE_ELEMENT_FRAMES[templateId][elementId].height,
-            },
-        },
-        rotations: { ...state.rotations, [elementId]: 0 },
-        order: orderWithoutElement,
-        styles: {
-            ...state.styles,
-            ...(TEXT_LAYOUT_ELEMENT_IDS.includes(elementId as (typeof TEXT_LAYOUT_ELEMENT_IDS)[number])
-                ? { [elementId]: { ...createLayoutTextStyles(templateId)[elementId] } }
-                : {}),
-        },
-        visualStyles: {
-            ...state.visualStyles,
-            ...(SHAPE_LAYOUT_ELEMENT_IDS.includes(elementId as (typeof SHAPE_LAYOUT_ELEMENT_IDS)[number])
-                ? { [elementId]: { ...createLayoutVisualStyles(templateId)[elementId] } }
-                : {}),
-        },
-    };
-};
-
 export const moveLayoutElementInOrder = (
     order: LayoutOrder,
     elementId: LayoutElementId,

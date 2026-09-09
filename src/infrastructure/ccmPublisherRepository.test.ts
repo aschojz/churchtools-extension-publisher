@@ -4,12 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { createImageFocusByTemplate } from '../domain/imageFocus';
 import { createBlankPublisherPage } from '../domain/publisherPage';
 import type { PublisherDesignTemplate } from '../domain/publisherDesignTemplate';
-import type { PublisherDocumentRecord } from '../domain/publisherRepository';
-import type { PublisherDraft } from '../domain/publisherDraft';
+import { PUBLISHER_RECORD_VERSION, type PublisherDocumentRecord } from '../domain/publisherRepository';
+import { PUBLISHER_DRAFT_VERSION, type PublisherDraft } from '../domain/publisherDraft';
 import { createCcmPublisherRepository, type PublisherCcmClient } from './ccmPublisherRepository';
 
 const draft = (): PublisherDraft => ({
-    version: 1,
+    version: PUBLISHER_DRAFT_VERSION,
     selectedTemplateId: 'split',
     templateOverrides: {},
     layouts: {},
@@ -20,7 +20,7 @@ const draft = (): PublisherDraft => ({
 });
 
 const documentRecord = (): PublisherDocumentRecord => ({
-    version: 1,
+    version: PUBLISHER_RECORD_VERSION,
     id: 'document-1',
     name: 'Freies Dokument',
     revision: 0,

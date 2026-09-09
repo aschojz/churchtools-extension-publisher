@@ -27,8 +27,6 @@ import DesignButton from '../design/DesignButton.vue';
 
 const props = defineProps<{
     hasImage: boolean;
-    hasTemplate: boolean;
-    hasTemplateOverrides: boolean;
 }>();
 
 const editorStore = usePublisherEditorStore();
@@ -36,7 +34,7 @@ const { activePage } = storeToRefs(usePublisherDocumentStore());
 const { dataFields } = storeToRefs(usePublisherAppointmentsStore());
 const {
     activeEditorTool, activeEditorToolLabel, canGroupLayoutSelection, canUngroupLayoutSelection,
-    hasLayoutSelection, hasMultipleLayoutSelection, selectedLayoutElement, selectedLayoutElementChanged,
+    hasLayoutSelection, hasMultipleLayoutSelection, selectedLayoutElement,
     selectedLayerPosition, selectedLayerTotal, selectedLayoutElements, selectedLayoutGroupDepth,
     selectedLayoutTextContent, snapEnabled,
 } = storeToRefs(editorStore);
@@ -53,7 +51,7 @@ const placeholderOptions = computed(() => dataFields.value
     .filter(({ type }) => type === 'text')
     .map((field) => publisherPlaceholderOptions(field)[0]));
 const formatterOptions = computed(() => dataFields.value
-    .filter(({ formatType }) => formatType === 'date' || formatType === 'time')
+    .filter(({ formatType }) => formatType === 'date' || formatType === 'time' || formatType === 'list')
     .flatMap((field) => publisherPlaceholderOptions(field).slice(1).map((option) => ({
         label: `${field.label}: ${resolvePublisherPlaceholders(option.placeholder, { [field.id]: field })}`,
         placeholder: option.placeholder,
@@ -83,8 +81,6 @@ const emit = defineEmits<{
     distribute: [axis: LayoutDistributionAxis];
     group: [];
     resetImageFocus: [];
-    resetSelection: [];
-    resetTemplateOverrides: [];
     setGroupAutoLayout: [settings: {
         axis: LayoutDistributionAxis;
         gap: number;
@@ -150,14 +146,12 @@ const insertFormatter = (event: Event) => {
                     <option v-for="option in placeholderOptions" :key="option.placeholder" :value="option.placeholder">{{ option.label }}</option>
                 </select>
             </template>
-            <select v-if="!selectedQrElement && formatterOptions.length" aria-label="Datum oder Uhrzeit formatieren" value="" @change="insertFormatter">
+            <select v-if="!selectedQrElement && formatterOptions.length" aria-label="Datum, Uhrzeit oder Liste formatieren" value="" @change="insertFormatter">
                 <option value="">Formatierung</option>
                 <option v-for="option in formatterOptions" :key="option.placeholder" :value="option.placeholder">{{ option.label }}</option>
             </select>
         </div>
         <div v-if="hasLayoutSelection" class="publisher-contextbar__actions" aria-label="Kontextaktionen für Auswahl">
-            <DesignButton variant="ghost" size="compact" :disabled="!selectedLayoutElementChanged" @click="emit('resetSelection')">Zurücksetzen</DesignButton>
-            <span class="publisher-contextbar__separator" aria-hidden="true" />
             <details class="publisher-alignment-popover publisher-layer-popover">
                 <summary><span>Ebenen</span><FontAwesomeIcon :icon="faAngleDown" aria-hidden="true" /></summary>
                 <div class="publisher-alignment-popover__panel publisher-layer-popover__panel">
@@ -202,11 +196,10 @@ const insertFormatter = (event: Event) => {
                 </div>
             </details>
         </div>
-        <div v-else-if="activeEditorTool === 'data'" class="publisher-contextbar__actions">
-            <DesignButton variant="ghost" size="compact" :disabled="!hasTemplateOverrides" @click="emit('resetTemplateOverrides')">Alle Inhalte zurücksetzen</DesignButton>
-            <DesignButton v-if="hasImage" variant="ghost" size="compact" @click="emit('resetImageFocus')">Bildausschnitt zentrieren</DesignButton>
+        <div v-else-if="activeEditorTool === 'data' && hasImage" class="publisher-contextbar__actions">
+            <DesignButton variant="ghost" size="compact" @click="emit('resetImageFocus')">Bildausschnitt zentrieren</DesignButton>
         </div>
         <div v-else class="publisher-contextbar__hint">{{ activeEditorTool === 'layout' ? 'Element auf der Seite oder in der Ebenenliste auswählen' : 'Einstellungen im rechten Bedienfeld' }}</div>
-        <label class="publisher-contextbar__toggle"><input type="checkbox" :checked="snapEnabled" :disabled="!hasTemplate" @change="updateSnap" /> Einrasten</label>
+        <label class="publisher-contextbar__toggle"><input type="checkbox" :checked="snapEnabled" @change="updateSnap" /> Einrasten</label>
     </div>
 </template>

@@ -10,12 +10,14 @@ import {
     type LayoutLayerTreeNode,
     type LayoutPoint,
 } from '../domain/layoutEditing';
+import { normalizeLayoutFilterStack, type LayoutFilters } from '../domain/layoutFilters';
 import EditableLayoutGroup from './EditableLayoutGroup.vue';
 
 const props = withDefaults(defineProps<{
     draggableGroupIds?: string[];
     editorScale: number;
     effects?: LayoutEffects;
+    filters?: LayoutFilters;
     groupFrames: Record<string, LayoutFrame>;
     lockedElementIds?: string[];
     nodes: LayoutLayerTreeNode[];
@@ -25,6 +27,7 @@ const props = withDefaults(defineProps<{
 }>(), {
     draggableGroupIds: () => [],
     effects: () => ({}),
+    filters: () => ({}),
     lockedElementIds: () => [],
     origin: () => ({ x: 0, y: 0 }),
     selectedGroupId: null,
@@ -62,6 +65,7 @@ const emit = defineEmits<{
             :draggable="draggableGroupIds.includes(node.id)"
             :editor-scale="editorScale"
             :effects="normalizeLayoutElementEffects(effects[node.id])"
+            :filters="normalizeLayoutFilterStack(filters[node.id])"
             :frame="localGroupFrame(node.id)!"
             :group-id="node.id"
             :locked="groupIsLocked(node.elementIds)"
@@ -76,6 +80,7 @@ const emit = defineEmits<{
                 :draggable-group-ids="draggableGroupIds"
                 :editor-scale="editorScale"
                 :effects="effects"
+                :filters="filters"
                 :group-frames="groupFrames"
                 :locked-element-ids="lockedElementIds"
                 :nodes="node.children"

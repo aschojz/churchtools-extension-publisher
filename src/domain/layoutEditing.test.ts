@@ -20,10 +20,6 @@ import {
     findLayoutGroupDepth,
     groupLayoutElements,
     createLayoutOffsets,
-    createLayoutRotations,
-    createLayoutSizes,
-    createLayoutTextStyles,
-    createLayoutVisualStyles,
     distributeLayoutFrames,
     isHexColor,
     layoutElementLabel,
@@ -39,7 +35,6 @@ import {
     nestLayoutNodeInGroup,
     resizeLayoutFrame,
     resizeLayoutFrameProportionally,
-    resetLayoutElementState,
     snapLayoutPoint,
     snapLayoutSize,
     snapRotation,
@@ -396,44 +391,6 @@ describe('layout editing', () => {
             { kind: 'element', id: 'image', elementId: 'image' },
             { kind: 'element', id: 'background', elementId: 'background' },
         ]);
-    });
-
-    it('resets only the selected element geometry and default layer position', () => {
-        const state = {
-            offsets: {
-                ...createLayoutOffsets(),
-                title: { x: 40, y: 20 },
-                dateTime: { x: 15, y: 10 },
-                location: { x: 0, y: 0 },
-            },
-            sizes: {
-                ...createLayoutSizes('split'),
-                title: { width: 500, height: 200 },
-                dateTime: { width: 400, height: 60 },
-                location: { width: 760, height: 170 },
-            },
-            rotations: { ...createLayoutRotations(), title: 30, dateTime: 15, location: 0 },
-            order: ['background', 'image', 'accent', 'dateTime', 'location', 'title'] as const,
-            styles: {
-                ...createLayoutTextStyles('split'),
-                title: { ...createLayoutTextStyles('split').title, fontSize: 120, color: '#123456' },
-            },
-            visualStyles: createLayoutVisualStyles('split'),
-        };
-
-        const reset = resetLayoutElementState('split', 'title', {
-            ...state,
-            order: [...state.order],
-        });
-
-        expect(reset.offsets.title).toEqual({ x: 0, y: 0 });
-        expect(reset.sizes.title).toEqual({ width: 760, height: 310 });
-        expect(reset.rotations.title).toBe(0);
-        expect(reset.order).toEqual(['background', 'image', 'accent', 'title', 'dateTime', 'location']);
-        expect(reset.styles.title).toEqual(createLayoutTextStyles('split').title);
-        expect(reset.offsets.dateTime).toEqual(state.offsets.dateTime);
-        expect(reset.sizes.dateTime).toEqual(state.sizes.dateTime);
-        expect(reset.rotations.dateTime).toBe(15);
     });
 
     it('validates text color and constrains font sizes', () => {

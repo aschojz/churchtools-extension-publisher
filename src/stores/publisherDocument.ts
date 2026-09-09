@@ -1,15 +1,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
-import {
-    cloneLayoutState,
-    commitLayoutHistory,
-    createLayoutHistory,
-    redoLayoutHistory,
-    undoLayoutHistory,
-    type LayoutHistory,
-    type SerializableLayoutState,
-} from '../domain/layoutHistory';
+import { cloneLayoutState, type SerializableLayoutState } from '../domain/layoutHistory';
 import {
     clonePublisherPage,
     createBlankPublisherPage,
@@ -17,17 +9,25 @@ import {
     MAX_PUBLISHER_PAGE_NAME_LENGTH,
     type PublisherPage,
 } from '../domain/publisherPage';
+import {
+    clonePublisherDocumentSnapshot,
+    commitPublisherDocumentHistory,
+    createPublisherDocumentHistory,
+    redoPublisherDocumentHistory,
+    undoPublisherDocumentHistory,
+    type PublisherDocumentSnapshot,
+} from '../domain/publisherDocumentHistory';
 import type { TemplateId } from '../domain/templates';
 import { createImageFocusByTemplate } from '../domain/imageFocus';
-
-const historyKey = (pageId: string, templateId: TemplateId) => `${pageId}:${templateId}`;
 
 export const usePublisherDocumentStore = defineStore('publisherDocument', () => {
     const initialPage = createBlankPublisherPage();
     const pages = ref<PublisherPage[]>([initialPage]);
     const activePageId = ref(initialPage.id);
     const revision = ref(0);
-    const histories = ref<Record<string, LayoutHistory>>({});
+    const documentHistory = ref(createPublisherDocumentHistory());
+    const canUndoDocument = computed(() => documentHistory.value.past.length > 0);
+    const canRedoDocument = computed(() => documentHistory.value.future.length > 0);
     const activePage = computed(() => pages.value.find(({ id }) => id === activePageId.value) ?? pages.value[0]!);
     const selectedTemplateId = computed<TemplateId>({
         get: () => activePage.value.templateId,
@@ -47,6 +47,28 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
     };
 
     const pageById = (pageId: string) => pages.value.find(({ id }) => id === pageId);
+
+    const captureDocumentSnapshot = (): PublisherDocumentSnapshot => ({
+        pages: pages.value.map((page) => clonePublisherPage(page)),
+        activePageId: activePageId.value,
+    });
+
+    const applyDocumentSnapshot = (snapshot: PublisherDocumentSnapshot) => {
+        const restored = clonePublisherDocumentSnapshot(snapshot);
+        pages.value = restored.pages;
+        activePageId.value = restored.pages.some(({ id }) => id === restored.activePageId)
+            ? restored.activePageId
+            : restored.pages[0]!.id;
+        revision.value += 1;
+    };
+
+    const commitDocumentMutation = (previousSnapshot: PublisherDocumentSnapshot) => {
+        documentHistory.value = commitPublisherDocumentHistory(
+            documentHistory.value,
+            previousSnapshot,
+            captureDocumentSnapshot(),
+        );
+    };
 
     const ensurePageLayout = (
         pageId: string,
@@ -84,52 +106,33 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         return true;
     };
 
-    const getPageLayoutHistory = (pageId: string, templateId: TemplateId) =>
-        histories.value[historyKey(pageId, templateId)] ?? createLayoutHistory();
-
-    const replacePageLayoutHistory = (pageId: string, templateId: TemplateId, history: LayoutHistory) => {
-        histories.value = { ...histories.value, [historyKey(pageId, templateId)]: history };
-    };
-
-    const resetPageLayoutHistory = (pageId: string, templateId?: TemplateId) => {
-        const prefix = `${pageId}:`;
-        histories.value = Object.fromEntries(Object.entries(histories.value).filter(([key]) =>
-            templateId ? key !== historyKey(pageId, templateId) : !key.startsWith(prefix)));
-    };
-
     const commitPageLayout = (
         pageId: string,
         templateId: TemplateId,
         previousState: SerializableLayoutState,
         currentState: SerializableLayoutState,
     ) => {
-        const history = commitLayoutHistory(getPageLayoutHistory(pageId, templateId), previousState, currentState);
-        replacePageLayoutHistory(pageId, templateId, history);
-        replacePageLayout(pageId, templateId, currentState);
-        return history;
-    };
+        const page = pageById(pageId);
+        if (!page) return false;
 
-    const undoPageLayout = (pageId: string, templateId: TemplateId) => {
-        const current = pageById(pageId)?.layouts[templateId];
-        if (!current) return null;
-        const result = undoLayoutHistory(getPageLayoutHistory(pageId, templateId), current);
-        if (!result) return null;
-        replacePageLayoutHistory(pageId, templateId, result.history);
-        replacePageLayout(pageId, templateId, result.state);
-        return result;
-    };
-
-    const redoPageLayout = (pageId: string, templateId: TemplateId) => {
-        const current = pageById(pageId)?.layouts[templateId];
-        if (!current) return null;
-        const result = redoLayoutHistory(getPageLayoutHistory(pageId, templateId), current);
-        if (!result) return null;
-        replacePageLayoutHistory(pageId, templateId, result.history);
-        replacePageLayout(pageId, templateId, result.state);
-        return result;
+        const currentSnapshot = captureDocumentSnapshot();
+        const previousSnapshot = clonePublisherDocumentSnapshot(currentSnapshot);
+        const previousPage = previousSnapshot.pages.find(({ id }) => id === pageId)!;
+        const currentPage = currentSnapshot.pages.find(({ id }) => id === pageId)!;
+        previousPage.layouts = { ...previousPage.layouts, [templateId]: cloneLayoutState(previousState) };
+        currentPage.layouts = { ...currentPage.layouts, [templateId]: cloneLayoutState(currentState) };
+        page.layouts = { ...page.layouts, [templateId]: cloneLayoutState(currentState) };
+        documentHistory.value = commitPublisherDocumentHistory(
+            documentHistory.value,
+            previousSnapshot,
+            currentSnapshot,
+        );
+        revision.value += 1;
+        return true;
     };
 
     const addPage = (width: number, height: number, templateId: TemplateId) => {
+        const previousSnapshot = captureDocumentSnapshot();
         const pageNumbers = pages.value
             .map(({ name }) => /^Seite (\d+)$/.exec(name)?.[1])
             .map(Number)
@@ -143,12 +146,14 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         pages.value = [...pages.value, page];
         activePageId.value = page.id;
         revision.value += 1;
+        commitDocumentMutation(previousSnapshot);
         return page;
     };
 
     const duplicatePage = (pageId: string) => {
         const pageIndex = pages.value.findIndex(({ id }) => id === pageId);
         if (pageIndex < 0) return null;
+        const previousSnapshot = captureDocumentSnapshot();
         const source = pages.value[pageIndex]!;
         const duplicate = clonePublisherPage(source, true);
         duplicate.name = `${source.name.slice(0, MAX_PUBLISHER_PAGE_NAME_LENGTH - 6)} Kopie`;
@@ -159,6 +164,7 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         ];
         activePageId.value = duplicate.id;
         revision.value += 1;
+        commitDocumentMutation(previousSnapshot);
         return duplicate;
     };
 
@@ -166,8 +172,10 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         const page = pageById(pageId);
         const normalizedName = name.trim().slice(0, MAX_PUBLISHER_PAGE_NAME_LENGTH);
         if (!page || !normalizedName || page.name === normalizedName) return false;
+        const previousSnapshot = captureDocumentSnapshot();
         page.name = normalizedName;
         revision.value += 1;
+        commitDocumentMutation(previousSnapshot);
         return true;
     };
 
@@ -175,6 +183,7 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         const sourceIndex = pages.value.findIndex(({ id }) => id === pageId);
         const targetIndex = pages.value.findIndex(({ id }) => id === targetPageId);
         if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return false;
+        const previousSnapshot = captureDocumentSnapshot();
         const reordered = [...pages.value];
         const [page] = reordered.splice(sourceIndex, 1);
         let insertionIndex = reordered.findIndex(({ id }) => id === targetPageId);
@@ -183,6 +192,7 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         if (reordered.every(({ id }, index) => id === pages.value[index]?.id)) return false;
         pages.value = reordered;
         revision.value += 1;
+        commitDocumentMutation(previousSnapshot);
         return true;
     };
 
@@ -190,22 +200,24 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         if (pages.value.length <= 1) return false;
         const pageIndex = pages.value.findIndex(({ id }) => id === pageId);
         if (pageIndex < 0) return false;
+        const previousSnapshot = captureDocumentSnapshot();
         pages.value = pages.value.filter(({ id }) => id !== pageId);
-        resetPageLayoutHistory(pageId);
         if (activePageId.value === pageId) {
             activePageId.value = pages.value[Math.max(0, pageIndex - 1)]!.id;
         }
         revision.value += 1;
+        commitDocumentMutation(previousSnapshot);
         return true;
     };
 
     const replaceActivePageTemplate = (templateId: TemplateId) => {
+        const previousSnapshot = captureDocumentSnapshot();
         const page = activePage.value;
         page.templateId = templateId;
         page.layouts = { [templateId]: createStandardPublisherLayout(templateId, page.width, page.height) };
         page.imageFocus = createImageFocusByTemplate();
-        resetPageLayoutHistory(page.id);
         revision.value += 1;
+        commitDocumentMutation(previousSnapshot);
     };
 
     const replacePages = (nextPages: PublisherPage[], nextActivePageId?: string) => {
@@ -214,8 +226,40 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         activePageId.value = pages.value.some(({ id }) => id === nextActivePageId)
             ? nextActivePageId!
             : pages.value[0]!.id;
-        histories.value = {};
+        documentHistory.value = createPublisherDocumentHistory();
         revision.value += 1;
+        return true;
+    };
+
+    const replacePagesWithHistory = (nextPages: PublisherPage[], nextActivePageId?: string) => {
+        if (nextPages.length === 0) return false;
+        const previousSnapshot = captureDocumentSnapshot();
+        pages.value = nextPages.map((page) => clonePublisherPage(page));
+        activePageId.value = pages.value.some(({ id }) => id === nextActivePageId)
+            ? nextActivePageId!
+            : pages.value[0]!.id;
+        revision.value += 1;
+        commitDocumentMutation(previousSnapshot);
+        return true;
+    };
+
+    const resetDocumentHistory = () => {
+        documentHistory.value = createPublisherDocumentHistory();
+    };
+
+    const undoDocument = () => {
+        const result = undoPublisherDocumentHistory(documentHistory.value, captureDocumentSnapshot());
+        if (!result) return false;
+        documentHistory.value = result.history;
+        applyDocumentSnapshot(result.snapshot);
+        return true;
+    };
+
+    const redoDocument = () => {
+        const result = redoPublisherDocumentHistory(documentHistory.value, captureDocumentSnapshot());
+        if (!result) return false;
+        documentHistory.value = result.history;
+        applyDocumentSnapshot(result.snapshot);
         return true;
     };
 
@@ -224,27 +268,28 @@ export const usePublisherDocumentStore = defineStore('publisherDocument', () => 
         activePageId,
         activatePage,
         addPage,
+        canRedoDocument,
+        canUndoDocument,
         commitPageLayout,
+        documentHistory,
         draftLayouts,
         duplicatePage,
         ensurePageLayout,
-        getPageLayoutHistory,
-        histories,
         imageFocusByTemplate,
         pageById,
         pages,
-        redoPageLayout,
+        redoDocument,
         renamePage,
         removePage,
         replaceActivePageTemplate,
         replacePageLayout,
-        replacePageLayoutHistory,
         replacePageLayoutSection,
         replacePages,
-        resetPageLayoutHistory,
+        replacePagesWithHistory,
+        resetDocumentHistory,
         revision,
         selectedTemplateId,
         movePage,
-        undoPageLayout,
+        undoDocument,
     };
 });

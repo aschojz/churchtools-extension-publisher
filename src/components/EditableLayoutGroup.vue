@@ -9,11 +9,14 @@ import {
     type LayoutElementEffects,
     type LayoutFrame,
 } from '../domain/layoutEditing';
+import { layoutFilterStackHasEnabled, type LayoutFilterStack } from '../domain/layoutFilters';
+import { configureLayoutKonvaFilterValues, layoutKonvaFilterFunctions } from '../utils/layoutKonvaFilters';
 
 const props = defineProps<{
     draggable: boolean;
     editorScale: number;
     effects: LayoutElementEffects;
+    filters: LayoutFilterStack;
     frame: LayoutFrame;
     groupId: string;
     locked: boolean;
@@ -41,9 +44,13 @@ const syncCompositeEffects = async () => {
     node.clearCache();
     node.filters([]);
     node.blurRadius(0);
-    if (layoutElementHasEffects(props.effects) && (props.effects.shadow.enabled || props.effects.blur.enabled)) {
+    configureLayoutKonvaFilterValues(node, props.filters);
+    const blurEnabled = props.effects.blur.enabled && props.effects.blur.radius > 0;
+    const hasRasterEffects = layoutElementHasEffects(props.effects) && (props.effects.shadow.enabled || blurEnabled);
+    const hasFilters = layoutFilterStackHasEnabled(props.filters);
+    if (hasRasterEffects || hasFilters) {
         const padding = Math.ceil(Math.max(
-            props.effects.blur.enabled ? props.effects.blur.radius * 2 : 0,
+            blurEnabled ? props.effects.blur.radius * 2 : 0,
             props.effects.shadow.enabled
                 ? props.effects.shadow.blur * 2 + Math.max(Math.abs(props.effects.shadow.offsetX), Math.abs(props.effects.shadow.offsetY))
                 : 0,
@@ -55,15 +62,21 @@ const syncCompositeEffects = async () => {
             height: props.frame.height + padding * 2,
             pixelRatio: 1,
         });
-        if (props.effects.blur.enabled && props.effects.blur.radius > 0) {
-            node.filters([Blur]);
+        const filters = [
+            ...(blurEnabled ? [Blur] : []),
+            ...layoutKonvaFilterFunctions(props.filters),
+        ];
+        if (filters.length > 0) {
+            node.filters(filters);
+        }
+        if (blurEnabled) {
             node.blurRadius(props.effects.blur.radius);
         }
     }
     node.getLayer()?.batchDraw();
 };
 
-watch(() => [props.effects, props.frame.width, props.frame.height, props.renderRevision], syncCompositeEffects, {
+watch(() => [props.effects, props.filters, props.frame.width, props.frame.height, props.renderRevision], syncCompositeEffects, {
     deep: true,
     immediate: true,
 });

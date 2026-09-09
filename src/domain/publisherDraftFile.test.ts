@@ -7,10 +7,10 @@ import {
     parsePublisherDraftFile,
     serializePublisherDraftFile,
 } from './publisherDraftFile';
-import type { PublisherDraft } from './publisherDraft';
+import { PUBLISHER_DRAFT_VERSION, type PublisherDraft } from './publisherDraft';
 
 const draft: PublisherDraft = {
-    version: 1,
+    version: PUBLISHER_DRAFT_VERSION,
     selectedTemplateId: 'poster',
     templateOverrides: { title: 'Portabler Titel' },
     layouts: {},

@@ -24,12 +24,14 @@ export interface PublisherRelatedDataSource {
     status: PublisherRelatedDataSourceStatus;
     fieldCount: number;
     error?: string;
+    warning?: string;
 }
 
 interface RelatedFieldMetadata {
     multiline?: boolean;
     formatType?: PublisherDataField['formatType'];
     rawValue?: string;
+    values?: string[];
 }
 
 const textValue = (value: unknown) => typeof value === 'string' ? value.trim() : '';
@@ -59,6 +61,7 @@ const relatedField = (
     placeholder: `{{${id}}}`,
     formatType: metadata.formatType,
     rawValue: metadata.rawValue,
+    values: metadata.values,
     locale: metadata.formatType ? options.locale : undefined,
     timeZone: metadata.formatType ? options.timeZone : undefined,
     sourceId: source.id,
@@ -157,7 +160,11 @@ export const createEventDataFields = (
         const entries = [...serviceGroup.entries].sort((left, right) => (left.index ?? 0) - (right.index ?? 0));
         const names = entries.map(servicePersonName).filter(Boolean);
         const baseId = `eventService-${serviceKey}`.slice(0, 48).replace(/-$/, '');
-        coreFields.push(relatedField(baseId, serviceGroup.label, 'text', names.join(', '), source, options));
+        coreFields.push(relatedField(baseId, serviceGroup.label, 'text', names.join(', '), source, options, {
+            multiline: names.length > 1,
+            formatType: 'list',
+            values: names,
+        }));
     }
 
     return coreFields.filter(({ id, sourceId, value }) => sourceId === 'event' && (

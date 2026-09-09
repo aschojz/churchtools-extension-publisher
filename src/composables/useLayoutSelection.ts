@@ -11,9 +11,9 @@ export const useLayoutSelection = (
 ) => {
     const editorStore = usePublisherEditorStore();
     const {
-        canGroupLayoutSelection, canRedoLayout, canUndoLayout, canUngroupLayoutSelection,
+        canGroupLayoutSelection, canUngroupLayoutSelection,
         hasLayoutSelection, hasMultipleLayoutSelection, layoutChanged, selectedLayerPosition,
-        selectedLayerTotal, selectedLayoutElement, selectedLayoutElementChanged, selectedLayoutElements,
+        selectedLayerTotal, selectedLayoutElement, selectedLayoutElements,
         selectedLayoutGeometry, selectedLayoutGroupDepth, selectedLayoutStyle, selectedLayoutTextContent,
         selectedLayoutVisualStyle,
     } = storeToRefs(editorStore);
@@ -22,10 +22,6 @@ export const useLayoutSelection = (
 
     const clearLayoutSelection = () => templateRef.value?.clearSelection();
     const deleteLayoutElements = (ids: LayoutElementId[]) => templateRef.value?.deleteElements(ids);
-    const resetLayout = () => templateRef.value?.resetLayout();
-    const resetSelectedLayoutElement = () => templateRef.value?.resetSelectedElement();
-    const undoLayout = () => templateRef.value?.undoLayout();
-    const redoLayout = () => templateRef.value?.redoLayout();
     const nudgeLayoutElement = (x: number, y: number) => templateRef.value?.nudgeSelectedElement(x, y);
     const alignLayoutElement = (alignment: LayoutAlignment) => templateRef.value?.alignSelectedElement(alignment);
     const changeSelectedLayer = (direction: -1 | 1) => templateRef.value?.changeSelectedLayer(direction);
@@ -65,15 +61,15 @@ export const useLayoutSelection = (
     };
 
     return {
-        alignLayoutElement, canGroupLayoutSelection, canRedoLayout, canUndoLayout, canUngroupLayoutSelection,
+        alignLayoutElement, canGroupLayoutSelection, canUngroupLayoutSelection,
         changeSelectedLayer, clearLayoutSelection, deleteLayoutElements, hasLayoutSelection, hasMultipleLayoutSelection,
-        layoutChanged, nudgeLayoutElement, redoLayout, resetLayout, resetSelectedLayoutElement,
+        layoutChanged, nudgeLayoutElement,
         restoreSelectedFontSizeInput, restoreSelectedLayoutGeometryInput, selectedLayerPosition, selectedLayerTotal,
-        selectedLayoutElement, selectedLayoutElementChanged, selectedLayoutElements, selectedLayoutGeometry,
+        selectedLayoutElement, selectedLayoutElements, selectedLayoutGeometry,
         selectedLayoutGroupDepth, selectedLayoutStyle, selectedLayoutVisualStyle, selectLayoutElement,
         selectedLayoutTextContent,
-        selectLayoutGroup, undoLayout, updateLayerPosition: editorStore.updateLayerPosition,
-        updateLayoutGrouping: editorStore.updateLayoutGrouping, updateLayoutHistory: editorStore.updateLayoutHistory,
+        selectLayoutGroup, updateLayerPosition: editorStore.updateLayerPosition,
+        updateLayoutGrouping: editorStore.updateLayoutGrouping,
         updateSelectedLayoutGeometry, updateSelectedTextContent, updateSelectedTextStyle, updateSelectedVisualStyle,
     };
 };

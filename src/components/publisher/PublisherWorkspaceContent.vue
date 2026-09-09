@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { faCalendarDays } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { storeToRefs } from 'pinia';
 import { nextTick, onBeforeUnmount, watch } from 'vue';
 
@@ -10,11 +8,9 @@ import type { SerializableLayoutState } from '../../domain/layoutHistory';
 import type { PublisherCanvasExportOptions } from '../../domain/publisherExport';
 import { pageShowsTemplateDecorations } from '../../domain/publisherPage';
 import type { TemplateId } from '../../domain/templates';
-import { usePublisherAppointmentsStore } from '../../stores/publisherAppointments';
 import { usePublisherDocumentStore } from '../../stores/publisherDocument';
 import { usePublisherEditorStore } from '../../stores/publisherEditor';
 import EventTemplate from '../EventTemplate.vue';
-import DesignButton from '../design/DesignButton.vue';
 
 const props = defineProps<{
     detailsError: boolean;
@@ -23,7 +19,7 @@ const props = defineProps<{
     draftId: string;
     exportError: string;
     imageStatus: 'idle' | 'loading' | 'loaded' | 'error';
-    template: EventTemplateProps | null;
+    template: EventTemplateProps;
 }>();
 
 const emit = defineEmits<{
@@ -34,11 +30,10 @@ const emit = defineEmits<{
 
 const documentStore = usePublisherDocumentStore();
 const editorStore = usePublisherEditorStore();
-const appointmentStore = usePublisherAppointmentsStore();
 const { activePageId, pages } = storeToRefs(documentStore);
 const {
-    availableLayoutElements, canRedoLayout, canUndoLayout, layoutChanged, previewZoomPercent,
-    selectedLayerPosition, selectedLayerTotal, selectedLayoutElementChanged,
+    availableLayoutElements, layoutChanged, previewZoomPercent,
+    selectedLayerPosition, selectedLayerTotal,
     selectedLayoutGeometry, selectedLayoutGroupPath, selectedLayoutStyle,
     selectedLayoutTextContent, selectedLayoutTextMode, selectedLayoutVisualStyle, snapEnabled,
 } = storeToRefs(editorStore);
@@ -97,10 +92,6 @@ const activatePage = (pageId: string) => {
     editorStore.activateCanvasPage(pageId);
     documentStore.activatePage(pageId);
 };
-const openAppointments = () => {
-    appointmentStore.appointmentDialogOpen = true;
-    editorStore.activeEditorTool = 'appointments';
-};
 const exportPage = async (pageId: string, options: PublisherCanvasExportOptions) => {
     const template = pageTemplateRefs.get(pageId);
     if (!template) throw new Error('Die Seite ist noch nicht bereit.');
@@ -131,13 +122,9 @@ defineExpose({ exportPage });
 </script>
 
 <template>
-    <div v-if="detailsPending" class="publisher-workspace__empty" role="status">Termindetails werden geladen …</div>
-    <div v-else-if="detailsError" class="publisher-workspace__empty publisher-workspace__empty--error" role="alert">Die Termindetails konnten nicht geladen werden.</div>
-    <div v-else-if="!template" class="publisher-workspace__empty">
-        <div class="publisher-workspace__empty-icon"><FontAwesomeIcon :icon="faCalendarDays" aria-hidden="true" /></div>
-        <h1>Erste Seite anlegen</h1><p>Wähle einen Termin aus ChurchTools. Die Seite wird anschließend direkt auf der Arbeitsfläche angezeigt.</p><DesignButton @click="openAppointments">Termin auswählen</DesignButton>
-    </div>
-    <div v-else class="publisher-workspace__canvas">
+    <div class="publisher-workspace__canvas">
+        <p v-if="detailsPending" class="status-message publisher-workspace__message" role="status">Termindetails werden geladen … Das Layout bleibt bearbeitbar.</p>
+        <p v-if="detailsError" class="status-message status-message--warning publisher-workspace__message" role="alert">Die Termindetails konnten nicht geladen werden. Das Layout bleibt unverändert.</p>
         <p v-if="imageStatus === 'error'" class="status-message status-message--warning publisher-workspace__message" role="status">Das Veranstaltungsbild konnte nicht geladen werden. Die Fallback-Fläche wird verwendet.</p>
         <p v-if="exportError" class="status-message status-message--error publisher-workspace__message" role="alert">{{ exportError }}</p>
         <article v-for="page in pages" :key="page.id" class="publisher-artboard" :class="{ 'is-active': isActive(page.id) }" :data-page-id="page.id" @dragenter="activatePage(page.id)" @mousedown.capture="activatePage(page.id)">
@@ -156,7 +143,6 @@ defineExpose({ exportPage });
                 :snap-enabled="snapEnabled"
                 :show-template-decorations="pageShowsTemplateDecorations(page)"
                 @image-status="handleImageStatus(page.id, $event)"
-                @history-change="(canUndo, canRedo) => { if (isActive(page.id)) { canUndoLayout = canUndo; canRedoLayout = canRedo; } }"
                 @available-elements-change="isActive(page.id) && (availableLayoutElements = $event)"
                 @layer-position-change="(position, total) => { if (isActive(page.id)) { selectedLayerPosition = position; selectedLayerTotal = total; } }"
                 @layout-change="isActive(page.id) && (layoutChanged = $event)"
@@ -164,7 +150,6 @@ defineExpose({ exportPage });
                 @render-content-change="schedulePageThumbnail(page.id, 40)"
                 @selection-group-change="(canGroup, canUngroup, depth) => isActive(page.id) && editorStore.updateLayoutGrouping(canGroup, canUngroup, depth)"
                 @selection-group-path-change="isActive(page.id) && (selectedLayoutGroupPath = [...$event])"
-                @selection-default-change="isActive(page.id) && (selectedLayoutElementChanged = $event)"
                 @selection-geometry-change="isActive(page.id) && (selectedLayoutGeometry = $event)"
                 @selection-style-change="isActive(page.id) && (selectedLayoutStyle = $event)"
                 @selection-text-content-change="isActive(page.id) && (selectedLayoutTextContent = $event)"

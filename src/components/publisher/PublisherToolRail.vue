@@ -17,7 +17,6 @@ import type { LayoutCustomElementKind, LayoutTextMode } from '../../domain/layou
 import { PUBLISHER_ICONS, type PublisherIconName } from '../../domain/publisherIcons';
 import DesignIconButton from '../design/DesignIconButton.vue';
 
-defineProps<{ disabled: boolean }>();
 const emit = defineEmits<{
     add: [kind: Exclude<LayoutCustomElementKind, 'image' | 'text'>];
     addImage: [];
@@ -36,47 +35,41 @@ const chooseIcon = (iconName: PublisherIconName) => {
     <div class="publisher-toolrail" role="toolbar" aria-label="Elemente hinzufügen">
         <DesignIconButton
             label="Grafiktext hinzufügen"
-            :disabled="disabled"
             :icon="faFont"
             @click="emit('addText', 'graphic')"
         />
         <DesignIconButton
             label="Rahmentext hinzufügen"
-            :disabled="disabled"
             :icon="faParagraph"
             @click="emit('addText', 'frame')"
         />
-        <DesignIconButton label="Bild hinzufügen" :disabled="disabled" :icon="faImage" @click="emit('addImage')" />
+        <DesignIconButton label="Bild hinzufügen" :icon="faImage" @click="emit('addImage')" />
         <span class="publisher-toolrail__separator" aria-hidden="true" />
         <DesignIconButton
             label="Quadrat hinzufügen"
-            :disabled="disabled"
             :icon="faSquare"
             @click="emit('add', 'rectangle')"
         />
         <DesignIconButton
             label="Kreis hinzufügen"
-            :disabled="disabled"
             :icon="faCircle"
             @click="emit('add', 'circle')"
         />
         <DesignIconButton
             label="Dreieck hinzufügen"
-            :disabled="disabled"
             :icon="faPlay"
             :rotation="270"
             @click="emit('add', 'triangle')"
         />
-        <DesignIconButton label="Strich hinzufügen" :disabled="disabled" :icon="faMinus" @click="emit('add', 'line')" />
+        <DesignIconButton label="Strich hinzufügen" :icon="faMinus" @click="emit('add', 'line')" />
         <DesignIconButton
             label="Font-Awesome-Icon hinzufügen"
-            :disabled="disabled"
             :active="iconMenuOpen"
             :icon="faIcons"
             toggle
             @click="iconMenuOpen = !iconMenuOpen"
         />
-        <DesignIconButton label="QR-Code hinzufügen" :disabled="disabled" :icon="faQrcode" @click="emit('addQr')" />
+        <DesignIconButton label="QR-Code hinzufügen" :icon="faQrcode" @click="emit('addQr')" />
         <div v-if="iconMenuOpen" class="publisher-toolrail__icon-menu" role="menu" aria-label="Icon auswählen">
             <button
                 v-for="item in PUBLISHER_ICONS"

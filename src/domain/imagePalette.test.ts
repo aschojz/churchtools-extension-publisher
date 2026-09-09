@@ -22,6 +22,8 @@ describe('image palettes', () => {
         expect(palette.background).toBe('#2a2422');
         expect(palette.colors).toHaveLength(5);
         expect(colorContrastRatio(palette.background, palette.foreground)).toBeGreaterThanOrEqual(4.5);
+        expect([palette.primary, palette.background, palette.foreground].every((role) =>
+            palette.colors.some(({ hex }) => hex === role))).toBe(true);
     });
 
     it('keeps the nine most populous extracted image colors', () => {
@@ -34,6 +36,8 @@ describe('image palettes', () => {
         expect(palette.colors).toHaveLength(9);
         expect(palette.colors[0]?.hex).toBe('#00000b');
         expect(palette.colors.at(-1)?.hex).toBe('#000003');
+        expect([palette.primary, palette.background, palette.foreground].every((role) =>
+            palette.colors.some(({ hex }) => hex === role))).toBe(true);
     });
 
     it('resolves bindings only after their image palette is available', () => {

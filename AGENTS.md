@@ -58,6 +58,7 @@ Es gibt aktuell keinen Lint-, Format- oder Visual-Regression-Runner. Playwright 
 - Dynamische Text- und Farbbindungen speichern die Variable beziehungsweise das Farb-Token plus Fallback. Aufgelöste Terminwerte oder analysierte Farben werden nicht destruktiv in die Vorlage geschrieben.
 - Vorlagen müssen alle Seiten, Seitengrößen, Ebenen, Gruppen, Bindungen, Effekte und Bildfokusse enthalten. Keine neuen Funktionen auf ein Einzelseiten-Vorlagenmodell zuschneiden.
 - Sichtbarkeit und Sperren sind nicht destruktiv. Löschen muss über Undo rückgängig zu machen sein, sofern keine ausdrücklich bestätigte Dokumentlöschung vorliegt.
+- Canvas-Änderungen, Seitenoperationen und das Anwenden einer Vorlage teilen eine chronologische Dokumenthistorie. Öffnen oder Erstellen eines eigenständigen Dokuments setzt diese Historie zurück; reine Seitennavigation erzeugt keinen Eintrag.
 - Beim Export sind Auswahlrahmen, Handles, Hilfslinien und Editor-Chrome ausgeschlossen; die Ausgabedimension muss exakt der Seitengröße entsprechen.
 
 ## Persistenz und Migrationen
@@ -69,6 +70,8 @@ Es gibt aktuell keinen Lint-, Format- oder Visual-Regression-Runner. Playwright 
 - Große Bild-Data-URLs nicht in Dokumenten oder `localStorage` ablegen. Persistente Bilder benötigen künftig eine offizielle ChurchTools-Asset-ID beziehungsweise stabile Asset-Referenz.
 - Dokumente und terminneutrale Vorlagen werden über `PublisherRepository` persistiert. ChurchTools/CCM-spezifische Endpunkte bleiben im Infrastrukturadapter und dürfen nicht in Store-, Canvas- oder Inspector-Komponenten durchsickern.
 - `publisher_documents` speichert Dokumente mit optionaler Terminreferenz; `publisher_templates` speichert ausschließlich terminneutrale Vorlagen. `localStorage` ist nur für eine einzelne Recovery-Kopie vorgesehen.
+- Abgeleitete Farbvoreinstellungen dürfen versioniert in IndexedDB gecacht werden. Dabei weder Bildbytes noch vollständige Bild-URLs speichern; Cache-Schlüssel aus einem stabilen Quellen-Hash ableiten, der die URL nicht im Klartext enthält.
+- Ist das CCM-Modul nicht verfügbar, bleibt der Editor in einem lokalen Recovery-Status und pausiert automatische Remote-Wiederholungen. Explizites Speichern und ein erneutes Online-Ereignis dürfen den Remote-Speicher erneut prüfen; Konflikte, Rechte- und Validierungsfehler bleiben sichtbar.
 - Eigene Bild-Uploads bleiben deaktiviert, bis ein offizieller ChurchTools-Assetpfad feststeht. Keine Wiki-Seite als versteckten Dateicontainer einführen, ohne diese Architekturentscheidung ausdrücklich neu zu bewerten.
 - Limits zwischen Import, Upload und Speicherung müssen zueinander passen und in der UI erklärt werden.
 
@@ -88,7 +91,7 @@ Es gibt aktuell keinen Lint-, Format- oder Visual-Regression-Runner. Playwright 
 - Font-Awesome-Icons statt Textglyphen wie `×`, `＋`, `^` oder selbst gezeichneter Pfeile verwenden. Für aufklappbare Bereiche ist `angle-down` der Standard; Rotation zeigt den Zustand.
 - Icon-only-Buttons benötigen immer einen zugänglichen Namen und einen Tooltip beziehungsweise `title`.
 - Die rechte Seitenleiste besteht aus drei stabilen Bereichen: Farbe/Kontur, Text/Absatz/Ebenen sowie kompakt Transformieren. Tabwechsel sollen die Blockhöhen nicht springen lassen.
-- Kontextabhängige Ausrichtung und Ebenenaktionen gehören in die obere Kontextleiste. Der Ebenen-Footer enthält Effekte, künftig Filter, Sperren und Löschen als kompakte Icon-Aktionen.
+- Kontextabhängige Ausrichtung und Ebenenaktionen gehören in die obere Kontextleiste. Der Ebenen-Footer enthält Effekte, Filter, Sperren und Löschen als kompakte Icon-Aktionen.
 - Farbeingaben öffnen den gemeinsamen, per `Teleport` außerhalb von Scrollcontainern gerenderten Farbwähler. Keine browsernativen Farbfelder oder parallelen Picker einführen.
 - Modale Dialoge benötigen Escape, Fokusfalle, initialen Fokus, Fokus-Rückgabe und eine beschriftete Überschrift. Bevorzugt ein gemeinsames Dialog-Primitiv statt weiterer individueller Backdrops.
 - Tabs müssen vollständig tastaturbedienbar sein (`aria-controls`, Panel-IDs, roving focus und Pfeiltasten).

@@ -57,6 +57,22 @@ describe('appointment data fields', () => {
         expect(values.date.value).toBe('15. August 2026');
     });
 
+    it('renders list variables with safe predefined repeat formats', () => {
+        const values = {
+            sermon: {
+                value: 'Ada Lovelace, Grace Hopper',
+                values: ['Ada Lovelace', 'Grace Hopper'],
+                formatType: 'list' as const,
+                locale: 'de-DE',
+            },
+        };
+
+        expect(resolvePublisherPlaceholders('{{sermon|list:lines}}', values)).toBe('Ada Lovelace\nGrace Hopper');
+        expect(resolvePublisherPlaceholders('{{sermon|list:bullets}}', values)).toBe('• Ada Lovelace\n• Grace Hopper');
+        expect(resolvePublisherPlaceholders('{{sermon|list:and}}', values)).toBe('Ada Lovelace und Grace Hopper');
+        expect(resolvePublisherPlaceholders('{{sermon|list:first}}', values)).toBe('Ada Lovelace');
+    });
+
     it('validates transferred field data', () => {
         expect(parsePublisherDataTransfer(JSON.stringify({ id: 'title', label: 'Titel', type: 'text', value: 'Fest' })))
             .toEqual({ id: 'title', label: 'Titel', type: 'text', value: 'Fest' });

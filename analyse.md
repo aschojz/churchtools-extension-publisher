@@ -1,6 +1,6 @@
 # Technische und konzeptionelle Analyse des ChurchTools Publisher
 
-Stand: 8. September 2026
+Stand: 9. September 2026
 Untersuchter Stand: Audit auf Basis von Commit `66affa4`, Fundament-Umsetzung auf Basis von `a02005c`, CCM-Persistenz auf Basis von `1bacd72`
 Status: Audit plus Umsetzung der priorisierten Architektur- und Persistenzgrundlagen
 
@@ -19,7 +19,7 @@ Vor einem weiteren größeren Feature-Ausbau wurden vier Fundamente stabilisiert
 
 ## Umsetzungsstand der vier Fundamente
 
-1. **Kanonischer Pinia-Zustand:** Seiten, aktive Seite, serialisierbare Layouts und deren Undo-/Redo-Historien liegen nun im `PublisherDocumentStore`. Die Auswahl ist mit einer aktiven Seiten-ID im `PublisherEditorStore` gebunden. Gemountete Canvas-Seiten besitzen keine parallele persistierbare Layout- oder Auswahlkopie mehr.
+1. **Kanonischer Pinia-Zustand:** Seiten, aktive Seite, serialisierbare Layouts und eine chronologische Dokumenthistorie liegen nun im `PublisherDocumentStore`. Die Historie umfasst Canvas-Änderungen, Seitenoperationen und atomare Vorlagenanwendungen; Öffnen und Neuanlegen setzen sie zurück. Die Auswahl ist mit einer aktiven Seiten-ID im `PublisherEditorStore` gebunden. Gemountete Canvas-Seiten besitzen keine parallele persistierbare Layout- oder Auswahlkopie mehr.
 2. **Mehrseitige Vorlagen:** Die Vorlagenbibliothek verwendet Schema-Version 2 und speichert vollständige Dokumente mit allen Seiten, Größen, Layouts, Gruppen, Bildfokussen und aktiver Seite. Alte einseitige Version-1-Vorlagen werden beim Lesen migriert; ein defekter Einzeleintrag blockiert nicht mehr die restliche Bibliothek.
 3. **Rekursiver Canvas-Szenengraph:** `LayoutGroup` wird rekursiv als echter Konva-Gruppenknoten gerendert. Gruppendrag bewegt einen Container und schreibt erst am Ende die Kindgeometrie zurück. Gruppenrotation ist persistierbar. Schatten, Unschärfe, Deckkraft und Mischmodus können am kompositierten Gruppenknoten liegen, ohne die Effekte auf Kinder zu kopieren.
 4. **Browser-Regressionstests:** Playwright mit Chromium ist eingerichtet. Die erste Suite prüft leeren Start, frei dimensionierte leere Seiten, seitengebundene Auswahl, Gruppenziel/-effekte und den Roundtrip einer mehrseitigen Dokumentvorlage.
@@ -37,7 +37,7 @@ Diese Umsetzung beseitigt nicht alle nachfolgenden Findings. Insbesondere ein of
 | Canvas-Interaktion | mittel bis gut | Echte rekursive Gruppen, konstante Transformer-Griffe, Panning und Fit-Ansichten stabilisieren die Kernpfade; weitere komplexe Pointer- und DnD-Szenarien fehlen noch. |
 | UI-Konsistenz | mittel | Design-Komponenten und ein konsistenter Grundaufbau existieren, einzelne Glyphen, Dialoge, Tabs und Responsive-Verhalten weichen ab. |
 | Barrierefreiheit | ausbaufähig | Viele Beschriftungen sind vorhanden; Canvas, Drag-and-drop, Tabs und modale Fokusführung sind nicht vollständig zugänglich. |
-| Testabdeckung | mittel bis gut | 38 Vitest-Dateien mit 199 Tests sowie sieben grüne Playwright-Kernflüsse; visuelle und breitere Interaktionsregressionen fehlen noch. |
+| Testabdeckung | mittel bis gut | 49 Vitest-Dateien mit 242 Tests sowie sieben grüne Playwright-Kernflüsse; visuelle und breitere Interaktionsregressionen fehlen noch. |
 | Build und Performance | mittel | Build funktioniert; der Hauptchunk und mehrere synchrone Vollzustandsoperationen werden bei größeren Dokumenten problematisch. |
 | Sicherheit und Datenschutz | mittel | CCM-Schreibzugriffe liegen hinter einem Repository-Adapter; Rechte- und Konfliktverhalten müssen noch an einer echten ChurchTools-Instanz validiert werden. Abhängigkeitswarnungen bleiben offen. |
 | Dokumentation und Release-Reife | mittel | README, `AGENTS.md`, Audit und Store-Beschreibung sind aktualisiert; Versionierung, Changelog und Releaseprozess bleiben prototypisch. |
@@ -67,7 +67,7 @@ Ein lokaler Smoke-Test wurde mit leerem Dokument und einer eingebauten Standardv
 - gemeinsamer Zoom von 25 bis 400 Prozent, Range-Slider und Trackpad-Pinch über Ctrl/Meta-Wheel
 - scrollbar bleibende große Arbeitsfläche
 - Raster- und Objekt-Snapping mit Hilfslinien
-- aktive Seite, Undo/Redo und Tastatur-Nudging
+- aktive Seite, dokumentweites Undo/Redo und Tastatur-Nudging
 
 ### Elemente
 
@@ -148,9 +148,9 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 ### Stabilisiert – Pinia war nicht die kanonische Editorquelle
 
 **Status:** der persistierbare Seiten-/Layoutzustand, Historien und die seitengebundene Auswahl sind in Pinia zentralisiert; weitere fachliche Canvas-Actions können schrittweise aus `EventTemplate.vue` herausgezogen werden.
-**Evidenz:** `App.vue` umfasst 1.140 Zeilen und hält Dokumentworkflow, Persistenz, Daten, Vorlagen und Export. Jede `EventTemplate.vue`-Instanz umfasst 2.878 Zeilen und besitzt eigene Refs für Geometrie, Reihenfolge, Stile, Gruppen, Effekte, Sichtbarkeit, Sperren, Auswahl und Historie. `PublisherWorkspaceContent.vue` spiegelt nur Events der aktiven Instanz in den Editor-Store und steuert sie später wieder über `defineExpose()`-Methoden (`src/components/publisher/PublisherWorkspaceContent.vue:47-70, 83-114`; `src/App.vue:1099-1123`).
+**Evidenz:** `App.vue` umfasst weiterhin mehr als 1.200 Zeilen und hält Dokumentworkflow, Persistenz, Daten, Vorlagen und Export. `EventTemplate.vue` umfasst mehr als 3.000 Zeilen, liest den serialisierbaren Layoutzustand inzwischen über Store-Proxies und bindet die Auswahl an den Editor-Store, bietet aber weiterhin eine große imperative `defineExpose()`-Oberfläche für fachliche Canvas-Aktionen.
 
-**Auswirkung:** Ein Zustand kann gleichzeitig in drei Varianten existieren. Fehler werden zeitabhängig und schwer reproduzierbar; Undo, Seitenwechsel, Inspector und Canvas können auseinanderlaufen. Weitere Props, Emits und Sonderfälle erhöhen die Kopplung exponentiell.
+**Auswirkung:** Die widersprüchlichen persistierbaren Zustandskopien sind beseitigt. Die große Orchestrierungs- und Methodenoberfläche macht komplexe Canvas-Änderungen aber weiterhin schwer isoliert testbar und erhöht die Kopplung zwischen App, Inspector und Renderer.
 
 **Empfehlung:** Einen `PublisherDocumentStore` mit benannten, undo-fähigen Actions als alleinige Quelle einführen. Auswahl seitenbezogen im Editor-Store halten. `EventTemplate` liest die aktive Seite und dispatcht Gesten; Inspector und Toolbar rufen dieselben Actions auf. Imperative Canvas-Methoden auf rein technische Operationen wie `exportImage()` und Fokus beschränken.
 
@@ -199,6 +199,15 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Bei der kommenden CCM-API besonders Einzelabruf, serverseitige Filter, Eigentümer/Berechtigungen und atomare Revisionsprüfung ergänzen; der Repository-Vertrag kann diese Fähigkeiten später aufnehmen.
 
+### Stabilisiert – Fehlendes CCM-Modul erzeugte bei jeder Änderung einen Speicherfehler
+
+**Status:** Ein nicht verfügbarer ChurchTools-Speicher wird als stabiler lokaler Recovery-Modus dargestellt; automatische Remote-Wiederholungen pausieren nach dem ersten Fehler.
+**Evidenz:** Die Speicherstatuslogik unterscheidet nun `local` und `offline` von Konflikten, Berechtigungs- und Validierungsfehlern. Wartende oder während eines laufenden Speichervorgangs vorgemerkte Autosaves prüfen den Status erneut, bevor sie einen weiteren Request auslösen (`src/domain/publisherStorageState.ts`; `src/App.vue`).
+
+**Auswirkung:** Fehlt lokal beispielsweise das Custom Module `publisher-26`, bleibt die untere Leiste nach Änderungen bei „Lokal gesichert“, statt nach jedem Autosave erneut „Speicherfehler“ zu melden. Die aktuelle Arbeit bleibt als einzelne Recovery-Kopie erhalten.
+
+**Empfehlung:** Das endgültige Verhalten mit der kommenden offiziellen CCM-API beibehalten: automatische Retries begrenzen, explizites Speichern und ein erneutes Online-Ereignis aber weiterhin als bewusste Wiederholungswege anbieten.
+
 ### Behoben – Entwurf löschen erzeugte ein implizites Standardlayout
 
 **Status:** behoben; Zurücksetzen verwendet die zentrale Factory für eine leere transparente Seite.
@@ -244,23 +253,23 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Bibliothekscontainer validieren, Einträge einzeln parsen und ungültige Einträge quarantänisieren. Gültige Vorlagen weiter anbieten, Rohdaten als Backup erhalten und eine verständliche Reparaturmeldung zeigen.
 
-### P1 – Verknüpftes Event kann durch das Listenlimit fehlen
+### Behoben – Verknüpftes Event konnte durch das Listenlimit fehlen
 
-**Status:** aus dem API-Zugriff abgeleitet.  
-**Evidenz:** Zum Laden eines bekannten Event-IDs wird eine Tagesliste mit `limit: 99` geladen und anschließend clientseitig gesucht (`src/composables/useAppointmentRelatedData.ts:76-91`).
+**Status:** behoben; bekannte Event-IDs werden direkt geladen.
+**Evidenz:** `useAppointmentRelatedData` verwendet für die Relation den Einzelabruf `/events/{eventId}`. Der Endpunkt liefert die Event-Dienste mit und benötigt weder Tagesfenster noch Listenlimit oder Pagination.
 
-**Auswirkung:** Existieren mehr als 99 sichtbare Events an diesem Tag und liegt das verknüpfte Event außerhalb der ersten Seite, meldet die UI fälschlich „nicht verfügbar“. Eine Sortierung oder Pagination ist nicht berücksichtigt.
+**Auswirkung:** Die Anzahl anderer Events am selben Tag beeinflusst das Nachladen nicht mehr. Berechtigungs- oder Nicht-gefunden-Fehler beziehen sich tatsächlich auf das verknüpfte Event.
 
-**Empfehlung:** bevorzugt einen direkten Event-Endpunkt oder API-Filter nach ID verwenden. Falls nicht verfügbar, paginieren, bis die ID gefunden oder die Liste erschöpft ist. Das Limit unter 100 beibehalten.
+**Empfehlung:** Den direkten Einzelabruf beibehalten und bei künftigen API-Änderungen nicht wieder durch eine begrenzte Tagesliste ersetzen.
 
-### P2 – `templateProps` ist immer vorhanden, mehrere Leerzustände sind tot
+### Behoben – `templateProps` war immer vorhanden, mehrere Leerzustände waren tot
 
-**Status:** im Code bestätigt.  
-**Evidenz:** Der Computed-Wert liefert auch ohne Termin stets ein leeres Props-Objekt (`src/App.vue:230-237`). Dennoch prüfen Toolrail, Topbar, Kontextleiste und mehrere Actions `!templateProps`; `PublisherWorkspaceContent` enthält einen nicht erreichbaren Termin-Leerzustand (`src/components/publisher/PublisherWorkspaceContent.vue:73-80`).
+**Status:** behoben; der Publisher-Datenkontext ist im Editorfluss nicht-nullbar.
+**Evidenz:** Toolrail, Topbar, Kontextleiste und Element-Actions besitzen keine unerreichbaren `hasTemplate`-Sperren mehr. `PublisherWorkspaceContent` rendert die Arbeitsfläche auch während Termin-Lade- und Fehlerzuständen weiter und zeigt diese nur als Statusmeldung.
 
-**Auswirkung:** Der Code kommuniziert zwei widersprüchliche Zustandsmodelle. Deaktivierungslogik wird niemals aktiv und spätere Änderungen können den unerreichbaren, inhaltlich veralteten Zustand versehentlich wieder sichtbar machen.
+**Auswirkung:** Ein terminunabhängiges Dokument bleibt stets bearbeitbar; ein Datenfehler kann weder Header noch Canvas verdrängen.
 
-**Empfehlung:** Props als nicht-nullbaren `PublisherDataContext` modellieren und tote `hasTemplate`-/`!template`-Zweige entfernen. Lade- und Fehlerzustände nur an einen tatsächlich ausgewählten Termin koppeln, ohne den freien Canvas zu blockieren.
+**Empfehlung:** Künftige Datenquellen ebenfalls als austauschbaren Kontext behandeln und Layoutverfügbarkeit nicht an deren Ladezustand koppeln.
 
 ### P2 – Bildabruf ist fest auf 1920 × 1080 zugeschnitten
 
@@ -271,50 +280,52 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Asset-URL getrennt vom Datenmapping erzeugen und anhand des größten tatsächlichen Renderziels anfordern. Wenn die ChurchTools-Bild-API Seitenverhältnisse vorbeschneidet, nur eine ausreichend große Quelle oder passende Zielmaße pro Element laden und cachen.
 
-### P2 – Verlaufshistorie und Autosave skalieren schlecht
+### P2 – Dokumenthistorie und Autosave skalieren schlecht
 
 **Status:** aus Implementierung abgeleitet.  
-**Evidenz:** Bis zu 50 vollständige Layoutzustände werden tief kopiert. Gleichheit wird synchron über `JSON.stringify` geprüft (`src/domain/layoutHistory.ts:79-94`). Autosave ist zwar auf 800 ms entprellt und asynchron, sendet aber weiterhin das vollständige mehrseitige Dokument an CCM und schreibt eine vollständige Recovery-Kopie.
+**Evidenz:** Die dokumentweite Historie hält bis zu 50 vollständige Mehrseiten-Snapshots und prüft Gleichheit synchron über `JSON.stringify` (`src/domain/publisherDocumentHistory.ts`). Autosave ist zwar auf 800 ms entprellt und asynchron, sendet aber weiterhin das vollständige mehrseitige Dokument an CCM und schreibt eine vollständige Recovery-Kopie.
 
 **Auswirkung:** Viele Elemente und verschachtelte Gruppen verursachen weiterhin unnötige Serialisierung, Netzwerkvolumen und Speicherverbrauch. Data-URL-Bilder werden nicht mehr neu erzeugt.
 
 **Empfehlung:** Commands oder strukturell geteilte Patches für Undo verwenden und serverseitig Patch-/Revisionsoperationen vorsehen. Performancebudgets mit großen Testdokumenten messen.
 
-### P2 – Weitere destruktive Aktionen umgehen Undo und Bestätigung
+### Behoben – Destruktive Aktionen, Undo und Bestätigung
 
-**Status:** im Code bestätigt.  
-**Evidenz:** Seite entfernen (`src/App.vue:218-227`), Standardvorlage anwenden (`src/App.vue:589-600`), Designvorlage löschen (`src/App.vue:663-674`) und Entwurf löschen (`src/App.vue:676-701`) verändern Dokument oder Persistenz direkt. Eine Bestätigung oder Dokument-Undo ist nicht vorhanden.
+**Status:** Dokumentänderungen sind undo-fähig; persistente Löschungen verlangen eine explizite Bestätigung.
+**Evidenz:** Elementänderungen, Seitenoperationen und Vorlagenanwendung liegen in der gemeinsamen Dokumenthistorie. Gespeicherte Vorlagen und Dokumente öffnen vor dem Repository-Aufruf einen fokussierten Bestätigungsdialog, der die fehlende Undo-Möglichkeit ausdrücklich nennt.
 
-**Auswirkung:** Nutzer können größere Arbeitsschritte nicht zuverlässig zurückholen. Die Canvas-Historie deckt nur Layoutänderungen innerhalb einer Template-Instanz ab.
+**Auswirkung:** Änderungen am geöffneten Dokument lassen sich in ihrer tatsächlichen Reihenfolge zurückholen. Dauerhafte Bibliothekslöschungen können nicht mehr durch einen einzelnen unbeabsichtigten Klick ausgelöst werden.
 
-**Empfehlung:** Dokumentweite Historie einführen. Persistente Löschungen bestätigen oder zunächst in einen wiederherstellbaren Papierkorb verschieben. Vorlagenanwendung als eine atomare Undo-Transaktion behandeln.
+**Empfehlung:** Einen serverseitigen Papierkorb erst ergänzen, wenn die CCM-API dafür eine belastbare Semantik anbietet. Bei großen Dokumenten die Snapshot-Historie später durch Commands oder strukturell geteilte Patches ersetzen.
 
-### P2 – Farbverlauf und „zuletzt benutzt“ sind nur Sitzungsspeicher
+### Behoben – Farbpaletten und „zuletzt benutzt“ waren nur Sitzungsspeicher
 
-**Status:** im Code bestätigt.  
-**Evidenz:** `publisherColors` hält die letzten zwölf Farben ausschließlich in einem Pinia-Ref (`src/stores/publisherColors.ts:4-23`). Analysierte Bildpaletten und Status sind ebenfalls nur Laufzeitzustand (`src/stores/publisherImagePalettes.ts:15-77`).
+**Status:** behoben durch einen versionierten, datensparsamen IndexedDB-Cache.
+**Evidenz:** `publisherColors` lädt und speichert die letzten zwölf Farben über `publisherBrowserCache`. Analysierte Paletten werden unter einem Hash der Bildquelle gecacht; weder Bildbytes noch die vollständige URL liegen im Schlüssel oder Wert. Eine manuelle Neuanalyse umgeht den Cache.
 
-**Auswirkung:** „Zuletzt benutzt“ ist nach Reload leer. Paletten müssen neu analysiert werden; Vorlagen mit Bindung funktionieren über Fallback und automatische Analyse, wirken bis dahin aber potenziell anders.
+**Auswirkung:** Zuletzt verwendete Farben und bereits analysierte Paletten stehen nach einem Reload schneller wieder zur Verfügung. Dynamische Bindungen behalten weiterhin ihren persistierten Fallback.
 
-**Empfehlung:** Letzte Farben klein und versioniert lokal persistieren. Extraktionsresultate über einen stabilen Hash von Bildquelle/Algorithmus cachen, während dynamische Bindungen weiterhin nur Token plus Fallback speichern.
+**Empfehlung:** Cache-Version bei Änderungen am Extraktionsalgorithmus erhöhen und langfristig eine Obergrenze beziehungsweise zeitbasierte Bereinigung ergänzen.
 
-### P2 – Datenformatierung ist für Template-Automation noch zu begrenzt
+**UI-Stand:** Die drei semantischen Bildfarben werden nicht mehr als zweite Palette dupliziert. Primär-, Hintergrund- und Vordergrundrolle sind direkt innerhalb der neun extrahierten Farbfelder markiert und können über einen Rollenmodus manuell einem anderen Farbfeld zugewiesen werden. Die Standardpalette deckt zusätzlich abgestufte Neutral-, Blau-, Türkis-, Grün-, Gelb-, Rot- und Violetttöne ab.
+
+### Teilweise behoben – Datenformatierung ist für Template-Automation noch zu begrenzt
 
 **Status:** Funktionslücke.  
-**Beobachtung:** Datum und Zeit besitzen visuelle Formate. Skalarwerte können als Text, Bild oder QR eingesetzt werden. Es fehlen jedoch robuste Fallbacks, Bedingungen, Zahlen-/Währungsformate, Listen-/Repeater, Auswahl einzelner Dienste/Personen und kontrollierte Verkettungen.
+**Beobachtung:** Datum und Zeit besitzen visuelle Formate. Dienstbesetzungen werden als echte Listenwerte geliefert und können über sichere vordefinierte Formate komma- oder zeilenweise, als Aufzählung, mit „und“ oder auf den ersten Eintrag begrenzt gerendert werden. Robuste Fallbacks, Bedingungen, Zahlen-/Währungsformate und gestaltete Repeat-Container mit einem Canvas-Knoten je Eintrag fehlen weiterhin.
 
-**Auswirkung:** Für viele reale Folien muss der Nutzer Werte vorher in ChurchTools passend vorbereiten oder mehrere Sondervariablen anlegen. Wiederholte Inhalte wie mehrere Dienstpersonen lassen sich nicht als gestaltete Liste mit einem Element pro Person ausgeben.
+**Auswirkung:** Mehrere Dienstpersonen lassen sich direkt in einem Textfeld sinnvoll ausgeben. Für komplexere Automationen und individuell gestaltete Wiederholungen sind weiterhin vorbereitete Daten oder zusätzliche Elemente nötig.
 
 **Empfehlung:** Kleine, versionierte Ausdruckssyntax statt immer neuer Sonderfelder: `{{date | date:'dd.MM.'}}`, `{{location | default:'Ort folgt'}}`, sichere Listen-Pipelines und ein Repeat-Container. Keine freie JavaScript-Auswertung.
 
-### P2 – Stammdatenfehler werden still verschluckt
+### Behoben – Stammdatenfehler wurden still verschluckt
 
-**Status:** im Code bestätigt.  
-**Evidenz:** Fehler beim Laden von `/event/masterdata` werden in `useAppointmentRelatedData` zu `undefined` konvertiert (`src/composables/useAppointmentRelatedData.ts:64-73`). Danach erscheinen generische Dienstnamen als Fallback, ohne Hinweis, dass die lesbare Auflösung fehlgeschlagen ist.
+**Status:** behoben; Eventdaten und Stammdaten besitzen getrennte Ergebniszustände.
+**Evidenz:** Scheitert `/event/masterdata`, bleiben Event und Dienstpersonen geladen. Die Datenquelle erhält eine sichtbare Warnung und verwendet vorhandene Dienstnamen aus dem Event als Fallback; ein erneutes Laden versucht auch die Stammdaten erneut.
 
-**Auswirkung:** Daten sehen vollständig geladen aus, können aber unverständlich oder falsch gruppiert sein. Diagnose in Supportfällen ist schwierig.
+**Auswirkung:** Nutzer erkennen unvollständig aufgelöste Dienstbezeichnungen, ohne bereits geladene Personen und Eventfelder zu verlieren.
 
-**Empfehlung:** Teilfehler separat im Datenquellenstatus ausweisen und Retry anbieten. Fallbackwerte weiter rendern, aber nicht als vollständig erfolgreichen Zustand kennzeichnen.
+**Empfehlung:** Dieselbe Teilfehler-Semantik bei weiteren optionalen Stammdatenquellen verwenden.
 
 ### P2 – HTML-zu-Text-Konvertierung ist unvollständig
 
@@ -361,7 +372,7 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 ### P2 – Monolithische Dateien bremsen Änderungen
 
-**Status:** Metrik bestätigt.  
+**Status:** weiterhin relevant; ein erster Interaktionspfad ist extrahiert.
 **Evidenz:** `EventTemplate.vue` 2.878 Zeilen, `styles.css` 3.835, `App.vue` 1.140, `layoutEditing.ts` 1.143, `publisherDraft.ts` 651 und `LayoutInspector.vue` 489. In den UI-/Domain-Dateien existieren rund 245 direkte Hex-Farbwerte; Design-Tokens decken Abstände, Radien und Typografie nur teilweise ab.
 
 **Auswirkung:** Fachgrenzen verschwimmen, Merge-Konflikte nehmen zu, Tests erfordern große Setups und kleine UI-Abweichungen entstehen leicht.
@@ -373,6 +384,8 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 - `layoutEditing.ts`: Knotenmodell, Geometrie/Snapping, Layerbaum, Gruppen/Auto-Layout und Elementfactory
 - `publisherDraft.ts`: Schemas und Migrationen je Version
 - `styles.css`: Tokens, Shell, Canvas, Inspectoren, Dialoge und einzelne Komponenten
+
+**Umsetzungsstand:** Das Parsen, Validieren und Positionieren von auf den Canvas gezogenen Datenfeldern liegt nun im getesteten Composable `useCanvasDataFieldDrop`; `EventTemplate.vue` delegiert diese Geste nur noch. Weitere Schnitte sollten demselben Muster folgen.
 
 ### P2 – README und Plan beschreiben einen früheren Prototyp
 
@@ -427,16 +440,16 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 ### P3 – Canvas-Navigation ist teilweise ausgebaut
 
 **Status:** Kernnavigation umgesetzt, Komfortfunktionen offen.
-**Beobachtung:** Zoom und Scrollen werden jetzt durch ein dauerhaftes Handwerkzeug, temporäres Panning per Leertaste, „Seite einpassen“, „Auswahl einpassen“ und einen 100-Prozent-Sprung ergänzt. Die Befehle zentrieren den relevanten Dokumentpunkt, ohne Dokumentgeometrie zu verändern. Transformer-Griffe und -Konturen bleiben in Bildschirmkoordinaten konstant; Griffe an geraden Seitenrändern werden nach innen gesetzt und besitzen eine größere Trefferfläche. Mini-Navigator, Lineale und Hilfslinien fehlen weiterhin. Verlaufsausrichtung besitzt nur Zahlenfelder, keine Handles auf dem Canvas.
+**Beobachtung:** Zoom und Scrollen werden jetzt durch ein dauerhaftes Handwerkzeug, temporäres Panning per Leertaste, „Seite einpassen“, „Auswahl einpassen“ und einen 100-Prozent-Sprung ergänzt. Die Befehle zentrieren den relevanten Dokumentpunkt, ohne Dokumentgeometrie zu verändern. Transformer-Griffe und -Konturen bleiben in Bildschirmkoordinaten konstant; Griffe an geraden Seitenrändern werden nach innen gesetzt und besitzen eine größere Trefferfläche. Lineare und radiale Verläufe besitzen direkte Canvas-Griffe für Geometrie, Radien und Farbstopps. Mini-Navigator, Lineale und Hilfslinien fehlen weiterhin.
 
-**Empfehlung:** Als nächsten direkten Canvas-Ausbau Gradientenhandles umsetzen. Mini-Navigator, Lineale und Hilfslinien erst nach einem konkreten Arbeitsablauf priorisieren.
+**Empfehlung:** Mini-Navigator, Lineale und Hilfslinien erst nach einem konkreten Arbeitsablauf priorisieren.
 
-### P3 – Effekte decken Konva-Filter noch nicht ab
+### Umgesetzt – Typisierte Filter für Ebenen und Gruppen
 
-**Status:** gewünschter Backlog.  
-**Beobachtung:** Schatten, Blur, Deckkraft und Blendmodus sind vorhanden. Anpassungs-/Filterebenen für Helligkeit, Kontrast, HSL, Entsättigung, Invertieren, Pixelate oder Noise fehlen. Der Nutzer wünscht dafür einen separaten Footer-Einstieg.
+**Status:** Filterstack, Oberfläche, Persistenz und Rendering umgesetzt.
+**Beobachtung:** Helligkeit, Kontrast, HSL, Graustufen, Sepia, Invertieren, Pixelierung und Rauschen können in stabiler Reihenfolge aktiviert und umsortiert werden. Der Ebenen-Footer öffnet einen eigenen Filterdialog; gesetzte Filter werden an der jeweiligen Ebene oder Gruppe markiert. Gruppenfilter wirken auf die gemeinsam zwischengerenderte Gruppe und werden nicht auf Kinder kopiert.
 
-**Empfehlung:** Filter nicht als beliebige Kindeffekte modellieren. Erst Szenengraph und Caching klären, dann einen typisierten Filterstack pro Knoten oder echter Filterebene mit stabiler Reihenfolge einführen.
+**Empfehlung:** Bei großen Seiten und tief verschachtelten, mehrfach gefilterten Gruppen das Cache-Verhalten weiter beobachten und später mit definierten Performancebudgets absichern. Anpassungsebenen, die darunterliegende Ebenen beeinflussen, sind ausdrücklich nicht Teil dieses Modells.
 
 ### P3 – Visuelle Details sind noch uneinheitlich
 
@@ -445,12 +458,12 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 - Seiten hinzufügen/löschen und Dialog schließen nutzen teilweise `＋`/`×` statt Font Awesome.
 - Native `<details>`-Popover für Ebenen und Ausrichtung haben keine gemeinsame Outside-click- und Fokuslogik.
-- „Zurücksetzen“ und „Einrasten“ bleiben in der zweiten Leiste, obwohl Zurücksetzen laut Backlog entfernt werden soll und die Bedeutung von Einrasten nicht erklärt wird.
+- „Einrasten“ bleibt in der zweiten Leiste, seine konkrete Wirkung wird dort noch nicht erklärt. Der redundante Layout-Reset wurde zugunsten von Undo/Redo und erneutem Anwenden einer Vorlage entfernt.
 - Transformieren bleibt korrekt sichtbar und deaktiviert, könnte aber noch dichter sein.
 - Der Hauptcanvas ist bei festen Seitenleisten auf kleinen Desktopbreiten schnell stark beschnitten.
 - `index.html` deklariert `lang="en"`, obwohl die Oberfläche deutsch ist, und setzt für den Standalone-Entwicklungsfall `body class="dark"` fest.
 
-**Empfehlung:** Glyphen durch gemeinsame Icon-Buttons ersetzen, Popover-Primitiv einführen, Snapping per Tooltip erläutern, überflüssigen Reset entfernen, `lang="de"` setzen und Dark Mode ausschließlich aus der Hostumgebung beziehungsweise einer klaren lokalen Simulation beziehen.
+**Empfehlung:** Glyphen durch gemeinsame Icon-Buttons ersetzen, Popover-Primitiv einführen, Snapping per Tooltip erläutern, `lang="de"` setzen und Dark Mode ausschließlich aus der Hostumgebung beziehungsweise einer klaren lokalen Simulation beziehen.
 
 ## Bereits gute Entscheidungen
 
@@ -467,6 +480,7 @@ Die Analyse soll nicht nur Defizite festhalten. Mehrere Grundlagen sind solide u
 - Export prüft die tatsächliche Pixelgröße jeder Seite.
 - Object-URLs für lokale Ersatzbilder werden wieder freigegeben.
 - Der Farbwähler wird per `Teleport` außerhalb der scrollenden Inspectoren gerendert.
+- Die Vorlagen- und Dokumentverwaltung liegt in einem breiten Dialog mit Fokusfalle statt im rechten Inspector; die Header-Aktionen sind in Undo/Redo, Daten/Layout und Export gruppiert.
 - Design-Buttons, Icon-Buttons, Tabs und Panel-Header wurden bereits als gemeinsame Komponenten begonnen.
 - Terminwechsel überschreibt das aktuelle Layout inzwischen ausdrücklich nicht mehr.
 - Verknüpfte Daten werden datensparsam erst auf Nutzeraktion geladen.
@@ -485,7 +499,7 @@ Die Analyse soll nicht nur Defizite festhalten. Mehrere Grundlagen sind solide u
 
 1. `PublisherDocument` und rekursiven `SceneNode` definieren.
 2. Dokumentoperationen in Store-Actions verschieben.
-3. Auswahl, aktive Gruppe und Historie seitenbezogen im Store ablegen.
+3. ~~Auswahl, aktive Gruppe und eine dokumentweite Historie im Store ablegen.~~ Umgesetzt; die Historie führt Canvas-, Seiten- und Vorlagenaktionen chronologisch zusammen.
 4. `EventTemplate` schrittweise auf Storeprojektion und Gestenadapter reduzieren.
 5. Explizite Persistenzmigrationen einführen.
 
@@ -502,7 +516,7 @@ Die Analyse soll nicht nur Defizite festhalten. Mehrere Grundlagen sind solide u
 1. Rekursive Konva-Gruppen mit lokalen Koordinaten und Transformmatrizen rendern.
 2. Gruppensnapping und Gruppentransform stabilisieren.
 3. gemeinsame Gruppeneffekte über Cache/Offscreen-Komposition implementieren.
-4. Filterstack und Anpassungsebenen ergänzen.
+4. ~~Typisierten Filterstack für Ebenen und gemeinsam gerenderte Gruppen ergänzen.~~ Umgesetzt; Anpassungsebenen sind nicht vorgesehen.
 5. Variablensyntax um sichere Fallback-, Listen- und Repeaterfunktionen erweitern.
 
 ### Phase 5 – Store- und Release-Reife
@@ -529,7 +543,7 @@ Die Analyse soll nicht nur Defizite festhalten. Mehrere Grundlagen sind solide u
 
 Am untersuchten Stand:
 
-- `npm test`: 38 Dateien, 199 Tests erfolgreich
+- `npm test`: 49 Dateien, 242 Tests erfolgreich
 - `npm run test:e2e`: 7 Browsertests erfolgreich
 - `npm run typecheck`: erfolgreich
 - `npm run build`: erfolgreich

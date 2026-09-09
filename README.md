@@ -12,9 +12,11 @@ Eine vollständige Produktbeschreibung steht in [EXTENSION_STORE.md](EXTENSION_S
 - Vitest für Domain-, Store- und Komponententests
 - Playwright für kritische Browser-Interaktionen
 
-Der `PublisherDocumentStore` ist die kanonische Quelle für Seiten, Layoutzustände und Historien. Der `PublisherEditorStore` hält Werkzeug-, Zoom- und seitengebundene Auswahlzustände. Canvas-Gruppen werden rekursiv als echte Konva-Gruppen gerendert; persistierte Daten enthalten ausschließlich serialisierbare Domain-Werte und keine Konva-Nodes.
+Der `PublisherDocumentStore` ist die kanonische Quelle für Seiten, Layoutzustände und die gemeinsame Dokumenthistorie. Der `PublisherEditorStore` hält Werkzeug-, Zoom- und seitengebundene Auswahlzustände. Canvas-Gruppen werden rekursiv als echte Konva-Gruppen gerendert; persistierte Daten enthalten ausschließlich serialisierbare Domain-Werte und keine Konva-Nodes.
 
 Dokumente und terminneutrale Vorlagen werden über ein `PublisherRepository` gespeichert. Der produktive Adapter nutzt zwei Custom-Data-Kategorien des Publisher-CCM-Moduls: `publisher_documents` und `publisher_templates`. Dokumente besitzen eine eigene UUID und können optional auf einen Termin verweisen; Vorlagen enthalten nie einen Terminbezug. `localStorage` hält nur den zuletzt bearbeiteten Stand als Recovery-Kopie und ist nicht mehr die Vorlagen- oder Dokumentquelle.
+
+Ist das Publisher-CCM-Modul vorübergehend nicht verfügbar, wechselt der Editor in den Status „Lokal gesichert“ und hält Änderungen in dieser Recovery-Kopie. Automatische Remote-Versuche pausieren dann, bis bewusst erneut gespeichert wird oder ChurchTools wieder online ist. Konflikte, fehlende Rechte und ungültige Dokumente bleiben als echte Speicherfehler sichtbar.
 
 Eigene Bild-Uploads sind bis zu einem offiziellen ChurchTools-Speicherpfad bewusst deaktiviert. Die Einstiegspunkte bleiben sichtbar und erklären den kommenden Funktionsumfang per Toast. Bereits vorhandene ChurchTools-Terminbilder und Bildvariablen können weiterhin verwendet werden.
 
@@ -59,8 +61,15 @@ npx playwright install chromium
 - Die Arbeitsfläche lässt sich über das Handwerkzeug oder temporär mit der Leertaste verschieben; aktive Seite, Auswahl und 100-Prozent-Ansicht können direkt zentriert werden.
 - Seiten besitzen echte Canvas-Vorschauen und können benannt, dupliziert sowie per Drag-and-drop sortiert werden.
 - Bilder werden im Cover-Modus zugeschnitten; Icons und QR-Codes bleiben proportional.
+- Lineare und radiale Verläufe lassen sich über Start-, End-, Radius- und Farbstop-Griffe direkt auf dem Canvas bearbeiten.
+- Ebenen und Gruppen unterstützen geordnete Filter für Helligkeit, Kontrast, HSL, Graustufen, Sepia, Invertieren, Pixelierung und Rauschen.
 - Vorlagen speichern das vollständige mehrseitige Dokument und behalten dynamische Daten- und Farbbindungen.
+- Vorlagen und gespeicherte Dokumente werden in einem eigenen Dialog verwaltet; der rechte Inspektor bleibt dadurch für Daten und Gestaltung verfügbar.
+- Verknüpfte Events werden gezielt über ihre ID geladen; Fehler optionaler Dienst-Stammdaten bleiben als sichtbare Teilfehler erkennbar.
+- Mehrfach besetzte Dienste können komma- oder zeilenweise, als Aufzählung, mit „und“ oder als erste Person ausgegeben werden.
+- Zuletzt verwendete Farben und analysierte Bildpaletten werden als abgeleitete Werte versioniert in IndexedDB gecacht; Bilddaten und vollständige Quell-URLs werden dabei nicht gespeichert.
 - Vorlagen sind terminneutral; nur gespeicherte Dokumente dürfen optional einen Terminbezug besitzen.
 - ChurchTools ist die Quelle für Dokumente und Vorlagen, der Browser hält lediglich eine Recovery-Kopie.
 - Gruppenhierarchie, Ebenen-Inspector und Canvas verwenden denselben rekursiven Szenengraphen.
 - PNG- und JPEG-Ausgaben werden pro Seite konfiguriert und gemeinsam als ZIP exportiert.
+- Canvas-Änderungen, Seitenoperationen und das Anwenden einer Vorlage werden chronologisch über dieselbe Undo-/Redo-Historie zurückgenommen; einen separaten Layout-Reset gibt es nicht.

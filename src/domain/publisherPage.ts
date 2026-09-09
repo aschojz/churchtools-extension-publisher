@@ -64,6 +64,7 @@ export const createStandardPublisherLayout = (
         locked: [],
         customElements: [],
         effects: {},
+        filters: {},
     };
 };
 

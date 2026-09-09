@@ -71,7 +71,12 @@ describe('PublisherColorPicker', () => {
         const imagePalettes = usePublisherImagePalettesStore();
         imagePalettes.syncSources([{ id: 'image-1', label: 'Titelbild', source: 'data:image/png;base64,image' }]);
         imagePalettes.palettes['image-1'] = {
-            colors: [], primary: '#f05a28', background: '#221811', foreground: '#ffffff',
+            colors: [
+                { id: 'primary', label: 'Primärfarbe', hex: '#f05a28' },
+                { id: 'background', label: 'Hintergrundfarbe', hex: '#221811' },
+                { id: 'foreground', label: 'Vordergrundfarbe', hex: '#ffffff' },
+            ],
+            primary: '#f05a28', background: '#221811', foreground: '#ffffff',
         };
         const wrapper = mount(PublisherColorPicker, {
             props: { dynamic: true, modelValue: '#123456' },
@@ -84,6 +89,31 @@ describe('PublisherColorPicker', () => {
         expect(wrapper.emitted('update:colorBinding')).toEqual([[
             { imageId: 'image-1', token: 'primary' },
         ]]);
+        expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    });
+
+    it('reassigns an image role through the nine palette swatches', async () => {
+        const pinia = createPinia();
+        setActivePinia(pinia);
+        const imagePalettes = usePublisherImagePalettesStore();
+        imagePalettes.syncSources([{ id: 'image-1', label: 'Titelbild', source: 'data:image/png;base64,image' }]);
+        imagePalettes.palettes['image-1'] = {
+            colors: [
+                { id: 'one', label: 'Bildfarbe 1', hex: '#f05a28' },
+                { id: 'two', label: 'Bildfarbe 2', hex: '#221811' },
+            ],
+            primary: '#f05a28', background: '#221811', foreground: '#f05a28',
+        };
+        const wrapper = mount(PublisherColorPicker, {
+            props: { dynamic: true, modelValue: '#123456' },
+            global: { plugins: [pinia], stubs: { teleport: true } },
+        });
+
+        await wrapper.get('[aria-label="Farbe auswählen"]').trigger('click');
+        await wrapper.get('[aria-label="Hintergrundfarbe festlegen"]').trigger('click');
+        await wrapper.get('[aria-label="Hintergrundfarbe auf #F05A28 setzen"]').trigger('click');
+
+        expect(imagePalettes.palettes['image-1']?.background).toBe('#f05a28');
         expect(wrapper.emitted('update:modelValue')).toBeUndefined();
     });
 });

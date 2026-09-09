@@ -6,6 +6,7 @@ import {
     faGripVertical,
     faImage,
     faLink,
+    faListUl,
     faPen,
     faPlus,
     faQrcode,
@@ -80,6 +81,7 @@ const fieldIcon = (field: PublisherDataField) => {
     if (field.formatType === 'date') return faCalendarDays;
     if (field.formatType === 'time') return faClock;
     if (field.formatType === 'url') return faLink;
+    if (field.formatType === 'list') return faListUl;
     return faFont;
 };
 
@@ -147,6 +149,7 @@ const startFieldDrag = (field: PublisherDataField, event: DragEvent) => {
                         <small v-else-if="source.status === 'error'" class="publisher-related-source__error">{{ source.error }}</small>
                         <small v-else-if="source.status === 'loading'">Daten werden geladen …</small>
                         <small v-else>Verknüpfung vorhanden</small>
+                        <small v-if="source.warning" class="publisher-related-source__warning">{{ source.warning }}</small>
                     </div>
                     <DesignButton
                         size="compact"

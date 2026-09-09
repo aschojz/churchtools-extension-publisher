@@ -9,6 +9,12 @@ import {
     type PublisherImagePalette,
     type PublisherImagePaletteSource,
 } from '../domain/imagePalette';
+import {
+    parsePublisherImagePalette,
+    publisherImagePaletteCacheKey,
+    serializePublisherImagePalette,
+} from '../domain/publisherColorCache';
+import { readPublisherBrowserCache, writePublisherBrowserCache } from '../infrastructure/publisherBrowserCache';
 
 export type PublisherImagePaletteStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -44,18 +50,46 @@ export const usePublisherImagePalettesStore = defineStore('publisherImagePalette
                 statuses.value[source.id] = 'idle';
                 delete errors.value[source.id];
                 revision.value += 1;
+                void readPublisherBrowserCache(publisherImagePaletteCacheKey(source.source)).then((cachedValue) => {
+                    const cached = parsePublisherImagePalette(cachedValue);
+                    if (!cached || sourceById.value[source.id]?.source !== source.source ||
+                        statuses.value[source.id] !== 'idle') return;
+                    palettes.value[source.id] = cached;
+                    statuses.value[source.id] = 'ready';
+                    revision.value += 1;
+                });
             }
         }
         sources.value = unique;
     };
 
-    const analyze = async (imageId: string) => {
+    const cachePalette = (imageId: string, palette: PublisherImagePalette) => {
+        const source = sourceById.value[imageId];
+        if (!source) return;
+        void writePublisherBrowserCache(
+            publisherImagePaletteCacheKey(source.source),
+            serializePublisherImagePalette(palette),
+        );
+    };
+
+    const analyze = async (imageId: string, force = false) => {
         const source = sourceById.value[imageId];
         if (!source || statuses.value[imageId] === 'loading') return;
         statuses.value[imageId] = 'loading';
         delete errors.value[imageId];
         const sourceUrl = source.source;
         try {
+            if (!force) {
+                const cached = parsePublisherImagePalette(await readPublisherBrowserCache(
+                    publisherImagePaletteCacheKey(sourceUrl),
+                ));
+                if (cached && sourceById.value[imageId]?.source === sourceUrl) {
+                    palettes.value[imageId] = cached;
+                    statuses.value[imageId] = 'ready';
+                    revision.value += 1;
+                    return;
+                }
+            }
             const analyzer = Vibrant.from(sourceUrl).maxDimension(640).maxColorCount(64).quality(5).build();
             const extracted = await analyzer.getPalette();
             if (sourceById.value[imageId]?.source !== sourceUrl) return;
@@ -64,6 +98,7 @@ export const usePublisherImagePalettesStore = defineStore('publisherImagePalette
             palettes.value[imageId] = palette;
             statuses.value[imageId] = 'ready';
             revision.value += 1;
+            cachePalette(imageId, palette);
         } catch {
             if (sourceById.value[imageId]?.source !== sourceUrl) return;
             statuses.value[imageId] = 'error';
@@ -74,5 +109,20 @@ export const usePublisherImagePalettesStore = defineStore('publisherImagePalette
     const resolveColor = (binding: LayoutColorBinding | undefined, fallback: string) =>
         resolvePaletteBinding(binding, fallback, palettes.value);
 
-    return { analyze, errors, palettes, resolveColor, revision, sources, statuses, syncSources };
+    const assignRole = (
+        imageId: string,
+        token: LayoutColorBinding['token'],
+        color: string,
+    ) => {
+        const palette = palettes.value[imageId];
+        const normalized = color.trim().toLowerCase();
+        if (!palette || !palette.colors.some(({ hex }) => hex === normalized)) return false;
+        if (palette[token] === normalized) return true;
+        palettes.value[imageId] = { ...palette, [token]: normalized };
+        revision.value += 1;
+        cachePalette(imageId, palettes.value[imageId]!);
+        return true;
+    };
+
+    return { analyze, assignRole, errors, palettes, resolveColor, revision, sources, statuses, syncSources };
 });

@@ -10,7 +10,7 @@ import {
     faLockOpen,
     faListOl,
     faListUl,
-    faStar,
+    faSliders,
     faStrikethrough,
     faSync,
     faTrashCan,
@@ -28,7 +28,6 @@ import {
     type PublisherDataValues,
 } from '../../../domain/appointmentDataFields';
 import {
-    imagePaletteTokenLabel,
     type ImagePaletteToken,
     type LayoutColorBinding,
 } from '../../../domain/imagePalette';
@@ -45,6 +44,11 @@ import type {
 } from '../../../domain/layoutEditing';
 import type { LayoutGradient } from '../../../domain/layoutGradient';
 import {
+    layoutFilterStackHasEnabled,
+    normalizeLayoutFilterStack,
+    type LayoutFilterStack,
+} from '../../../domain/layoutFilters';
+import {
     createLayoutLayerTree,
     layoutElementHasEffects,
     layoutElementLabel,
@@ -59,13 +63,15 @@ import DesignIconButton from '../../design/DesignIconButton.vue';
 import DesignTabs from '../../design/DesignTabs.vue';
 import LayoutLayerTree from '../../LayoutLayerTree.vue';
 import LayoutEffectsDialog from '../LayoutEffectsDialog.vue';
+import LayoutFiltersDialog from '../LayoutFiltersDialog.vue';
 import LayoutGradientEditor from '../LayoutGradientEditor.vue';
 import PublisherColorPicker from '../PublisherColorPicker.vue';
+import PublisherImagePaletteSwatches from '../PublisherImagePaletteSwatches.vue';
 
 const props = withDefaults(defineProps<{
     dataValues?: PublisherDataValues;
-    template?: EventTemplateProps | null;
-}>(), { dataValues: () => ({}), template: null });
+    template: EventTemplateProps;
+}>(), { dataValues: () => ({}) });
 
 const { activePage } = storeToRefs(usePublisherDocumentStore());
 const imagePaletteStore = usePublisherImagePalettesStore();
@@ -90,6 +96,9 @@ const activeLayout = computed(() => activePage.value.layouts[activePage.value.te
 const effectElementIds = computed(() => Object.entries(activeLayout.value?.effects ?? {})
     .filter(([, effects]) => layoutElementHasEffects(effects))
     .map(([elementId]) => elementId));
+const filterElementIds = computed(() => Object.entries(activeLayout.value?.filters ?? {})
+    .filter(([, filters]) => layoutFilterStackHasEnabled(filters))
+    .map(([elementId]) => elementId));
 const hiddenElementIds = computed(() => activeLayout.value?.hidden ?? []);
 const lockedElementIds = computed(() => activeLayout.value?.locked ?? []);
 const selectionIsLocked = computed(() => selectedLayoutElements.value.length > 0 &&
@@ -107,9 +116,9 @@ const resolvedCustomText = (elementId: LayoutElementId) => {
 const elementLabels = computed<Record<LayoutElementId, string>>(() => Object.fromEntries(
     availableLayoutElements.value.map((elementId) => [
         elementId,
-        elementId === 'title' ? normalizedLayerText(props.template?.title ?? '') || 'Titel'
-            : elementId === 'dateTime' ? normalizedLayerText([props.template?.date, props.template?.time].filter(Boolean).join(' · ')) || 'Datum/Uhrzeit'
-                : elementId === 'location' ? normalizedLayerText(props.template?.location ?? '') || 'Ort'
+        elementId === 'title' ? normalizedLayerText(props.template.title) || 'Titel'
+            : elementId === 'dateTime' ? normalizedLayerText([props.template.date, props.template.time].filter(Boolean).join(' · ')) || 'Datum/Uhrzeit'
+                : elementId === 'location' ? normalizedLayerText(props.template.location) || 'Ort'
                     : resolvedCustomText(elementId) || customElements.value.find(({ id }) => id === elementId)?.name
                         || layoutElementLabel(elementId),
     ]),
@@ -118,7 +127,7 @@ const elementPreviews = computed(() => Object.fromEntries(availableLayoutElement
     const customElement = customElements.value.find(({ id }) => id === elementId);
     if (elementId === 'image' || customElement?.kind === 'image') {
         const imageSource = elementId === 'image'
-            ? props.template?.imageUrl ?? undefined
+            ? props.template.imageUrl ?? undefined
             : customElement?.dataBinding
                 ? publisherDataValue(props.dataValues, customElement.dataBinding)
                 : customElement?.imageSource;
@@ -151,6 +160,7 @@ const emit = defineEmits<{
     deleteElements: [elementIds: LayoutElementId[]];
     drillIntoElement: [elementId: LayoutElementId];
     updateEffects: [targetIds: string[], effects: LayoutElementEffects];
+    updateFilters: [targetIds: string[], filters: LayoutFilterStack];
     updateGradient: [field: 'color' | 'fill', gradient: LayoutGradient | null];
     moveLayer: [source: LayoutLayerDragNode, target: LayoutLayerDragNode, placement: LayoutLayerDropPlacement];
     restoreFontSize: [event: FocusEvent];
@@ -192,6 +202,19 @@ const openEffectsDialog = (targetIds: string[]) => {
 const applyEffects = (effects: LayoutElementEffects) => {
     emit('updateEffects', effectsDialogElementIds.value, effects);
 };
+const filtersDialogOpen = ref(false);
+const filtersDialogElementIds = ref<string[]>([]);
+const filtersDialogValue = computed(() => normalizeLayoutFilterStack(
+    activeLayout.value?.filters?.[filtersDialogElementIds.value[0] ?? ''],
+));
+const openFiltersDialog = (targetIds: string[]) => {
+    if (targetIds.length === 0) return;
+    filtersDialogElementIds.value = [...targetIds];
+    filtersDialogOpen.value = true;
+};
+const applyFilters = (filters: LayoutFilterStack) => {
+    emit('updateFilters', filtersDialogElementIds.value, filters);
+};
 const selectedLayerEffects = computed(() => normalizeLayoutElementEffects(
     activeLayout.value?.effects?.[selectedLayoutGroupId.value ?? selectedLayoutElement.value ?? ''],
 ));
@@ -214,7 +237,6 @@ const updateLayerBlendMode = (event: Event) => {
         blendMode: (event.target as HTMLSelectElement).value as LayoutElementEffects['blendMode'],
     });
 };
-const imagePaletteTokens: ImagePaletteToken[] = ['primary', 'background', 'foreground'];
 const activeColorField = computed<'color' | 'fill' | 'stroke' | null>(() => {
     if (activeAppearanceTab.value === 'stroke') {
         return (selectedLayoutStyle.value || (selectedLayoutVisualStyle.value && !selectedQrElement.value)) ? 'stroke' : null;
@@ -347,32 +369,17 @@ const toggleFontStyle = (style: 'bold' | 'italic') => {
                             <img :src="source.source" alt="" />
                         </div>
                         <div v-if="imagePalettes[source.id]" class="inspector-image-palette__colors">
-                            <div class="inspector-image-palette__tokens" aria-label="Dynamische Bildfarben">
-                                <button
-                                    v-for="token in imagePaletteTokens"
-                                    :key="token"
-                                    type="button"
-                                    :style="{ backgroundColor: imagePalettes[source.id]![token] }"
-                                    :title="`${imagePaletteTokenLabel(token)}: ${imagePalettes[source.id]![token].toUpperCase()}`"
-                                    :aria-label="`${imagePaletteTokenLabel(token)} aus ${source.label} dynamisch verwenden`"
-                                    :aria-pressed="activeColorBinding?.imageId === source.id && activeColorBinding?.token === token"
-                                    :disabled="!activeColorField"
-                                    @click="bindImageColor(source.id, token)"
-                                >
-                                    <FontAwesomeIcon v-if="token === 'primary'" :icon="faStar" aria-hidden="true" />
-                                    <i v-else class="inspector-image-palette__role" :class="`is-${token}`" aria-hidden="true" />
-                                </button>
-                                <button
-                                    v-if="activeColorBinding?.imageId === source.id && activeColorField"
-                                    type="button"
-                                    class="inspector-image-palette__unbind"
-                                    aria-label="Dynamische Bildfarbe lösen"
-                                    @click="emit('setColorBinding', activeColorField, null)"
-                                >Lösen</button>
-                            </div>
-                            <div class="inspector-swatches inspector-swatches--image" :aria-label="`Extrahierte Farben aus ${source.label}`">
-                                <button v-for="color in imagePalettes[source.id]!.colors" :key="color.id" type="button" :style="{ backgroundColor: color.hex }" :title="`${color.label}: ${color.hex.toUpperCase()}`" :disabled="!activeColorField" @click="applyExtractedColor(color.hex)" />
-                            </div>
+                            <PublisherImagePaletteSwatches
+                                :active-binding="activeColorBinding"
+                                :disabled="!activeColorField || selectionContainsLocked"
+                                dynamic
+                                :image-id="source.id"
+                                :image-label="source.label"
+                                :palette="imagePalettes[source.id]!"
+                                @clear-binding="activeColorField && emit('setColorBinding', activeColorField, null)"
+                                @select-binding="bindImageColor(source.id, $event)"
+                                @select-color="applyExtractedColor"
+                            />
                         </div>
                         <div v-else class="inspector-image-palette__colors inspector-image-palette__colors--empty" aria-hidden="true">
                             <i v-for="index in 9" :key="index" />
@@ -384,7 +391,7 @@ const toggleFontStyle = (style: 'bold' | 'italic') => {
                             :icon="faSync"
                             :label="imagePaletteStatuses[source.id] === 'loading' ? `${source.label} wird analysiert` : imagePalettes[source.id] ? `${source.label} erneut analysieren` : `${source.label} analysieren`"
                             :disabled="imagePaletteStatuses[source.id] === 'loading'"
-                            @click="imagePaletteStore.analyze(source.id)"
+                            @click="imagePaletteStore.analyze(source.id, true)"
                         />
                         <p v-if="imagePaletteErrors[source.id]" class="inspector-note inspector-note--error">{{ imagePaletteErrors[source.id] }}</p>
                     </article>
@@ -472,12 +479,12 @@ const toggleFontStyle = (style: 'bold' | 'italic') => {
                         <label title="Deckkraft der ausgewählten Ebene"><span>Deckkraft</span><input type="number" min="0" max="100" step="1" :disabled="!canEditSelectedEffects || selectionContainsLocked" :value="Math.round(selectedLayerEffects.opacity * 100)" @input="updateLayerOpacity" /><span>%</span></label>
                         <select title="Mischmodus der ausgewählten Ebene" aria-label="Mischmodus" :disabled="!canEditSelectedEffects || selectionContainsLocked" :value="selectedLayerEffects.blendMode" @change="updateLayerBlendMode"><option value="source-over">Normal</option><option value="multiply">Multiplizieren</option><option value="screen">Negativ multiplizieren</option><option value="overlay">Ineinanderkopieren</option><option value="darken">Abdunkeln</option><option value="lighten">Aufhellen</option></select>
                     </div>
-                    <LayoutLayerTree class="inspector-layer-list" aria-label="Ebenenliste" :effect-element-ids="effectElementIds" :element-labels="elementLabels" :element-previews="elementPreviews" :expanded-group-ids="selectedLayoutGroupPath" :hidden-element-ids="hiddenElementIds" :locked-element-ids="lockedElementIds" :nodes="layerTree" :selected-element-ids="selectedLayoutElements" @drill-into-element="emit('drillIntoElement', $event)" @edit-effects="openEffectsDialog([$event])" @move-layer="(source, target, placement) => emit('moveLayer', source, target, placement)" @select-element="(elementId, event) => emit('selectElement', elementId, event)" @select-group="(groupId, event) => emit('selectGroup', groupId, event)" @toggle-visibility="emit('toggleVisibility', $event)" />
+                    <LayoutLayerTree class="inspector-layer-list" aria-label="Ebenenliste" :effect-element-ids="effectElementIds" :filter-element-ids="filterElementIds" :element-labels="elementLabels" :element-previews="elementPreviews" :expanded-group-ids="selectedLayoutGroupPath" :hidden-element-ids="hiddenElementIds" :locked-element-ids="lockedElementIds" :nodes="layerTree" :selected-element-ids="selectedLayoutElements" @drill-into-element="emit('drillIntoElement', $event)" @edit-effects="openEffectsDialog([$event])" @edit-filters="openFiltersDialog([$event])" @move-layer="(source, target, placement) => emit('moveLayer', source, target, placement)" @select-element="(elementId, event) => emit('selectElement', elementId, event)" @select-group="(groupId, event) => emit('selectGroup', groupId, event)" @toggle-visibility="emit('toggleVisibility', $event)" />
                 </template>
             </div>
             <footer v-if="activeContentTab === 'layers'" class="inspector-layer-footer">
                 <span>{{ selectedLayoutElements.length ? `${selectedLayoutElements.length} ausgewählt` : 'Keine Auswahl' }}</span>
-                <div><DesignIconButton size="compact" :label="selectionIsLocked ? 'Auswahl entsperren' : 'Auswahl sperren'" :disabled="!hasLayoutSelection" @click="emit('toggleLock', selectedLayoutElements)"><FontAwesomeIcon :icon="selectionIsLocked ? faLockOpen : faLock" aria-hidden="true" /></DesignIconButton><DesignIconButton size="compact" label="Ebeneneffekte" :disabled="!canEditSelectedEffects || selectionContainsLocked" @click="openEffectsDialog(selectedEffectTargetIds)"><FontAwesomeIcon :icon="faWandMagicSparkles" aria-hidden="true" /></DesignIconButton><DesignIconButton variant="danger" size="compact" label="Auswahl löschen" :disabled="!hasLayoutSelection || selectionContainsLocked" @click="emit('deleteElements', selectedLayoutElements)"><FontAwesomeIcon :icon="faTrashCan" aria-hidden="true" /></DesignIconButton></div>
+                <div><DesignIconButton size="compact" label="Ebeneneffekte" :disabled="!canEditSelectedEffects || selectionContainsLocked" @click="openEffectsDialog(selectedEffectTargetIds)"><FontAwesomeIcon :icon="faWandMagicSparkles" aria-hidden="true" /></DesignIconButton><DesignIconButton size="compact" label="Ebenenfilter" :disabled="!canEditSelectedEffects || selectionContainsLocked" @click="openFiltersDialog(selectedEffectTargetIds)"><FontAwesomeIcon :icon="faSliders" aria-hidden="true" /></DesignIconButton><DesignIconButton size="compact" :label="selectionIsLocked ? 'Auswahl entsperren' : 'Auswahl sperren'" :disabled="!hasLayoutSelection" @click="emit('toggleLock', selectedLayoutElements)"><FontAwesomeIcon :icon="selectionIsLocked ? faLockOpen : faLock" aria-hidden="true" /></DesignIconButton><DesignIconButton variant="danger" size="compact" label="Auswahl löschen" :disabled="!hasLayoutSelection || selectionContainsLocked" @click="emit('deleteElements', selectedLayoutElements)"><FontAwesomeIcon :icon="faTrashCan" aria-hidden="true" /></DesignIconButton></div>
             </footer>
         </div>
 
@@ -488,5 +495,6 @@ const toggleFontStyle = (style: 'bold' | 'italic') => {
             </div>
         </div>
         <LayoutEffectsDialog :effects="effectsDialogValue" :open="effectsDialogOpen" :selection-count="effectsDialogElementIds.length" @apply="applyEffects" @close="effectsDialogOpen = false" />
+        <LayoutFiltersDialog :filters="filtersDialogValue" :open="filtersDialogOpen" :selection-count="filtersDialogElementIds.length" @apply="applyFilters" @close="filtersDialogOpen = false" />
     </section>
 </template>

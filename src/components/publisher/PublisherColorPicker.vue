@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { faStar } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { storeToRefs } from 'pinia';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 
 import { layoutGradientCss, type LayoutGradient } from '../../domain/layoutGradient';
-import { imagePaletteTokenLabel, type ImagePaletteToken, type LayoutColorBinding } from '../../domain/imagePalette';
+import { type ImagePaletteToken, type LayoutColorBinding } from '../../domain/imagePalette';
 import { PUBLISHER_DEFAULT_COLORS, usePublisherColorsStore } from '../../stores/publisherColors';
 import { usePublisherImagePalettesStore } from '../../stores/publisherImagePalettes';
+import PublisherImagePaletteSwatches from './PublisherImagePaletteSwatches.vue';
 
 type PublisherColorPickerTab = 'color' | 'gradient';
 const props = withDefaults(defineProps<{
@@ -44,7 +43,6 @@ const colorsStore = usePublisherColorsStore();
 const { recentColors } = storeToRefs(colorsStore);
 const imagePalettesStore = usePublisherImagePalettesStore();
 const { palettes, sources } = storeToRefs(imagePalettesStore);
-const imagePaletteTokens: ImagePaletteToken[] = ['primary', 'background', 'foreground'];
 const availableTabs = computed<PublisherColorPickerTab[]>(() => {
     const tabs = props.tabs.filter((tab, index, entries) =>
         (tab === 'color' || tab === 'gradient') && entries.indexOf(tab) === index);
@@ -199,35 +197,18 @@ watch(availableTabs, (tabs) => {
                         <strong>Bildfarben</strong>
                         <div class="publisher-color-picker__image-palette">
                             <img :src="source.source" alt="" :title="source.label" />
-                            <div class="publisher-color-picker__image-colors">
-                                <div v-if="dynamic" class="publisher-color-picker__dynamic" :aria-label="`Dynamische Farben aus ${source.label}`">
-                                    <button
-                                        v-for="token in imagePaletteTokens"
-                                        :key="token"
-                                        type="button"
-                                        :style="{ backgroundColor: palettes[source.id]?.[token] }"
-                                        :title="`${imagePaletteTokenLabel(token)} dynamisch verwenden`"
-                                        :aria-label="`${imagePaletteTokenLabel(token)} aus ${source.label} dynamisch verwenden`"
-                                        :aria-pressed="colorBinding?.imageId === source.id && colorBinding?.token === token"
-                                        @click="selectBinding(source.id, token)"
-                                    >
-                                        <FontAwesomeIcon v-if="token === 'primary'" :icon="faStar" aria-hidden="true" />
-                                        <i v-else class="publisher-color-picker__role" :class="`is-${token}`" aria-hidden="true" />
-                                    </button>
-                                    <button v-if="colorBinding?.imageId === source.id" type="button" class="publisher-color-picker__unbind" @click="clearBinding">Lösen</button>
-                                </div>
-                                <div class="publisher-color-picker__swatches" :aria-label="`Extrahierte Farben aus ${source.label}`">
-                                    <button
-                                        v-for="color in palettes[source.id]?.colors ?? []"
-                                        :key="color.id"
-                                        type="button"
-                                        :style="{ backgroundColor: color.hex }"
-                                        :title="`${color.label}: ${color.hex.toUpperCase()}`"
-                                        :aria-label="`${color.label}: ${color.hex.toUpperCase()}`"
-                                        @click="selectColor(color.hex)"
-                                    />
-                                </div>
-                            </div>
+                            <PublisherImagePaletteSwatches
+                                v-if="palettes[source.id]"
+                                :active-binding="colorBinding"
+                                :disabled="disabled"
+                                :dynamic="dynamic"
+                                :image-id="source.id"
+                                :image-label="source.label"
+                                :palette="palettes[source.id]!"
+                                @clear-binding="clearBinding"
+                                @select-binding="selectBinding(source.id, $event)"
+                                @select-color="selectColor"
+                            />
                         </div>
                     </section>
                 </div>

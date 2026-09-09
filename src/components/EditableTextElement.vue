@@ -5,11 +5,14 @@ import type { VueKonvaRef } from 'vue-konva';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 import type { LayoutElementEffects, LayoutElementId, LayoutFrame } from '../domain/layoutEditing';
+import { layoutFilterStackHasEnabled, type LayoutFilterStack } from '../domain/layoutFilters';
+import { configureLayoutKonvaFilterValues, layoutKonvaFilterFunctions } from '../utils/layoutKonvaFilters';
 
 const props = defineProps<{
     elementId: LayoutElementId;
     editorScale: number;
     effects: LayoutElementEffects;
+    filters: LayoutFilterStack;
     decorationLines: Konva.LineConfig[];
     frame: LayoutFrame;
     graphicText: boolean;
@@ -34,28 +37,35 @@ const shadowConfig = computed<Konva.ShapeConfig>(() => props.effects.shadow.enab
     shadowForStrokeEnabled: props.effects.shadow.forStroke,
 } : { shadowEnabled: false });
 
-const syncBlur = async () => {
+const syncFilters = async () => {
     await nextTick();
     const node = effectGroupRef.value?.getNode();
     if (!node) return;
     node.clearCache();
     node.filters([]);
     node.blurRadius(0);
-    if (props.effects.blur.enabled && props.effects.blur.radius > 0) {
+    configureLayoutKonvaFilterValues(node, props.filters);
+    const blurEnabled = props.effects.blur.enabled && props.effects.blur.radius > 0;
+    const filters = [
+        ...(blurEnabled ? [Blur] : []),
+        ...layoutKonvaFilterFunctions(props.filters),
+    ];
+    if (blurEnabled || layoutFilterStackHasEnabled(props.filters)) {
         const radius = props.effects.blur.radius;
-        node.cache({ pixelRatio: 1, offset: Math.ceil(radius * 2) });
-        node.filters([Blur]);
-        node.blurRadius(radius);
+        node.cache({ pixelRatio: 1, offset: blurEnabled ? Math.ceil(radius * 2) : 0 });
+        node.filters(filters);
+        if (blurEnabled) node.blurRadius(radius);
     }
     node.getLayer()?.batchDraw();
 };
 watch(() => [
     props.effects.blur.enabled, props.effects.blur.radius,
+    props.filters,
     props.frame.width, props.frame.height,
     props.textConfig.text, props.textConfig.fill, props.textConfig.stroke,
     props.textConfig.strokeWidth, props.textConfig.fontSize, props.textConfig.fontFamily,
     props.textConfig.fontStyle, props.textConfig.lineHeight, props.textConfig.letterSpacing,
-], syncBlur, { immediate: true });
+], syncFilters, { deep: true, immediate: true });
 onBeforeUnmount(() => effectGroupRef.value?.getNode()?.clearCache());
 
 const emit = defineEmits<{

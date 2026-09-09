@@ -13,10 +13,12 @@ import {
 import { createImageFocusByTemplate } from './imageFocus';
 import { createLayoutElementEffects } from './layoutEditing';
 import { createLayoutGradient } from './layoutGradient';
+import { createLayoutFilterStack } from './layoutFilters';
 import {
     deletePublisherDraft,
     findPublisherDraftAppointmentKeys,
     loadPublisherDraft,
+    PUBLISHER_DRAFT_VERSION,
     type PublisherDraft,
     savePublisherDraft,
 } from './publisherDraft';
@@ -31,7 +33,7 @@ const createStorage = () => {
 };
 
 const createDraft = (): PublisherDraft => ({
-    version: 1,
+    version: PUBLISHER_DRAFT_VERSION,
     selectedTemplateId: 'poster',
     templateOverrides: { title: 'Lokaler Titel', subtitle: 'Dynamischer Untertitel' },
     layouts: {
@@ -44,6 +46,7 @@ const createDraft = (): PublisherDraft => ({
             visualStyles: createLayoutVisualStyles('split'),
             groups: [],
             deleted: [],
+            filters: {},
         },
     },
     imageFocus: { ...createImageFocusByTemplate(), split: { x: 20, y: 80, zoom: 175 } },
@@ -102,6 +105,9 @@ describe('publisher draft', () => {
         const effects = createLayoutElementEffects();
         effects.opacity = 0.45;
         layout.effects = { title: effects };
+        const filters = createLayoutFilterStack();
+        filters.find(({ type }) => type === 'contrast')!.enabled = true;
+        layout.filters = { title: filters };
         layout.locked = ['title'];
 
         savePublisherDraft(storage, '42:appearance', draft);
@@ -111,7 +117,27 @@ describe('publisher draft', () => {
         expect(restored.styles.title?.colorGradient?.stops[0].colorBinding).toEqual({ imageId: 'data:image', token: 'primary' });
         expect(restored.visualStyles.background?.fillGradient?.type).toBe('radial');
         expect(restored.effects?.title?.opacity).toBe(0.45);
+        expect(restored.filters?.title?.find(({ type }) => type === 'contrast')).toMatchObject({
+            enabled: true,
+            amount: 20,
+        });
         expect(restored.locked).toEqual(['title']);
+    });
+
+    it('migrates version-one drafts to version two with an empty filter map', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        const legacyLayout = structuredClone(draft.layouts.split!);
+        delete legacyLayout.filters;
+        storage.setItem('churchtools-publisher:draft:version-one', JSON.stringify({
+            ...draft,
+            version: 1,
+            layouts: { split: legacyLayout },
+        }));
+
+        const restored = loadPublisherDraft(storage, 'version-one');
+        expect(restored?.version).toBe(PUBLISHER_DRAFT_VERSION);
+        expect(restored?.layouts.split?.filters).toEqual({});
     });
 
     it('loads text from older drafts as frame text', () => {
@@ -234,7 +260,7 @@ describe('publisher draft', () => {
         const storage = createStorage();
         storage.setItem('churchtools-publisher:draft:broken', '{invalid');
         expect(loadPublisherDraft(storage, 'broken')).toBeNull();
-        storage.setItem('churchtools-publisher:draft:old', JSON.stringify({ ...createDraft(), version: 2 }));
+        storage.setItem('churchtools-publisher:draft:old', JSON.stringify({ ...createDraft(), version: 99 }));
         expect(loadPublisherDraft(storage, 'old')).toBeNull();
         storage.setItem('churchtools-publisher:draft:zoom', JSON.stringify({ ...createDraft(), previewZoomPercent: 999 }));
         expect(loadPublisherDraft(storage, 'zoom')).toBeNull();
@@ -349,10 +375,14 @@ describe('publisher draft', () => {
         const groupEffects = createLayoutElementEffects();
         groupEffects.shadow.enabled = true;
         splitLayout.effects = { outer: groupEffects };
+        const groupFilters = createLayoutFilterStack();
+        groupFilters.find(({ type }) => type === 'grayscale')!.enabled = true;
+        splitLayout.filters = { outer: groupFilters };
         savePublisherDraft(storage, 'groups-nested', draft);
         const restored = loadPublisherDraft(storage, 'groups-nested')?.layouts.split;
         expect(restored?.groups).toEqual(splitLayout.groups);
         expect(restored?.effects?.outer?.shadow.enabled).toBe(true);
+        expect(restored?.filters?.outer?.find(({ type }) => type === 'grayscale')?.enabled).toBe(true);
     });
 
     it('rejects invalid group rotations instead of silently dropping them', () => {

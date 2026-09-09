@@ -67,6 +67,28 @@ export const colorContrastRatio = (left: string, right: string) => {
 const firstHex = (swatches: ImagePaletteSwatches, ids: (keyof ImagePaletteSwatches)[], fallback: string) =>
     ids.map((id) => swatches[id]?.hex).find(Boolean)?.toLowerCase() ?? fallback;
 
+const rgbChannels = (hex: string) => {
+    const value = expandHex(hex);
+    return [1, 3, 5].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16));
+};
+
+const closestPaletteColor = (colors: PublisherImagePaletteColor[], target: string, fallback: string) => {
+    if (colors.length === 0 || !/^#[0-9a-f]{6}$/i.test(target)) return fallback;
+    const targetChannels = rgbChannels(target);
+    return colors.reduce((closest, color) => {
+        const channels = rgbChannels(color.hex);
+        const distance = channels.reduce((total, channel, index) =>
+            total + (channel - targetChannels[index]!) ** 2, 0);
+        return distance < closest.distance ? { color: color.hex, distance } : closest;
+    }, { color: colors[0]!.hex, distance: Number.POSITIVE_INFINITY }).color;
+};
+
+const contrastingPaletteColor = (colors: PublisherImagePaletteColor[], background: string, fallback: string) =>
+    colors.reduce((best, color) => {
+        const contrast = colorContrastRatio(background, color.hex);
+        return contrast > best.contrast ? { color: color.hex, contrast } : best;
+    }, { color: fallback, contrast: -1 }).color;
+
 export const createPublisherImagePalette = (
     swatches: ImagePaletteSwatches,
     extractedColors: ImagePaletteSwatchLike[] = [],
@@ -81,21 +103,11 @@ export const createPublisherImagePalette = (
         .filter((color, index, entries) => /^#[0-9a-f]{6}$/.test(color.hex) &&
             entries.findIndex(({ hex }) => hex === color.hex) === index);
     const colors = (quantizedColors.length ? quantizedColors : semanticColors).slice(0, MAX_EXTRACTED_IMAGE_COLORS);
-    const primary = firstHex(swatches, ['Vibrant', 'Muted', 'DarkVibrant', 'LightVibrant'], '#69a7e8');
-    const background = firstHex(swatches, ['DarkMuted', 'DarkVibrant', 'Muted', 'Vibrant'], primary);
-    const imageForeground = firstHex(
-        swatches,
-        luminance(background) < 0.4
-            ? ['LightVibrant', 'LightMuted']
-            : ['DarkVibrant', 'DarkMuted'],
-        '',
-    );
-    const neutralForeground = colorContrastRatio(background, '#ffffff') >= colorContrastRatio(background, '#000000')
-        ? '#ffffff'
-        : '#000000';
-    const foreground = imageForeground && colorContrastRatio(background, imageForeground) >= 4.5
-        ? imageForeground
-        : neutralForeground;
+    const primarySeed = firstHex(swatches, ['Vibrant', 'Muted', 'DarkVibrant', 'LightVibrant'], '#69a7e8');
+    const primary = closestPaletteColor(colors, primarySeed, primarySeed);
+    const backgroundSeed = firstHex(swatches, ['DarkMuted', 'DarkVibrant', 'Muted', 'Vibrant'], primary);
+    const background = closestPaletteColor(colors, backgroundSeed, backgroundSeed);
+    const foreground = contrastingPaletteColor(colors, background, primary);
     return { colors, primary, background, foreground };
 };
 

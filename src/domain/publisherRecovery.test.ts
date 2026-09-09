@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { createImageFocusByTemplate } from './imageFocus';
 import { loadPublisherRecovery, savePublisherRecovery } from './publisherRecovery';
+import { PUBLISHER_DRAFT_VERSION } from './publisherDraft';
+import { PUBLISHER_RECORD_VERSION, type PublisherDocumentRecord } from './publisherRepository';
 
 describe('publisher recovery', () => {
     it('keeps only one validated recovery document', () => {
@@ -10,14 +12,14 @@ describe('publisher recovery', () => {
             getItem: (key: string) => values.get(key) ?? null,
             setItem: (key: string, value: string) => values.set(key, value),
         };
-        const document = {
-            version: 1 as const,
+        const document: PublisherDocumentRecord = {
+            version: PUBLISHER_RECORD_VERSION,
             id: 'document-1',
             name: 'Recovery',
             revision: 0,
             appointment: null,
             draft: {
-                version: 1 as const,
+                version: PUBLISHER_DRAFT_VERSION,
                 selectedTemplateId: 'split' as const,
                 templateOverrides: {},
                 layouts: {},

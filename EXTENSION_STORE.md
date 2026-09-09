@@ -22,6 +22,7 @@ Ein Dokument kann mehrere Seiten mit unterschiedlichen Abmessungen enthalten –
 - wiederverwendbare, terminneutrale Designvorlagen in ChurchTools
 - dynamische ChurchTools-Termindaten über Platzhalter
 - nachladbare Daten aus verknüpften Events, Diensten und Anmeldegruppen
+- flexible Listenausgabe für mehrfach besetzte Dienste, etwa zeilenweise oder als Aufzählung
 - Grafiktext und Rahmentext mit umfangreichen Zeichen- und Absatzoptionen
 - Bilder, Rechtecke, Kreise, Dreiecke, Linien, Icons und QR-Codes
 - Ebenen, verschachtelte Gruppen, Sichtbarkeit, Sperren und Drag-and-drop-Sortierung
@@ -31,6 +32,7 @@ Ein Dokument kann mehrere Seiten mit unterschiedlichen Abmessungen enthalten –
 - automatische Extraktion passender Farben aus verwendeten Bildern
 - dynamische Primär-, Vordergrund- und Hintergrundfarben mit Fallback
 - Schatten, Weichzeichnung, Deckkraft und Mischmodi für Ebenen
+- geordnete Filter für Helligkeit, Kontrast, Farbe, Graustufen, Sepia, Invertieren, Pixelierung und Rauschen auf Ebenen und Gruppen
 - PNG- und JPEG-Export pro Seite mit JPEG-Qualität und gemeinsamem ZIP-Download
 
 ## So funktioniert es
@@ -56,7 +58,7 @@ Je nach Termin und den in ChurchTools verfügbaren Informationen können unter a
 - Name, Beschreibung, Bild, Ort und Link einer Anmeldegruppe
 - Teilnehmenden-, Kapazitäts- und Wartelisteninformationen einer Anmeldegruppe
 
-Verknüpfte Event- und Gruppendaten werden erst geladen, wenn sie im Dateninspektor ausdrücklich angefordert werden.
+Verknüpfte Event- und Gruppendaten werden erst geladen, wenn sie im Dateninspektor ausdrücklich angefordert werden. Mehrere eingeteilte Personen eines Dienstes können komma- oder zeilenweise, als Aufzählung, mit „und“ oder auf die erste Person begrenzt ausgegeben werden.
 
 ## Gestaltung und Ebenen
 
@@ -68,7 +70,7 @@ Für Texte stehen unter anderem Schriftfamilie, Größe, Fett, Kursiv, Laufweite
 
 ## Farben und Bildanalyse
 
-Der Publisher kann aus jedem verwendeten Bild eine Farbpalette extrahieren. Die Farben erscheinen direkt im gemeinsamen Farbwähler und können als feste Farbe oder als dynamische Bildfarbe eingesetzt werden. Dynamische Primär-, Vordergrund- und Hintergrundfarben behalten einen definierten Ersatzwert und aktualisieren sich, wenn sich das gebundene Bild ändert.
+Der Publisher kann aus jedem verwendeten Bild eine Palette mit neun Farben extrahieren. Primär-, Vordergrund- und Hintergrundrolle werden direkt an diesen Farbfeldern markiert und können dort neu zugewiesen werden. Die Farben lassen sich fest oder dynamisch einsetzen; dynamische Rollen behalten einen definierten Ersatzwert und aktualisieren sich, wenn sich das gebundene Bild ändert.
 
 Flächen und Texte unterstützen feste Farben und Verläufe mit mehreren Farbstopps und Transparenz. Auch analysierte Bildfarben können an einzelne Verlaufspunkte gebunden werden.
 
@@ -89,7 +91,7 @@ Der Export behält die exakten Pixelmaße der jeweiligen Seite bei. PNG erhält 
 - Verknüpfte Daten werden nur auf Wunsch nachgeladen.
 - Eigene Bild-Uploads sind noch nicht aktiviert; vorhandene ChurchTools-Terminbilder und Bildvariablen können verwendet werden.
 - Dokumente werden mit einer eigenen ID und optionalem Terminbezug im Custom Module gespeichert.
-- Designvorlagen werden terminneutral im Custom Module gespeichert. Im Browser liegt nur eine Recovery-Kopie des zuletzt bearbeiteten Dokuments.
+- Designvorlagen werden terminneutral im Custom Module gespeichert. Im Browser liegt nur eine Recovery-Kopie des zuletzt bearbeiteten Dokuments; zusätzlich werden ausschließlich abgeleitete Farbvoreinstellungen ohne Bilddaten oder vollständige Bild-URLs gecacht.
 
 ## Voraussetzungen
 
@@ -99,7 +101,7 @@ Der Export behält die exakten Pixelmaße der jeweiligen Seite bei. PNG erhält 
 
 ## Aktueller Entwicklungsstand
 
-Der Publisher befindet sich im Beta-Stadium. Die Kernfunktionen für Mehrseitenlayout, dynamische Termindaten, CCM-gespeicherte Dokumente und Vorlagen sowie PNG-/JPEG-Export sind vorhanden. Eigene Bild-Uploads, mobile Bedienung, PDF-/SVG-Export und erweiterte Anpassungsfilter sind noch nicht Bestandteil des zugesicherten Funktionsumfangs.
+Der Publisher befindet sich im Beta-Stadium. Die Kernfunktionen für Mehrseitenlayout, dynamische Termindaten, CCM-gespeicherte Dokumente und Vorlagen sowie PNG-/JPEG-Export sind vorhanden. Eigene Bild-Uploads, mobile Bedienung und PDF-/SVG-Export sind noch nicht Bestandteil des zugesicherten Funktionsumfangs.
 
 ## Kategorie und Suchbegriffe
 

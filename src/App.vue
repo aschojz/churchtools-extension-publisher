@@ -6,6 +6,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import type EventTemplate from './components/EventTemplate.vue';
 import PublisherAppointmentPanel from './components/PublisherAppointmentPanel.vue';
 import PublisherEditorShell from './components/PublisherEditorShell.vue';
+import DesignConfirmDialog from './components/design/DesignConfirmDialog.vue';
 import PublisherContextBar from './components/publisher/PublisherContextBar.vue';
 import PublisherExportDialog from './components/publisher/PublisherExportDialog.vue';
 import PublisherPageDialog from './components/publisher/PublisherPageDialog.vue';
@@ -13,12 +14,12 @@ import PublisherPagesPanel from './components/publisher/PublisherPagesPanel.vue'
 import PublisherInspectorShell from './components/publisher/PublisherInspectorShell.vue';
 import PublisherToolRail from './components/publisher/PublisherToolRail.vue';
 import PublisherTopbar from './components/publisher/PublisherTopbar.vue';
+import PublisherTemplatesDialog from './components/publisher/PublisherTemplatesDialog.vue';
 import PublisherWorkspaceContent from './components/publisher/PublisherWorkspaceContent.vue';
 import PublisherZoomControls from './components/publisher/PublisherZoomControls.vue';
 import AppointmentInspector from './components/publisher/inspectors/AppointmentInspector.vue';
 import AppointmentDataInspector from './components/publisher/inspectors/AppointmentDataInspector.vue';
 import LayoutInspector from './components/publisher/inspectors/LayoutInspector.vue';
-import TemplateInspector from './components/publisher/inspectors/TemplateInspector.vue';
 import { useLayoutSelection } from './composables/useLayoutSelection';
 import { useAppointmentRelatedData } from './composables/useAppointmentRelatedData';
 import { usePublisherAppointments } from './composables/usePublisherAppointments';
@@ -48,11 +49,15 @@ import {
     appointmentReferenceFromKey,
     createMemoryPublisherRepository,
     createPublisherRecordId,
-    PublisherRepositoryError,
+    PUBLISHER_RECORD_VERSION,
     type PublisherDocumentRecord,
-    type PublisherRepositoryErrorCode,
 } from './domain/publisherRepository';
 import { loadPublisherRecovery, savePublisherRecovery } from './domain/publisherRecovery';
+import {
+    publisherStorageFailure,
+    publisherStorageSupportsAutosave,
+    type PublisherStorageStatus,
+} from './domain/publisherStorageState';
 import { clonePublisherPage, createBlankPublisherPage, createPublisherPage } from './domain/publisherPage';
 import {
     createPublisherExportSettings,
@@ -83,9 +88,12 @@ const publisherRepository = import.meta.env.VITE_E2E === 'true'
     ? createMemoryPublisherRepository()
     : createCcmPublisherRepository(churchtoolsClient, import.meta.env.VITE_KEY);
 const recoveredDocument = loadPublisherRecovery(window.localStorage);
-const { activePage, activePageId, draftLayouts, imageFocusByTemplate, pages, selectedTemplateId } = storeToRefs(documentStore);
 const {
-    activeEditorTool, canRedoLayout, canUndoLayout, hasLayoutSelection,
+    activePage, activePageId, canRedoDocument, canUndoDocument, draftLayouts,
+    imageFocusByTemplate, pages, selectedTemplateId,
+} = storeToRefs(documentStore);
+const {
+    activeEditorTool, hasLayoutSelection,
     panToolEnabled, previewZoomPercent, selectedLayoutElements, selectedLayoutGeometry, snapEnabled,
 } = storeToRefs(editorStore);
 const templateRef = shallowRef<InstanceType<typeof EventTemplate> | null>(null);
@@ -136,8 +144,7 @@ const activeDocumentId = ref(recoveredDocument?.id ?? createPublisherRecordId())
 const activeDocumentRevision = ref(recoveredDocument?.revision ?? 0);
 const activeDocumentCreatedAt = ref(recoveredDocument?.createdAt ?? new Date().toISOString());
 const documentName = ref(recoveredDocument?.name ?? 'Unbenanntes Dokument');
-type StorageStatus = 'conflict' | 'dirty' | 'error' | 'loading' | 'offline' | 'permission' | 'saved' | 'saving';
-const storageStatus = ref<StorageStatus>('loading');
+const storageStatus = ref<PublisherStorageStatus>('loading');
 const storageMessage = ref('ChurchTools-Speicher wird geladen …');
 let autosaveTimeout: ReturnType<typeof setTimeout> | null = null;
 let saveInFlight = false;
@@ -175,6 +182,7 @@ const newPagePreset = ref('1920x1080');
 const newPageWidth = ref(1920);
 const newPageHeight = ref(1080);
 const pageCreationError = ref('');
+const templateDialogOpen = ref(false);
 const exportDialogOpen = ref(false);
 const exportBusy = ref(false);
 const exportProgress = ref('');
@@ -183,18 +191,21 @@ const selectedDesignTemplateId = ref('');
 const designTemplateName = ref('');
 const designTemplateStatus = ref('');
 const designTemplateError = ref('');
+const pendingDeletion = ref<
+    { kind: 'template'; item: PublisherDesignTemplate } |
+    { kind: 'document'; item: PublisherDocumentRecord } |
+    null
+>(null);
 const layoutStep = computed(() => (snapEnabled.value ? 20 : 5));
 interface EditorTool {
     id: EditorToolId;
     targetId: string;
     label: string;
-    requiresTemplate: boolean;
 }
 const editorTools = [
-    { id: 'appointments', targetId: 'appointments-editor', label: 'Termine', requiresTemplate: false },
-    { id: 'templates', targetId: 'templates-editor', label: 'Vorlagen', requiresTemplate: true },
-    { id: 'data', targetId: 'data-editor', label: 'Termindaten', requiresTemplate: true },
-    { id: 'layout', targetId: 'layout-editor', label: 'Layout', requiresTemplate: true },
+    { id: 'appointments', targetId: 'appointments-editor', label: 'Termine' },
+    { id: 'data', targetId: 'data-editor', label: 'Termindaten' },
+    { id: 'layout', targetId: 'layout-editor', label: 'Layout' },
 ] as const satisfies readonly EditorTool[];
 const {
     alignLayoutElement,
@@ -202,13 +213,10 @@ const {
     clearLayoutSelection,
     deleteLayoutElements,
     nudgeLayoutElement,
-    redoLayout,
-    resetSelectedLayoutElement,
     restoreSelectedFontSizeInput,
     restoreSelectedLayoutGeometryInput,
     selectLayoutElement,
     selectLayoutGroup,
-    undoLayout,
     updateSelectedLayoutGeometry,
     updateSelectedTextContent,
     updateSelectedTextStyle,
@@ -293,6 +301,7 @@ const appointmentDataValues = computed(() => Object.fromEntries(
             rawValue: field.rawValue,
             locale: field.locale,
             timeZone: field.timeZone,
+            values: field.values ? [...field.values] : undefined,
         }] as const),
     ],
 ));
@@ -346,17 +355,10 @@ watch([imagePaletteSources, dynamicPaletteImageIds], ([sources, boundImageIds]) 
         if (imagePaletteStore.statuses[imageId] === 'idle') void imagePaletteStore.analyze(imageId);
     }
 }, { immediate: true, deep: true });
-const hasTemplateOverrides = computed(
-    () => Object.keys(templateOverrides.value).length > 0,
-);
-
 const activateEditorTool = async (tool: EditorTool) => {
     if (tool.id === 'appointments') {
         activeEditorTool.value = tool.id;
         appointmentDialogOpen.value = true;
-        return;
-    }
-    if (tool.requiresTemplate && !templateProps.value) {
         return;
     }
     activeEditorTool.value = tool.id;
@@ -371,25 +373,21 @@ const activateEditorToolById = (toolId: EditorToolId) => {
 };
 
 const addLayoutElement = (kind: Exclude<LayoutCustomElementKind, 'image' | 'text'>) => {
-    if (!templateProps.value) return;
     templateRef.value?.addElement(kind);
     activeEditorTool.value = 'layout';
 };
 
 const addLayoutText = (textMode: LayoutTextMode) => {
-    if (!templateProps.value) return;
     templateRef.value?.addElement('text', { textMode });
     activeEditorTool.value = 'layout';
 };
 
 const addLayoutIcon = (iconName: PublisherIconName) => {
-    if (!templateProps.value) return;
     templateRef.value?.addElement('icon', { iconName, name: 'Icon' });
     activeEditorTool.value = 'layout';
 };
 
 const addLayoutQr = () => {
-    if (!templateProps.value) return;
     templateRef.value?.addElement('qr', { qrValue: 'https://church.tools', name: 'QR-Code' });
     activeEditorTool.value = 'layout';
 };
@@ -401,7 +399,7 @@ const showImageUploadPlaceholder = () => {
 const closeAppointmentDialog = () => {
     appointmentDialogOpen.value = false;
     if (activeEditorTool.value === 'appointments') {
-        activeEditorTool.value = selectedAppointmentKey.value ? 'templates' : 'layout';
+        activeEditorTool.value = 'layout';
     }
 };
 
@@ -445,7 +443,7 @@ const currentPublisherDraft = (): PublisherDraft => ({
 const currentPublisherDocument = (): PublisherDocumentRecord => {
     const now = new Date().toISOString();
     return {
-        version: 1,
+        version: PUBLISHER_RECORD_VERSION,
         id: activeDocumentId.value,
         name: documentName.value.trim() || 'Unbenanntes Dokument',
         revision: activeDocumentRevision.value,
@@ -462,10 +460,15 @@ const updateDocumentList = (document: PublisherDocumentRecord) => {
 };
 
 const setStorageFailure = (error: unknown, fallback: string) => {
-    const code: PublisherRepositoryErrorCode = error instanceof PublisherRepositoryError ? error.code : 'unavailable';
-    storageStatus.value = code === 'invalid' || code === 'unavailable' ? 'error' : code;
-    storageMessage.value = error instanceof Error ? error.message : fallback;
-    draftError.value = storageMessage.value;
+    const failure = publisherStorageFailure(error, fallback);
+    if (autosaveTimeout) {
+        clearTimeout(autosaveTimeout);
+        autosaveTimeout = null;
+    }
+    storageStatus.value = failure.status;
+    storageMessage.value = failure.message;
+    draftError.value = failure.showAsError ? failure.message : '';
+    if (!failure.showAsError) draftStatus.value = 'Änderungen sind lokal zur Wiederherstellung gesichert.';
 };
 
 const persistCurrentDocument = async (): Promise<boolean> => {
@@ -495,7 +498,7 @@ const persistCurrentDocument = async (): Promise<boolean> => {
         saveInFlight = false;
         if (saveQueued) {
             saveQueued = false;
-            void persistCurrentDocument();
+            if (publisherStorageSupportsAutosave(storageStatus.value)) void persistCurrentDocument();
         }
     }
 };
@@ -503,17 +506,28 @@ const persistCurrentDocument = async (): Promise<boolean> => {
 const saveCurrentDraft = () => {
     if (restoringDraft.value) return;
     const recovery = currentPublisherDocument();
+    let recoverySaved = true;
     try {
         savePublisherRecovery(window.localStorage, recovery);
     } catch {
-        // ChurchTools remains the source of truth; recovery is best effort only.
+        recoverySaved = false;
+    }
+    if (!publisherStorageSupportsAutosave(storageStatus.value)) {
+        if (!recoverySaved) {
+            storageStatus.value = 'error';
+            storageMessage.value = 'Weder ChurchTools noch die lokale Wiederherstellungskopie stehen zum Speichern zur Verfügung.';
+            draftError.value = storageMessage.value;
+            return;
+        }
+        draftStatus.value = 'Änderungen sind lokal zur Wiederherstellung gesichert.';
+        return;
     }
     storageStatus.value = 'dirty';
     storageMessage.value = 'Ungespeicherte Änderungen.';
     if (autosaveTimeout) clearTimeout(autosaveTimeout);
     autosaveTimeout = setTimeout(() => {
         autosaveTimeout = null;
-        void persistCurrentDocument();
+        if (publisherStorageSupportsAutosave(storageStatus.value)) void persistCurrentDocument();
     }, 800);
 };
 
@@ -587,11 +601,6 @@ const resetTemplateOverride = (field: EditableTemplateField) => {
     const nextOverrides = { ...templateOverrides.value };
     delete nextOverrides[field];
     templateOverrides.value = nextOverrides;
-    saveCurrentDraft();
-};
-
-const resetTemplateOverrides = () => {
-    templateOverrides.value = {};
     saveCurrentDraft();
 };
 
@@ -748,7 +757,7 @@ const applyDesignTemplate = (designTemplate: PublisherDesignTemplate) => {
     const activeTemplatePageIndex = designTemplate.pages.findIndex(({ id }) => id === designTemplate.activePageId);
     const instantiatedPages = designTemplate.pages.map((page) => clonePublisherPage(page, true));
     const nextActivePageId = instantiatedPages[Math.max(0, activeTemplatePageIndex)]!.id;
-    documentStore.replacePages(instantiatedPages, nextActivePageId);
+    documentStore.replacePagesWithHistory(instantiatedPages, nextActivePageId);
     editorStore.activateCanvasPage(nextActivePageId);
     draftRevision.value += 1;
     designTemplateStatus.value = `Vorlage „${designTemplate.name}“ angewendet.`;
@@ -786,9 +795,50 @@ const deleteStoredDocument = async (document: PublisherDocumentRecord) => {
     }
 };
 
+const requestDesignTemplateDeletion = (designTemplate: PublisherDesignTemplate) => {
+    pendingDeletion.value = { kind: 'template', item: designTemplate };
+};
+
+const requestStoredDocumentDeletion = (document: PublisherDocumentRecord) => {
+    pendingDeletion.value = { kind: 'document', item: document };
+};
+
+const confirmPendingDeletion = () => {
+    const deletion = pendingDeletion.value;
+    if (!deletion) return;
+    pendingDeletion.value = null;
+    if (deletion.kind === 'template') void removeDesignTemplate(deletion.item);
+    else void deleteStoredDocument(deletion.item);
+};
+
 const isTextEntryTarget = (target: EventTarget | null) =>
     target instanceof HTMLElement &&
     (target.isContentEditable || target.matches('input, textarea, select'));
+
+const navigateDocumentHistory = (direction: 'undo' | 'redo') => {
+    restoringDraft.value = true;
+    const changed = direction === 'undo'
+        ? documentStore.undoDocument()
+        : documentStore.redoDocument();
+    if (!changed) {
+        restoringDraft.value = false;
+        return;
+    }
+
+    selectedDesignTemplateId.value = '';
+    editorStore.activateCanvasPage(activePageId.value);
+    editorStore.clearSelectionState();
+    draftRevision.value += 1;
+    exportError.value = '';
+    toast.value = null;
+    void nextTick(() => {
+        restoringDraft.value = false;
+        saveCurrentDraft();
+    });
+};
+
+const undoDocument = () => navigateDocumentHistory('undo');
+const redoDocument = () => navigateDocumentHistory('redo');
 
 const handleEditorShortcut = (event: KeyboardEvent) => {
     if (isTextEntryTarget(event.target)) {
@@ -805,10 +855,10 @@ const handleEditorShortcut = (event: KeyboardEvent) => {
     if (!shortcut) {
         return;
     }
-    if (shortcut.type === 'undo' && !canUndoLayout.value) {
+    if (shortcut.type === 'undo' && !canUndoDocument.value) {
         return;
     }
-    if (shortcut.type === 'redo' && !canRedoLayout.value) {
+    if (shortcut.type === 'redo' && !canRedoDocument.value) {
         return;
     }
 
@@ -821,10 +871,10 @@ const handleEditorShortcut = (event: KeyboardEvent) => {
             );
             break;
         case 'undo':
-            undoLayout();
+            undoDocument();
             break;
         case 'redo':
-            redoLayout();
+            redoDocument();
             break;
         case 'clearSelection':
             clearLayoutSelection();
@@ -843,6 +893,7 @@ const storageStatusLabel = computed(() => ({
     dirty: 'Ungespeichert',
     error: 'Speicherfehler',
     loading: 'Speicher wird geladen',
+    local: 'Lokal gesichert',
     offline: 'Offline · lokal gesichert',
     permission: 'Keine Speicherberechtigung',
     saved: 'In ChurchTools gespeichert',
@@ -862,7 +913,7 @@ const loadPublisherStorage = async () => {
         const remoteActive = loadedDocuments.find(({ id }) => id === activeDocumentId.value);
         if (recoveredDocument && remoteActive && remoteActive.revision > recoveredDocument.revision) {
             storageStatus.value = 'conflict';
-            storageMessage.value = 'Für das wiederhergestellte Dokument liegt in ChurchTools eine neuere Version vor.';
+            storageMessage.value = 'Für das wiederhergestellte Dokument liegt in ChurchTools eine neuere Version vor. Der lokale Stand bleibt zur Wiederherstellung erhalten.';
         } else if (recoveredDocument) {
             storageStatus.value = 'dirty';
             storageMessage.value = 'Wiederhergestellter Stand wird gespeichert …';
@@ -962,7 +1013,7 @@ const updateExportPage = (pageId: string, change: Partial<Omit<PublisherPageExpo
 
 const exportPages = async () => {
     const selectedSettings = exportSettings.value.filter(({ enabled }) => enabled);
-    if (!templateProps.value || selectedSettings.length === 0 || exportBusy.value) return;
+    if (selectedSettings.length === 0 || exportBusy.value) return;
     exportError.value = '';
     toast.value = null;
     exportBusy.value = true;
@@ -1021,27 +1072,22 @@ const exportPages = async () => {
         <template #topbar>
             <PublisherTopbar
                 :document-title="documentName"
-                :export-disabled="!templateProps"
-                :has-template="Boolean(templateProps)"
                 @activate="activateEditorToolById"
                 @export="openExportDialog"
-                @redo="redoLayout"
-                @undo="undoLayout"
+                @open-templates="templateDialogOpen = true"
+                @redo="redoDocument"
+                @undo="undoDocument"
             />
         </template>
 
         <template #contextbar>
             <PublisherContextBar
-                :has-image="Boolean(templateProps?.imageUrl)"
-                :has-template="Boolean(templateProps)"
-                :has-template-overrides="hasTemplateOverrides"
+                :has-image="Boolean(templateProps.imageUrl)"
                 @align="alignLayoutElement"
                 @change-layer="changeSelectedLayer"
                 @distribute="templateRef?.distributeSelectedElements($event)"
                 @group="templateRef?.groupSelectedElements()"
                 @reset-image-focus="resetImageFocus"
-                @reset-selection="resetSelectedLayoutElement"
-                @reset-template-overrides="resetTemplateOverrides"
                 @set-group-auto-layout="templateRef?.setSelectedGroupAutoLayout($event)"
                 @ungroup="templateRef?.ungroupSelectedElements()"
                 @update-qr-content="templateRef?.setSelectedQrOptions('qrValue', $event)"
@@ -1050,7 +1096,7 @@ const exportPages = async () => {
         </template>
 
         <template #tools>
-            <PublisherToolRail :disabled="!templateProps" @add="addLayoutElement" @add-icon="addLayoutIcon" @add-image="showImageUploadPlaceholder" @add-qr="addLayoutQr" @add-text="addLayoutText" />
+            <PublisherToolRail @add="addLayoutElement" @add-icon="addLayoutIcon" @add-image="showImageUploadPlaceholder" @add-qr="addLayoutQr" @add-text="addLayoutText" />
         </template>
 
         <template #left>
@@ -1096,12 +1142,47 @@ const exportPages = async () => {
             @update-page="updateExportPage"
         />
 
+        <PublisherTemplatesDialog
+            :active-document-id="activeDocumentId"
+            v-model:name="designTemplateName"
+            :design-templates="designTemplates"
+            :document-name="documentName"
+            :documents="documents"
+            :draft-error="draftError"
+            :draft-status="draftStatus"
+            :error="designTemplateError"
+            :open="templateDialogOpen"
+            :selected-design-template-id="selectedDesignTemplateId"
+            :selected-template-id="selectedTemplateId"
+            :storage-message="storageMessage"
+            :storage-status="storageStatus"
+            :status="designTemplateStatus"
+            @apply-design="applyDesignTemplate($event); templateDialogOpen = false"
+            @apply-standard="applyStandardTemplate($event); templateDialogOpen = false"
+            @close="templateDialogOpen = false"
+            @delete-design="requestDesignTemplateDeletion"
+            @delete-document="requestStoredDocumentDeletion"
+            @new-document="createNewDocument"
+            @open-document="openStoredDocument"
+            @save-document="saveDocumentNow"
+            @save-design="persistCurrentDesignAsTemplate"
+            @update:document-name="updateDocumentName"
+        />
+
+        <DesignConfirmDialog
+            :open="Boolean(pendingDeletion)"
+            :title="pendingDeletion?.kind === 'template' ? 'Vorlage löschen?' : 'Dokument löschen?'"
+            :description="pendingDeletion ? `„${pendingDeletion.item.name}“ wird dauerhaft aus ChurchTools gelöscht.` : ''"
+            @close="pendingDeletion = null"
+            @confirm="confirmPendingDeletion"
+        />
+
         <section
             :ref="setWorkspaceElement"
             class="publisher-workspace"
             :class="{ 'is-pan-ready': panReady, 'is-panning': isPanning }"
-            @wheel="handleWorkspaceWheel($event, Boolean(templateProps))"
-            @pointerdown.capture="handleWorkspacePointerDown($event, Boolean(templateProps))"
+            @wheel="handleWorkspaceWheel($event, true)"
+            @pointerdown.capture="handleWorkspacePointerDown($event, true)"
             @pointermove="handleWorkspacePointerMove"
             @pointerup="stopWorkspacePan"
             @pointercancel="stopWorkspacePan"
@@ -1124,33 +1205,8 @@ const exportPages = async () => {
 
         <template #right>
             <PublisherInspectorShell>
-                <TemplateInspector
-                    v-if="activeEditorTool === 'templates'"
-                    :active-document-id="activeDocumentId"
-                    v-model:name="designTemplateName"
-                    :design-templates="designTemplates"
-                    :document-name="documentName"
-                    :documents="documents"
-                    :draft-error="draftError"
-                    :draft-status="draftStatus"
-                    :error="designTemplateError"
-                    :selected-design-template-id="selectedDesignTemplateId"
-                    :selected-template-id="selectedTemplateId"
-                    :storage-message="storageMessage"
-                    :storage-status="storageStatus"
-                    :status="designTemplateStatus"
-                    @apply-design="applyDesignTemplate"
-                    @apply-standard="applyStandardTemplate"
-                    @delete-design="removeDesignTemplate"
-                    @delete-document="deleteStoredDocument"
-                    @new-document="createNewDocument"
-                    @open-document="openStoredDocument"
-                    @save-document="saveDocumentNow"
-                    @save-design="persistCurrentDesignAsTemplate"
-                    @update:document-name="updateDocumentName"
-                />
                 <AppointmentDataInspector
-                    v-else-if="activeEditorTool === 'data'"
+                    v-if="activeEditorTool === 'data'"
                     error=""
                     :focus="imageFocusByTemplate[selectedTemplateId]"
                     :overridden-fields="Object.keys(templateOverrides) as EditableTemplateField[]"
@@ -1185,6 +1241,7 @@ const exportPages = async () => {
                     @toggle-visibility="templateRef?.toggleElementsVisibility($event)"
                     @update-geometry="updateSelectedLayoutGeometry"
                     @update-effects="(elementIds, effects) => templateRef?.setElementEffects(elementIds, effects)"
+                    @update-filters="(elementIds, filters) => templateRef?.setElementFilters(elementIds, filters)"
                     @update-gradient="(field, gradient) => templateRef?.setSelectedElementGradient(field, gradient)"
                     @update-text-style="updateSelectedTextStyle"
                     @update-text-mode="templateRef?.setSelectedCustomTextMode($event)"
