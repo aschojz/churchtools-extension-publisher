@@ -17,6 +17,7 @@ import {
     type LayoutFrame,
     type LayoutGroup,
     type LayoutGroupAutoLayout,
+    type LayoutGroupRepeat,
     type LayoutGroups,
     type LayoutHorizontalOrigin,
     type LayoutLayerDragNode,
@@ -174,6 +175,32 @@ export const useCanvasGroups = (options: UseCanvasGroupsOptions) => {
         options.onLayoutChange();
     };
 
+    const setSelectedGroupRepeat = (settings: LayoutGroupRepeat | null) => {
+        const selectedGroupId = options.selectedGroupId.value;
+        if (!selectedGroupId) return;
+        const groups = layout().groups;
+        const selectedGroup = flattenLayoutGroups(groups).find(({ id }) => id === selectedGroupId);
+        if (!selectedGroup) return;
+        const previousState = options.captureLayoutState();
+        if (!settings) {
+            options.setGroups(updateLayoutGroup(groups, selectedGroup.id, ({ repeat: _, ...group }) => group));
+        } else {
+            if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(settings.sourceFieldId) ||
+                !/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(settings.itemAlias)) return;
+            const requestedGap = Number(settings.gap);
+            const repeat: LayoutGroupRepeat = {
+                sourceFieldId: settings.sourceFieldId,
+                itemAlias: settings.itemAlias,
+                axis: settings.axis === 'horizontal' ? 'horizontal' : 'vertical',
+                gap: Number.isFinite(requestedGap) ? Math.min(4096, Math.max(0, requestedGap)) : 8,
+            };
+            options.setGroups(updateLayoutGroup(groups, selectedGroup.id, (group) => ({ ...group, repeat })));
+        }
+        options.commitCurrentLayout(previousState);
+        options.updateSelection(options.selectedElements.value, selectedGroup.id);
+        options.onLayoutChange();
+    };
+
     const pruneEffectsForCurrentTargets = () => {
         const validTargets = new Set<string>([
             ...layout().order,
@@ -262,6 +289,7 @@ export const useCanvasGroups = (options: UseCanvasGroupsOptions) => {
         pruneEffectsForCurrentTargets,
         reflowAutoLayoutGroups,
         setSelectedGroupAutoLayout,
+        setSelectedGroupRepeat,
         syncSelectedAutoLayoutAnchor,
         ungroupSelectedElements,
     };

@@ -90,7 +90,7 @@ const createClient = () => {
 
 describe('CCM publisher repository', () => {
     it('creates separate categories and persists documents and termin-neutral templates', async () => {
-        const { categories, client } = createClient();
+        const { categories, client, values } = createClient();
         const repository = createCcmPublisherRepository(client, 'publisher');
 
         const savedDocument = await repository.saveDocument(documentRecord());
@@ -98,6 +98,8 @@ describe('CCM publisher repository', () => {
 
         expect(savedDocument.revision).toBe(1);
         expect(categories.map(({ shorty }) => shorty)).toEqual(['publisher_documents', 'publisher_templates']);
+        expect([...values.values()].flatMap((entries) => entries).map(({ value }) => JSON.parse(value).envelopeVersion))
+            .toEqual([2, 2]);
         expect(await repository.listDocuments()).toEqual([savedDocument]);
         expect((await repository.listTemplates())[0]).not.toHaveProperty('appointment');
     });

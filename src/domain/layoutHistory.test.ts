@@ -83,6 +83,7 @@ describe('layout history', () => {
         grouped.groups = [{
             id: 'outer',
             rotation: 30,
+            repeat: { sourceFieldId: 'eventService-12', itemAlias: 'person', axis: 'vertical', gap: 8 },
             children: [{ id: 'inner', children: ['title', 'dateTime'] }, 'location'],
         }];
         const history = commitLayoutHistory(createLayoutHistory(), initial, grouped);
@@ -92,6 +93,7 @@ describe('layout history', () => {
         grouped.groups[0]!.children.splice(0, 1);
         expect(redone?.state.groups[0]?.children).toHaveLength(2);
         expect(redone?.state.groups[0]?.rotation).toBe(30);
+        expect(redone?.state.groups[0]?.repeat?.sourceFieldId).toBe('eventService-12');
     });
 
     it('includes deleted layers in undo snapshots', () => {

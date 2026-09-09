@@ -124,7 +124,7 @@ describe('publisher draft', () => {
         expect(restored.locked).toEqual(['title']);
     });
 
-    it('migrates version-one drafts to version two with an empty filter map', () => {
+    it('migrates version-one drafts to the current schema with an empty filter map', () => {
         const storage = createStorage();
         const draft = createDraft();
         const legacyLayout = structuredClone(draft.layouts.split!);
@@ -138,6 +138,17 @@ describe('publisher draft', () => {
         const restored = loadPublisherDraft(storage, 'version-one');
         expect(restored?.version).toBe(PUBLISHER_DRAFT_VERSION);
         expect(restored?.layouts.split?.filters).toEqual({});
+    });
+
+    it('migrates version-two documents without inventing repeat bindings', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        storage.setItem('churchtools-publisher:draft:version-two', JSON.stringify({ ...draft, version: 2 }));
+
+        const restored = loadPublisherDraft(storage, 'version-two');
+
+        expect(restored?.version).toBe(PUBLISHER_DRAFT_VERSION);
+        expect(restored?.layouts.split?.groups).toEqual([]);
     });
 
     it('loads text from older drafts as frame text', () => {
@@ -371,6 +382,7 @@ describe('publisher draft', () => {
                 axis: 'vertical', gap: 8, horizontalOrigin: 'left', verticalOrigin: 'top',
                 anchor: { x: 120, y: 80 },
             },
+            repeat: { sourceFieldId: 'eventService-12', itemAlias: 'person', axis: 'vertical', gap: 12 },
         }];
         const groupEffects = createLayoutElementEffects();
         groupEffects.shadow.enabled = true;
@@ -393,6 +405,19 @@ describe('publisher draft', () => {
         savePublisherDraft(storage, 'invalid-group-rotation', draft);
 
         expect(loadPublisherDraft(storage, 'invalid-group-rotation')).toBeNull();
+    });
+
+    it('rejects unsafe repeat bindings instead of silently changing them', () => {
+        const storage = createStorage();
+        const draft = createDraft();
+        draft.layouts.split!.groups = [{
+            id: 'group', children: ['title', 'dateTime'],
+            repeat: { sourceFieldId: '../people', itemAlias: 'person', axis: 'vertical', gap: 8 },
+        }];
+
+        savePublisherDraft(storage, 'invalid-group-repeat', draft);
+
+        expect(loadPublisherDraft(storage, 'invalid-group-repeat')).toBeNull();
     });
 
     it('rejects invalid persisted text styles', () => {

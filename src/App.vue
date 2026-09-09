@@ -1093,6 +1093,7 @@ const exportPages = async () => {
                 @group="templateRef?.commands.groupSelectedElements()"
                 @reset-image-focus="resetImageFocus"
                 @set-group-auto-layout="templateRef?.commands.setSelectedGroupAutoLayout($event)"
+                @set-group-repeat="templateRef?.commands.setSelectedGroupRepeat($event)"
                 @ungroup="templateRef?.commands.ungroupSelectedElements()"
                 @update-qr-content="templateRef?.commands.setSelectedQrOptions('qrValue', $event)"
                 @update-text-content="updateSelectedTextContent"

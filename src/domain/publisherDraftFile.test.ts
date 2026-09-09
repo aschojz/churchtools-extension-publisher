@@ -34,11 +34,22 @@ describe('publisher draft file', () => {
         expect(parsePublisherDraftFile('{invalid')).toBeNull();
         expect(parsePublisherDraftFile(JSON.stringify({
             ...createPublisherDraftFile('42:start', draft),
-            fileVersion: 2,
+            fileVersion: 99,
         }))).toBeNull();
         expect(parsePublisherDraftFile(JSON.stringify({
             ...createPublisherDraftFile('42:start', draft),
             draft: { ...draft, previewZoomPercent: 999 },
         }))).toBeNull();
+    });
+
+    it('migrates version-one file envelopes and nested version-two drafts', () => {
+        const parsed = parsePublisherDraftFile(JSON.stringify({
+            ...createPublisherDraftFile('42:start', draft),
+            fileVersion: 1,
+            draft: { ...draft, version: 2 },
+        }));
+
+        expect(parsed?.fileVersion).toBe(2);
+        expect(parsed?.draft.version).toBe(PUBLISHER_DRAFT_VERSION);
     });
 });

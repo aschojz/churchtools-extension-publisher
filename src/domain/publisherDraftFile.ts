@@ -1,7 +1,7 @@
 import { parsePublisherDraft, type PublisherDraft } from './publisherDraft';
 
 export const PUBLISHER_DRAFT_FILE_FORMAT = 'churchtools-publisher-draft';
-export const PUBLISHER_DRAFT_FILE_VERSION = 1;
+export const PUBLISHER_DRAFT_FILE_VERSION = 2;
 
 export interface PublisherDraftFile {
     format: typeof PUBLISHER_DRAFT_FILE_FORMAT;
@@ -39,7 +39,7 @@ export const parsePublisherDraftFile = (value: string): PublisherDraftFile | nul
 
         const candidate = parsed as Record<string, unknown>;
         if (candidate.format !== PUBLISHER_DRAFT_FILE_FORMAT ||
-            candidate.fileVersion !== PUBLISHER_DRAFT_FILE_VERSION ||
+            ![1, PUBLISHER_DRAFT_FILE_VERSION].includes(Number(candidate.fileVersion)) ||
             typeof candidate.sourceAppointmentKey !== 'string' || !candidate.sourceAppointmentKey ||
             typeof candidate.exportedAt !== 'string') {
             return null;

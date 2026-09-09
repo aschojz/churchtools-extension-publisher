@@ -68,5 +68,13 @@ describe('useCanvasGroups', () => {
         expect(layout.groups[0]?.autoLayout).toMatchObject({ axis: 'vertical', gap: 8 });
         expect(elementFrame('dateTime').y).toBe(elementFrame('title').y + elementFrame('title').height + 8);
         expect(commits).toHaveBeenCalledTimes(2);
+
+        groups.setSelectedGroupRepeat({
+            sourceFieldId: 'eventService-12', itemAlias: 'person', axis: 'vertical', gap: 12,
+        });
+        expect(layout.groups[0]?.repeat).toEqual({
+            sourceFieldId: 'eventService-12', itemAlias: 'person', axis: 'vertical', gap: 12,
+        });
+        expect(commits).toHaveBeenCalledTimes(3);
     });
 });

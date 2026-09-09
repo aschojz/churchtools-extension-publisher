@@ -8,7 +8,7 @@ import {
 } from './publisherDraft';
 import type { TemplateId } from './templates';
 
-export const PUBLISHER_DESIGN_TEMPLATE_LIBRARY_VERSION = 3;
+export const PUBLISHER_DESIGN_TEMPLATE_LIBRARY_VERSION = 4;
 export const PUBLISHER_DESIGN_TEMPLATE_STORAGE_KEY = 'churchtools-publisher:design-templates';
 export const MAX_PUBLISHER_DESIGN_TEMPLATES = 50;
 export const MAX_PUBLISHER_DESIGN_TEMPLATE_NAME_LENGTH = 80;
@@ -118,7 +118,7 @@ export const parsePublisherDesignTemplateLibrary = (value: string | null): Publi
     try {
         const parsed: unknown = JSON.parse(value);
         if (!isPublisherRecord(parsed) ||
-            (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== PUBLISHER_DESIGN_TEMPLATE_LIBRARY_VERSION) ||
+            ![1, 2, 3, PUBLISHER_DESIGN_TEMPLATE_LIBRARY_VERSION].includes(Number(parsed.version)) ||
             !Array.isArray(parsed.templates) || parsed.templates.length > MAX_PUBLISHER_DESIGN_TEMPLATES) return null;
         const parseEntry = parsed.version === 1 ? parseLegacyDesignTemplate : parsePublisherDesignTemplate;
         const templates: PublisherDesignTemplate[] = [];

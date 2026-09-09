@@ -8,7 +8,7 @@ import type { LayoutElementEffects, LayoutElementId, LayoutFrame } from '../doma
 import { layoutFilterStackHasEnabled, type LayoutFilterStack } from '../domain/layoutFilters';
 import { configureLayoutKonvaFilterValues, layoutKonvaFilterFunctions } from '../utils/layoutKonvaFilters';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
     elementId: LayoutElementId;
     editorScale: number;
     effects: LayoutElementEffects;
@@ -16,11 +16,13 @@ const props = defineProps<{
     decorationLines: Konva.LineConfig[];
     frame: LayoutFrame;
     graphicText: boolean;
+    instanceKey?: string;
+    interactive?: boolean;
     locked: boolean;
     rotation: number;
     selected: boolean;
     textConfig: Konva.TextConfig;
-}>();
+}>(), { instanceKey: '', interactive: true });
 
 const effectGroupRef = ref<VueKonvaRef<Konva.Group> | null>(null);
 const effectLayerConfig = computed(() => ({
@@ -97,10 +99,11 @@ const finishTransform = (event: Konva.KonvaEventObject<Event>) => {
         :config="{
             x: frame.x,
             y: frame.y,
-            draggable: !locked,
-            id: `editable-${elementId}`,
+            draggable: interactive && !locked,
+            id: `editable-${elementId}${instanceKey}`,
             name: 'editable-element',
-            layoutElementId: elementId,
+            layoutElementId: interactive ? elementId : undefined,
+            listening: interactive,
             rotation,
         }"
         @dragstart="startDrag"

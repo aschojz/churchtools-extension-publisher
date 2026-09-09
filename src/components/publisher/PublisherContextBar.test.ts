@@ -82,6 +82,22 @@ describe('PublisherContextBar alignment popover', () => {
             { axis: 'vertical', gap: 8, horizontalOrigin: 'left', verticalOrigin: 'top' },
         ]]);
     });
+
+    it('binds a selected group to a repeatable list field', async () => {
+        const wrapper = mountContextBar();
+        usePublisherAppointmentsStore().dataFields = [{
+            id: 'eventService-12', label: 'Predigt', type: 'text', value: 'Ada, Grace',
+            placeholder: '{{eventService-12}}', formatType: 'list', values: ['Ada', 'Grace'],
+        }];
+        await wrapper.vm.$nextTick();
+
+        const toggles = wrapper.findAll('.publisher-alignment-popover__toggle input');
+        await toggles[1]!.setValue(true);
+
+        expect(wrapper.emitted('setGroupRepeat')).toEqual([[
+            { sourceFieldId: 'eventService-12', itemAlias: 'item', axis: 'vertical', gap: 8 },
+        ]]);
+    });
 });
 
 describe('PublisherContextBar content controls', () => {

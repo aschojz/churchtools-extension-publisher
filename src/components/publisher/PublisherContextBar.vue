@@ -11,6 +11,7 @@ import {
 import type {
     LayoutAlignment,
     LayoutDistributionAxis,
+    LayoutGroupRepeat,
     LayoutHorizontalOrigin,
     LayoutVerticalOrigin,
 } from '../../domain/layoutEditing';
@@ -58,6 +59,8 @@ const formatterOptions = computed(() => dataFields.value
         label: `${field.label}: ${resolvePublisherPlaceholders(option.placeholder, { [field.id]: field })}`,
         placeholder: option.placeholder,
     }))));
+const repeatableFields = computed(() => dataFields.value.filter(({ formatType, values }) =>
+    formatType === 'list' && Boolean(values)));
 const selectionLabel = computed(() => {
     const customElements = activePage.value.layouts[activePage.value.templateId]?.customElements ?? [];
     return `${selectedLayoutGroupDepth.value ? `Gruppe ${selectedLayoutGroupDepth.value} · ` : ''}${selectedLayoutElements.value.map((elementId) =>
@@ -76,6 +79,12 @@ const groupAutoLayout = computed(() => selectedGroup.value?.autoLayout ?? {
     horizontalOrigin: 'left' as const,
     verticalOrigin: 'top' as const,
 });
+const groupRepeat = computed<LayoutGroupRepeat>(() => selectedGroup.value?.repeat ?? {
+    sourceFieldId: repeatableFields.value[0]?.id ?? '',
+    itemAlias: 'item',
+    axis: 'vertical',
+    gap: 8,
+});
 const variableDialogOpen = ref(false);
 
 const emit = defineEmits<{
@@ -90,6 +99,7 @@ const emit = defineEmits<{
         horizontalOrigin: LayoutHorizontalOrigin;
         verticalOrigin: LayoutVerticalOrigin;
     } | null];
+    setGroupRepeat: [settings: LayoutGroupRepeat | null];
     ungroup: [];
     updateQrContent: [value: string];
     updateTextContent: [value: string];
@@ -104,6 +114,10 @@ const updateAutoLayout = (
     gap: field === 'gap' ? Number(value) : groupAutoLayout.value.gap,
     horizontalOrigin: field === 'horizontalOrigin' ? value as LayoutHorizontalOrigin : groupAutoLayout.value.horizontalOrigin,
     verticalOrigin: field === 'verticalOrigin' ? value as LayoutVerticalOrigin : groupAutoLayout.value.verticalOrigin,
+});
+const updateGroupRepeat = (field: keyof LayoutGroupRepeat, value: string | number) => emit('setGroupRepeat', {
+    ...groupRepeat.value,
+    [field]: field === 'gap' ? Number(value) : value,
 });
 const updateContent = (event: Event) => {
     const value = (event.target as HTMLInputElement).value;
@@ -128,6 +142,7 @@ const insertFormatter = (event: Event) => {
     select.value = '';
 };
 const applyVariableExpression = (expression: string) => emit('updateTextContent', expression);
+const placeholderLabel = (fieldId: string) => `{{${fieldId}}}`;
 </script>
 
 <template>
@@ -202,6 +217,17 @@ const applyVariableExpression = (expression: string) => emit('updateTextContent'
                             <div class="publisher-alignment-popover__setting"><span>Ursprung</span><div class="publisher-origin-grid" role="group" aria-label="Ursprung der automatischen Gruppe"><button v-for="origin in ([['left', 'top'], ['center', 'top'], ['right', 'top'], ['left', 'center'], ['center', 'center'], ['right', 'center'], ['left', 'bottom'], ['center', 'bottom'], ['right', 'bottom']] as const)" :key="`${origin[0]}-${origin[1]}`" type="button" :class="{ 'is-active': groupAutoLayout.horizontalOrigin === origin[0] && groupAutoLayout.verticalOrigin === origin[1] }" :aria-label="`Ursprung ${origin[0]} ${origin[1]}`" @click="emit('setGroupAutoLayout', { ...groupAutoLayout, horizontalOrigin: origin[0], verticalOrigin: origin[1] })" /></div></div>
                         </template>
                         <p v-else-if="!selectedGroup">Gruppiere die Elemente zuerst, um einen dauerhaften Abstand und Reflow zu aktivieren.</p>
+                    </section>
+                    <section class="publisher-alignment-popover__auto-layout">
+                        <label class="publisher-alignment-popover__toggle"><input type="checkbox" :checked="Boolean(selectedGroup?.repeat)" :disabled="!selectedGroup || repeatableFields.length === 0" @change="($event.target as HTMLInputElement).checked ? emit('setGroupRepeat', groupRepeat) : emit('setGroupRepeat', null)" /> Gruppe aus Liste wiederholen</label>
+                        <template v-if="selectedGroup?.repeat">
+                            <label class="publisher-alignment-popover__setting"><span>Datenquelle</span><select :value="groupRepeat.sourceFieldId" @change="updateGroupRepeat('sourceFieldId', ($event.target as HTMLSelectElement).value)"><option v-for="field in repeatableFields" :key="field.id" :value="field.id">{{ field.label }} ({{ field.values?.length ?? 0 }})</option></select></label>
+                            <div class="publisher-alignment-popover__setting"><span>Richtung</span><div class="publisher-alignment-popover__buttons"><DesignButton size="compact" :variant="groupRepeat.axis === 'vertical' ? 'primary' : 'secondary'" @click="updateGroupRepeat('axis', 'vertical')">Vertikal</DesignButton><DesignButton size="compact" :variant="groupRepeat.axis === 'horizontal' ? 'primary' : 'secondary'" @click="updateGroupRepeat('axis', 'horizontal')">Horizontal</DesignButton></div></div>
+                            <label class="publisher-alignment-popover__setting"><span>Abstand</span><input type="number" min="0" max="4096" step="1" :value="groupRepeat.gap" @input="updateGroupRepeat('gap', ($event.target as HTMLInputElement).valueAsNumber)" /><small>px</small></label>
+                            <label class="publisher-alignment-popover__setting"><span>Alias</span><input :value="groupRepeat.itemAlias" maxlength="32" pattern="[a-zA-Z][a-zA-Z0-9_-]*" @change="updateGroupRepeat('itemAlias', ($event.target as HTMLInputElement).value)" /><small>{{ placeholderLabel(groupRepeat.itemAlias) }}</small></label>
+                            <p>Die Gruppe wird für höchstens 100 Listeneinträge gerendert. {{ placeholderLabel(groupRepeat.sourceFieldId) }} und {{ placeholderLabel(groupRepeat.itemAlias) }} enthalten jeweils den aktuellen Eintrag.</p>
+                        </template>
+                        <p v-else-if="repeatableFields.length === 0">Lade zuerst ein Datenfeld mit mehreren Werten, zum Beispiel einen Dienst mit mehreren Personen.</p>
                     </section>
                 </div>
             </details>

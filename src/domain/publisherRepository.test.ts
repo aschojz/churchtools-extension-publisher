@@ -55,4 +55,20 @@ describe('publisher repository contract', () => {
         expect(parsed?.version).toBe(PUBLISHER_RECORD_VERSION);
         expect(parsed?.draft.version).toBe(PUBLISHER_DRAFT_VERSION);
     });
+
+    it('migrates version-two records and their drafts independently', () => {
+        const parsed = parsePublisherDocumentRecord({
+            version: 2,
+            id: 'version-two-document',
+            name: 'Version zwei',
+            revision: 1,
+            appointment: null,
+            draft: { ...createDraft(), version: 2 },
+            createdAt: '2026-09-07T10:00:00.000Z',
+            updatedAt: '2026-09-07T10:00:00.000Z',
+        });
+
+        expect(parsed?.version).toBe(PUBLISHER_RECORD_VERSION);
+        expect(parsed?.draft.version).toBe(PUBLISHER_DRAFT_VERSION);
+    });
 });

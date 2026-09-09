@@ -56,6 +56,7 @@ Es gibt aktuell keinen Lint-, Format- oder Visual-Regression-Runner. Playwright 
 - Alle Seiten teilen eine Zoomstufe. Temporäres Verschieben per Leertaste und die Ansichten „Seite einpassen“, „Auswahl einpassen“ und „100 %“ dürfen weder Dokumentgeometrie noch Auswahl verändern.
 - Bilder werden im Cover-Modus zugeschnitten und nicht verzerrt. QR-Codes und Icons behalten ihr Seitenverhältnis. Linien haben keine Füllung und werden nur über Länge, Konturstärke und Drehung verändert.
 - Dynamische Text- und Farbbindungen speichern die Variable beziehungsweise das Farb-Token plus Fallback. Aufgelöste Terminwerte oder analysierte Farben werden nicht destruktiv in die Vorlage geschrieben.
+- Repeat-Gruppen speichern genau einen Gruppenprototyp plus Listenbindung. Die einzelnen Instanzen werden mit begrenzter Anzahl und lokalem Variablenkontext nur für Canvas und Export projiziert, nicht in den Dokumentzustand kopiert.
 - Vorlagen müssen alle Seiten, Seitengrößen, Ebenen, Gruppen, Bindungen, Effekte und Bildfokusse enthalten. Keine neuen Funktionen auf ein Einzelseiten-Vorlagenmodell zuschneiden.
 - Sichtbarkeit und Sperren sind nicht destruktiv. Löschen muss über Undo rückgängig zu machen sein, sofern keine ausdrücklich bestätigte Dokumentlöschung vorliegt.
 - Canvas-Änderungen, Seitenoperationen und das Anwenden einer Vorlage teilen eine chronologische Dokumenthistorie. Öffnen oder Erstellen eines eigenständigen Dokuments setzt diese Historie zurück; reine Seitennavigation erzeugt keinen Eintrag.

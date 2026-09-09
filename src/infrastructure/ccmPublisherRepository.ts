@@ -25,7 +25,7 @@ export interface PublisherCcmClient {
 type EntityKind = 'document' | 'template';
 
 interface StoredEnvelope {
-    envelopeVersion: 1;
+    envelopeVersion: 1 | 2;
     entityKind: EntityKind;
     entityId: string;
     revision: number;
@@ -70,7 +70,7 @@ const parseEnvelope = (value: string): StoredEnvelope | null => {
         const parsed: unknown = JSON.parse(value);
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
         const candidate = parsed as Partial<StoredEnvelope>;
-        if (candidate.envelopeVersion !== 1 || !['document', 'template'].includes(String(candidate.entityKind)) ||
+        if ((candidate.envelopeVersion !== 1 && candidate.envelopeVersion !== 2) || !['document', 'template'].includes(String(candidate.entityKind)) ||
             typeof candidate.entityId !== 'string' || !candidate.entityId || typeof candidate.revision !== 'number' ||
             !Number.isInteger(candidate.revision) || candidate.revision < 1) return null;
         return candidate as StoredEnvelope;
@@ -159,7 +159,7 @@ export const createCcmPublisherRepository = (
             throw new PublisherRepositoryError('conflict', 'Der Datensatz wurde in einer anderen Sitzung geändert.');
         }
         const envelope: StoredEnvelope = {
-            envelopeVersion: 1,
+            envelopeVersion: 2,
             entityKind: kind,
             entityId,
             revision: revision + 1,

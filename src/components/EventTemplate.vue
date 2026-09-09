@@ -47,7 +47,6 @@ import {
     isFixedAspectRatioLayoutElement,
     isShapeLayoutElement,
     isTextLayoutElement,
-    layoutGroupElementIds,
     type AlignmentGuide,
     type LayoutElementId,
     type LayoutCustomElement,
@@ -76,6 +75,7 @@ import {
     cloneLayoutState,
     type SerializableLayoutState,
 } from '../domain/layoutHistory';
+import { createLayoutRepeatProjection } from '../domain/layoutRepeat';
 import type { TemplateId } from '../domain/templates';
 import type { PublisherCanvasExportOptions } from '../domain/publisherExport';
 import { createStandardPublisherLayout } from '../domain/publisherPage';
@@ -485,9 +485,13 @@ const canvasRenderItem = (elementId: LayoutElementId): CanvasRenderItem[] => {
 
 const customTextMode = (element: LayoutCustomElement): LayoutTextMode => element.textMode ?? 'frame';
 
-const resolvedCustomText = (element: LayoutCustomElement, style: LayoutTextStyle) =>
+const resolvedCustomText = (
+    element: LayoutCustomElement,
+    style: LayoutTextStyle,
+    dataValues: PublisherDataValues = props.dataValues,
+) =>
     applyTextTransform(
-        applyListStyle(resolvePublisherPlaceholders(element.text ?? 'Neuer Text', props.dataValues), style.listStyle),
+        applyListStyle(resolvePublisherPlaceholders(element.text ?? 'Neuer Text', dataValues), style.listStyle),
         style.textTransform,
     );
 
@@ -526,10 +530,10 @@ const syncAllGraphicTextSizes = () => {
     customElements.value[props.templateId].forEach(({ id }) => syncGraphicTextSize(id));
 };
 
-const customTextConfig = (element: LayoutCustomElement) => {
+const customTextConfig = (element: LayoutCustomElement, dataValues: PublisherDataValues = props.dataValues) => {
     const style = layoutTextStyles.value[props.templateId][element.id] ?? createCustomTextStyle();
     return {
-        text: resolvedCustomText(element, style),
+        text: resolvedCustomText(element, style, dataValues),
         ...(style.colorGradient
             ? layoutGradientFillConfig(style.colorGradient, elementFrame(element.id), imagePaletteStore.resolveColor)
             : { fill: resolvedTextColor(style) }),
@@ -591,11 +595,11 @@ const editableTextDecorationLines = (binding: TemplateTextBinding) => {
     return additionalTextDecorationLines(binding, editableTextConfig(binding), style, false);
 };
 
-const customTextDecorationLines = (element: LayoutCustomElement) => {
+const customTextDecorationLines = (element: LayoutCustomElement, dataValues: PublisherDataValues = props.dataValues) => {
     const style = layoutTextStyles.value[props.templateId][element.id] ?? createCustomTextStyle();
     return additionalTextDecorationLines(
         element.id,
-        customTextConfig(element),
+        customTextConfig(element, dataValues),
         style,
         customTextMode(element) === 'graphic',
     );
@@ -801,38 +805,37 @@ const activeCanvasGradient = computed(() => {
     };
 });
 
-const selectedGroupVisualBounds = (group: LayoutGroup): LayoutFrame | null => {
-    const frames = layoutGroupElementIds(group)
-        .map((elementId) => {
-            const frame = elementFrame(elementId);
-            const radians = layoutRotations.value[props.templateId][elementId] * Math.PI / 180;
-            const cosine = Math.cos(radians);
-            const sine = Math.sin(radians);
-            const corners = [
-                { x: 0, y: 0 },
-                { x: frame.width, y: 0 },
-                { x: 0, y: frame.height },
-                { x: frame.width, y: frame.height },
-            ].map((point) => ({
-                x: frame.x + point.x * cosine - point.y * sine,
-                y: frame.y + point.x * sine + point.y * cosine,
-            }));
-            const x = Math.min(...corners.map((point) => point.x));
-            const y = Math.min(...corners.map((point) => point.y));
-            return {
-                x,
-                y,
-                width: Math.max(...corners.map((point) => point.x)) - x,
-                height: Math.max(...corners.map((point) => point.y)) - y,
-            };
-        });
-    if (frames.length === 0) return null;
-    const x = Math.min(...frames.map((frame) => frame.x));
-    const y = Math.min(...frames.map((frame) => frame.y));
-    const right = Math.max(...frames.map((frame) => frame.x + frame.width));
-    const bottom = Math.max(...frames.map((frame) => frame.y + frame.height));
-    return { x, y, width: right - x, height: bottom - y };
+const elementVisualBounds = (elementId: LayoutElementId) => {
+    const frame = elementFrame(elementId);
+    const radians = layoutRotations.value[props.templateId][elementId] * Math.PI / 180;
+    const cosine = Math.cos(radians);
+    const sine = Math.sin(radians);
+    const corners = [
+        { x: 0, y: 0 },
+        { x: frame.width, y: 0 },
+        { x: 0, y: frame.height },
+        { x: frame.width, y: frame.height },
+    ].map((point) => ({
+        x: frame.x + point.x * cosine - point.y * sine,
+        y: frame.y + point.x * sine + point.y * cosine,
+    }));
+    const x = Math.min(...corners.map((point) => point.x));
+    const y = Math.min(...corners.map((point) => point.y));
+    return {
+        x,
+        y,
+        width: Math.max(...corners.map((point) => point.x)) - x,
+        height: Math.max(...corners.map((point) => point.y)) - y,
+    };
 };
+
+const canvasRepeatProjection = computed(() => createLayoutRepeatProjection(
+    layoutGroups.value[props.templateId],
+    Object.fromEntries(layoutOrder.value[props.templateId].map((elementId) => [elementId, elementVisualBounds(elementId)])),
+    props.dataValues,
+));
+const selectedGroupVisualBounds = (group: LayoutGroup): LayoutFrame | null =>
+    canvasRepeatProjection.value.groupFrames[group.id] ?? null;
 
 const canvasSceneNodes = computed(() => createLayoutLayerTree(
     layoutOrder.value[props.templateId],
@@ -841,11 +844,10 @@ const canvasSceneNodes = computed(() => createLayoutLayerTree(
         props.template.location ? [] : ['location'],
     ),
 ));
-const canvasGroupFrames = computed<Record<string, LayoutFrame>>(() => Object.fromEntries(
-    flattenLayoutGroups(layoutGroups.value[props.templateId]).flatMap((group) => {
-        const frame = selectedGroupVisualBounds(group);
-        return frame ? [[group.id, frame]] : [];
-    }),
+const canvasGroupFrames = computed<Record<string, LayoutFrame>>(() => canvasRepeatProjection.value.groupFrames);
+const canvasPrototypeGroupFrames = computed<Record<string, LayoutFrame>>(() => canvasRepeatProjection.value.prototypeFrames);
+const canvasGroupRepeats = computed(() => Object.fromEntries(
+    flattenLayoutGroups(layoutGroups.value[props.templateId]).flatMap((group) => group.repeat ? [[group.id, group.repeat]] : []),
 ));
 const draggableGroupIds = computed(() => selectedGroupId.value
     ? [selectedGroupId.value]
@@ -859,6 +861,7 @@ const sceneRenderRevision = computed(() => [
     props.template.date,
     props.template.time,
     props.template.location,
+    JSON.stringify(props.dataValues),
     imageStatus.value,
 ].join(':'));
 const relativeElementFrame = (elementId: LayoutElementId, origin: { x: number; y: number }) => {
@@ -944,6 +947,7 @@ const {
     pruneEffectsForCurrentTargets,
     reflowAutoLayoutGroups,
     setSelectedGroupAutoLayout,
+    setSelectedGroupRepeat,
     syncSelectedAutoLayoutAnchor,
     ungroupSelectedElements,
 } = useCanvasGroups({
@@ -1584,6 +1588,7 @@ const commands = {
     setSelectedElementTextStyle,
     setSelectedElementTextContent,
     setSelectedGroupAutoLayout,
+    setSelectedGroupRepeat,
     setSelectedCustomTextMode,
     setSelectedQrOptions,
     setSelectedElementVisualStyle,
@@ -1615,15 +1620,19 @@ defineExpose({ commands, exportImage, renderThumbnail });
         >
             <v-layer>
                 <CanvasSceneTree
+                    :data-values="dataValues"
                     :draggable-group-ids="draggableGroupIds"
                     :editor-scale="previewScale"
                     :effects="layoutEffects[templateId]"
                     :filters="layoutFilters[templateId]"
                     :group-frames="canvasGroupFrames"
+                    :group-repeats="canvasGroupRepeats"
                     :locked-element-ids="lockedElements[templateId]"
                     :nodes="canvasSceneNodes"
+                    :prototype-group-frames="canvasPrototypeGroupFrames"
                     :render-revision="sceneRenderRevision"
                     :selected-group-id="isExporting ? null : selectedGroupId"
+                    :show-empty-repeat-prototype="!isExporting"
                     @group-drag-start="startGroupDrag"
                     @group-dragging="alignGroupWhileDragging"
                     @group-move="moveGroup"
@@ -1637,7 +1646,7 @@ defineExpose({ commands, exportImage, renderThumbnail });
                             </template>
                         </v-group>
                     </template>
-                    <template #element="{ elementId, origin }">
+                    <template #element="{ dataValues: scopedDataValues, elementId, instanceKey, interactive, origin }">
                       <template v-for="item in canvasRenderItem(elementId)" :key="item.id">
                     <EditableVisualElement
                         v-if="item.role === 'background'"
@@ -1645,8 +1654,10 @@ defineExpose({ commands, exportImage, renderThumbnail });
                         :frame="relativeElementFrame('background', origin)"
                         :locked="elementIsLocked('background') || !elementCanDragDirectly('background')"
                         :editor-scale="previewScale"
+                        :instance-key="instanceKey"
+                        :interactive="interactive"
                         :rotation="layoutRotations[templateId].background"
-                        :selected="selectedElements.includes('background') && !isExporting"
+                        :selected="interactive && selectedElements.includes('background') && !isExporting"
                         :effects="elementEffects('background')"
                         :filters="elementFilters('background')"
                         :visual-config="visualConfig('background')"
@@ -1661,9 +1672,11 @@ defineExpose({ commands, exportImage, renderThumbnail });
                         :frame="relativeElementFrame('image', origin)"
                         :locked="elementIsLocked('image') || !elementCanDragDirectly('image')"
                         :editor-scale="previewScale"
+                        :instance-key="instanceKey"
+                        :interactive="interactive"
                         :image-config="imageIsVisible ? imageConfig : null"
                         :rotation="layoutRotations[templateId].image"
-                        :selected="selectedElements.includes('image') && !isExporting"
+                        :selected="interactive && selectedElements.includes('image') && !isExporting"
                         :effects="elementEffects('image')"
                         :filters="elementFilters('image')"
                         @drag-start="startElementDrag"
@@ -1677,8 +1690,10 @@ defineExpose({ commands, exportImage, renderThumbnail });
                         :frame="relativeElementFrame('accent', origin)"
                         :locked="elementIsLocked('accent') || !elementCanDragDirectly('accent')"
                         :editor-scale="previewScale"
+                        :instance-key="instanceKey"
+                        :interactive="interactive"
                         :rotation="layoutRotations[templateId].accent"
-                        :selected="selectedElements.includes('accent') && !isExporting"
+                        :selected="interactive && selectedElements.includes('accent') && !isExporting"
                         :effects="elementEffects('accent')"
                         :filters="elementFilters('accent')"
                         :visual-config="visualConfig('accent')"
@@ -1694,9 +1709,11 @@ defineExpose({ commands, exportImage, renderThumbnail });
                         :editor-scale="previewScale"
                         :frame="relativeElementFrame(item.id, origin)"
                         :graphic-text="false"
+                        :instance-key="instanceKey"
+                        :interactive="interactive"
                         :locked="elementIsLocked(item.id) || !elementCanDragDirectly(item.id)"
                         :rotation="layoutRotations[templateId][item.id]"
-                        :selected="selectedElements.includes(item.id) && !isExporting"
+                        :selected="interactive && selectedElements.includes(item.id) && !isExporting"
                         :effects="elementEffects(item.id)"
                         :filters="elementFilters(item.id)"
                         :text-config="editableTextConfig(item.id)"
@@ -1708,16 +1725,18 @@ defineExpose({ commands, exportImage, renderThumbnail });
                     <EditableTextElement
                         v-else-if="item.role === 'custom' && item.element.kind === 'text'"
                         :element-id="item.element.id"
-                        :decoration-lines="customTextDecorationLines(item.element)"
+                        :decoration-lines="customTextDecorationLines(item.element, scopedDataValues)"
                         :editor-scale="previewScale"
                         :frame="relativeElementFrame(item.element.id, origin)"
                         :graphic-text="customTextMode(item.element) === 'graphic'"
+                        :instance-key="instanceKey"
+                        :interactive="interactive"
                         :locked="elementIsLocked(item.element.id) || !elementCanDragDirectly(item.element.id)"
                         :rotation="layoutRotations[templateId][item.element.id]"
-                        :selected="selectedElements.includes(item.element.id) && !isExporting"
+                        :selected="interactive && selectedElements.includes(item.element.id) && !isExporting"
                         :effects="elementEffects(item.element.id)"
                         :filters="elementFilters(item.element.id)"
-                        :text-config="customTextConfig(item.element)"
+                        :text-config="customTextConfig(item.element, scopedDataValues)"
                         @drag-start="startElementDrag"
                         @dragging="alignElementWhileDragging"
                         @move="moveElement"
@@ -1727,6 +1746,8 @@ defineExpose({ commands, exportImage, renderThumbnail });
                         v-else-if="item.role === 'custom'"
                         :element-id="item.element.id"
                         :editor-scale="previewScale"
+                        :instance-key="instanceKey"
+                        :interactive="interactive"
                         :frame="relativeElementFrame(item.element.id, origin)"
                         :locked="elementIsLocked(item.element.id) || !elementCanDragDirectly(item.element.id)"
                         :image-config="item.element.kind === 'image'
@@ -1736,7 +1757,7 @@ defineExpose({ commands, exportImage, renderThumbnail });
                                 : null"
                         :path-config="item.element.kind === 'icon' ? customIconPathConfig(item.element) : null"
                         :rotation="layoutRotations[templateId][item.element.id]"
-                        :selected="selectedElements.includes(item.element.id) && !isExporting"
+                        :selected="interactive && selectedElements.includes(item.element.id) && !isExporting"
                         :effects="elementEffects(item.element.id)"
                         :filters="elementFilters(item.element.id)"
                         :shape="customShapeType(item.element)"

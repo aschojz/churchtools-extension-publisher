@@ -42,6 +42,7 @@ const cloneLayoutGroup = (group: LayoutGroup): LayoutGroup => ({
     id: group.id,
     children: group.children.map((child) => typeof child === 'string' ? child : cloneLayoutGroup(child)),
     ...(group.autoLayout ? { autoLayout: { ...group.autoLayout, anchor: { ...group.autoLayout.anchor } } } : {}),
+    ...(group.repeat ? { repeat: { ...group.repeat } } : {}),
     ...(group.rotation !== undefined ? { rotation: group.rotation } : {}),
 });
 

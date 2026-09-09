@@ -37,7 +37,7 @@ import { normalizeLayoutGradient, type LayoutGradient } from './layoutGradient';
 import { parseLayoutFilterStack, type LayoutFilters } from './layoutFilters';
 import { MAX_PUBLISHER_PAGE_NAME_LENGTH } from './publisherPage';
 
-export const PUBLISHER_DRAFT_VERSION = 2;
+export const PUBLISHER_DRAFT_VERSION = 3;
 export const publisherDraftStorageKey = (appointmentKey: string) =>
     `churchtools-publisher:draft:${appointmentKey}`;
 
@@ -346,10 +346,28 @@ const parseLayoutGroups = (value: unknown, validElementIds = new Set<LayoutEleme
                 anchor: { x: layout.anchor.x, y: layout.anchor.y },
             };
         }
+        let repeat: LayoutGroup['repeat'];
+        if (candidate.repeat !== undefined) {
+            const value = candidate.repeat;
+            if (!isRecord(value) || typeof value.sourceFieldId !== 'string' ||
+                !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(value.sourceFieldId) ||
+                typeof value.itemAlias !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(value.itemAlias) ||
+                (value.axis !== 'horizontal' && value.axis !== 'vertical') ||
+                !isFiniteNumber(value.gap) || value.gap < 0 || value.gap > 4096) {
+                return null;
+            }
+            repeat = {
+                sourceFieldId: value.sourceFieldId,
+                itemAlias: value.itemAlias,
+                axis: value.axis,
+                gap: value.gap,
+            };
+        }
         return {
             id: candidate.id,
             children,
             ...(autoLayout ? { autoLayout } : {}),
+            ...(repeat ? { repeat } : {}),
             ...(candidate.rotation !== undefined ? { rotation: normalizeRotation(candidate.rotation) } : {}),
         };
     };
@@ -558,6 +576,17 @@ const parseImageFocus = (value: unknown): ImageFocusByTemplate | null => {
 
 export const parsePublisherImageFocus = (value: unknown): ImageFocusByTemplate | null => parseImageFocus(value);
 
+const migratePublisherDraftSource = (source: Record<string, unknown>) => {
+    if (source.version === PUBLISHER_DRAFT_VERSION) return source;
+    if (source.version === 2) {
+        return { ...source, version: PUBLISHER_DRAFT_VERSION };
+    }
+    if (source.version === 1) {
+        return { ...source, version: PUBLISHER_DRAFT_VERSION };
+    }
+    return null;
+};
+
 const parseDraftPage = (value: unknown): PublisherDraftPage | null => {
     if (!isRecord(value) || typeof value.id !== 'string' || !value.id ||
         (value.name !== undefined && (typeof value.name !== 'string' || !value.name.trim() || value.name.length > MAX_PUBLISHER_PAGE_NAME_LENGTH)) ||
@@ -599,10 +628,9 @@ export const parsePublisherDraft = (value: string | null): PublisherDraft | null
 
     try {
         const source: unknown = JSON.parse(value);
-        if (!isRecord(source) || (source.version !== 1 && source.version !== PUBLISHER_DRAFT_VERSION)) return null;
-        const parsed = source.version === 1
-            ? { ...source, version: PUBLISHER_DRAFT_VERSION }
-            : source;
+        if (!isRecord(source)) return null;
+        const parsed = migratePublisherDraftSource(source);
+        if (!parsed) return null;
         if (
             (parsed.selectedTemplateId !== 'split' && parsed.selectedTemplateId !== 'poster') ||
             typeof parsed.snapEnabled !== 'boolean' || !isFiniteNumber(parsed.previewZoomPercent) ||

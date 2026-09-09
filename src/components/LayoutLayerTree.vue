@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { faAngleDown, faAngleRight, faEye, faEyeSlash, faGripVertical, faLock, faSliders, faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons';
+import { faAngleDown, faAngleRight, faEye, faEyeSlash, faGripVertical, faLock, faRepeat, faSliders, faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 
 import type {
@@ -25,8 +25,9 @@ const props = withDefaults(defineProps<{
     hiddenElementIds?: LayoutElementId[];
     lockedElementIds?: LayoutElementId[];
     nodes: LayoutLayerTreeNode[];
+    repeatGroupIds?: string[];
     selectedElementIds: LayoutElementId[];
-}>(), { depth: 0, effectElementIds: () => [], filterElementIds: () => [], elementPreviews: () => ({}), hiddenElementIds: () => [], lockedElementIds: () => [] });
+}>(), { depth: 0, effectElementIds: () => [], filterElementIds: () => [], elementPreviews: () => ({}), hiddenElementIds: () => [], lockedElementIds: () => [], repeatGroupIds: () => [] });
 
 const emit = defineEmits<{
     drillIntoElement: [elementId: LayoutElementId];
@@ -150,6 +151,7 @@ const dropClass = (target: LayoutLayerDragNode) => {
                     <DesignIconButton class="inspector-layer-group__toggle" :label="collapsedGroups.has(node.id) ? 'Gruppe aufklappen' : 'Gruppe zuklappen'" :aria-expanded="!collapsedGroups.has(node.id)" @click="toggleGroup(node.id)"><FontAwesomeIcon :icon="collapsedGroups.has(node.id) ? faAngleRight : faAngleDown" aria-hidden="true" /></DesignIconButton>
                     <button type="button" class="inspector-layer-list__select inspector-layer-list__select--group" :aria-pressed="groupIsSelected(node.elementIds)" @click="emit('selectGroup', node.id, $event)"><span class="inspector-layer-list__icon">▰</span><span>{{ depth === 0 ? 'Gruppe' : 'Untergruppe' }}</span></button>
                     <span class="inspector-layer-list__indicators">
+                        <span v-if="repeatGroupIds.includes(node.id)" class="inspector-layer-list__repeat" title="Datenabhängige Wiederholung"><FontAwesomeIcon :icon="faRepeat" aria-hidden="true" /><span class="sr-only">Datenabhängige Wiederholung</span></span>
                         <DesignIconButton v-if="effectElementIds.includes(node.id)" class="inspector-layer-list__effect" label="Gruppeneffekte bearbeiten" @click="emit('editEffects', node.id)"><FontAwesomeIcon :icon="faWandMagicSparkles" aria-hidden="true" /></DesignIconButton>
                         <DesignIconButton v-if="filterElementIds.includes(node.id)" class="inspector-layer-list__filter" label="Gruppenfilter bearbeiten" @click="emit('editFilters', node.id)"><FontAwesomeIcon :icon="faSliders" aria-hidden="true" /></DesignIconButton>
                     </span>
@@ -167,6 +169,7 @@ const dropClass = (target: LayoutLayerDragNode) => {
                     :hidden-element-ids="hiddenElementIds"
                     :locked-element-ids="lockedElementIds"
                     :nodes="node.children"
+                    :repeat-group-ids="repeatGroupIds"
                     :selected-element-ids="selectedElementIds"
                     @drill-into-element="emit('drillIntoElement', $event)"
                     @edit-effects="emit('editEffects', $event)"

@@ -18,6 +18,8 @@ Dokumente und terminneutrale Vorlagen werden über ein `PublisherRepository` ges
 
 Ist das Publisher-CCM-Modul vorübergehend nicht verfügbar, wechselt der Editor in den Status „Lokal gesichert“ und hält Änderungen in dieser Recovery-Kopie. Automatische Remote-Versuche pausieren dann, bis bewusst erneut gespeichert wird oder ChurchTools wieder online ist. Konflikte, fehlende Rechte und ungültige Dokumente bleiben als echte Speicherfehler sichtbar.
 
+Persistierte Dokumente, portable Dateien, Vorlagenbibliotheken und CCM-Envelopes sind getrennt versioniert. Unterstützte Vorgängerversionen werden beim Lesen explizit auf das aktuelle Schema migriert; neue Repeat-Bindungen sind Bestandteil dieses Vertrags.
+
 Eigene Bild-Uploads sind bis zu einem offiziellen ChurchTools-Speicherpfad bewusst deaktiviert. Die Einstiegspunkte bleiben sichtbar und erklären den kommenden Funktionsumfang per Toast. Bereits vorhandene ChurchTools-Terminbilder und Bildvariablen können weiterhin verwendet werden.
 
 ## Lokale Entwicklung
@@ -68,6 +70,7 @@ npx playwright install chromium
 - Verknüpfte Events werden gezielt über ihre ID geladen; Fehler optionaler Dienst-Stammdaten bleiben als sichtbare Teilfehler erkennbar.
 - Mehrfach besetzte Dienste können komma- oder zeilenweise, als Aufzählung, mit „und“ oder als erste Person ausgegeben werden.
 - Eine sichere, versionierte Variablen-Pipeline formatiert Datum, Zeit, Listen und Zahlen, setzt Fallbacks und bildet vordefinierte Bedingungen ab – ohne frei ausführbaren Ausdruckscode.
+- Gruppen können an ein Listenfeld gebunden werden. Der Canvas und der Export projizieren daraus bis zu 100 eigene Gruppeninstanzen; gespeichert bleibt nur der wiederverwendbare Prototyp.
 - Zuletzt verwendete Farben und analysierte Bildpaletten werden als abgeleitete Werte versioniert in IndexedDB gecacht; Bilddaten und vollständige Quell-URLs werden dabei nicht gespeichert.
 - Vorlagen sind terminneutral; nur gespeicherte Dokumente dürfen optional einen Terminbezug besitzen.
 - ChurchTools ist die Quelle für Dokumente und Vorlagen, der Browser hält lediglich eine Recovery-Kopie.

@@ -164,6 +164,19 @@ describe('LayoutLayerTree', () => {
         expect(wrapper.find('[aria-label="Effekte von Titel bearbeiten"]').exists()).toBe(false);
     });
 
+    it('marks groups that are projected from repeatable data', () => {
+        const wrapper = mount(LayoutLayerTree, {
+            props: {
+                elementLabels,
+                nodes: nestedNodes,
+                repeatGroupIds: ['inner'],
+                selectedElementIds: [],
+            },
+        });
+
+        expect(wrapper.get('[title="Datenabhängige Wiederholung"]').text()).toContain('Datenabhängige Wiederholung');
+    });
+
     it('emits an inside move when a drag handle is dropped onto a group', async () => {
         const wrapper = mount(LayoutLayerTree, {
             props: { elementLabels, nodes: nestedNodes, selectedElementIds: [] },

@@ -20,7 +20,7 @@ Vor einem weiteren größeren Feature-Ausbau wurden vier Fundamente stabilisiert
 ## Umsetzungsstand der vier Fundamente
 
 1. **Kanonischer Pinia-Zustand:** Seiten, aktive Seite, serialisierbare Layouts und eine chronologische Dokumenthistorie liegen nun im `PublisherDocumentStore`. Die Historie umfasst Canvas-Änderungen, Seitenoperationen und atomare Vorlagenanwendungen; Öffnen und Neuanlegen setzen sie zurück. Die Auswahl ist mit einer aktiven Seiten-ID im `PublisherEditorStore` gebunden. Gemountete Canvas-Seiten besitzen keine parallele persistierbare Layout- oder Auswahlkopie mehr.
-2. **Mehrseitige Vorlagen:** Die Vorlagenbibliothek verwendet Schema-Version 2 und speichert vollständige Dokumente mit allen Seiten, Größen, Layouts, Gruppen, Bildfokussen und aktiver Seite. Alte einseitige Version-1-Vorlagen werden beim Lesen migriert; ein defekter Einzeleintrag blockiert nicht mehr die restliche Bibliothek.
+2. **Mehrseitige Vorlagen:** Die Vorlagenbibliothek verwendet Schema-Version 4 und speichert vollständige Dokumente mit allen Seiten, Größen, Layouts, Gruppen, Repeat-Bindungen, Bildfokussen und aktiver Seite. Alte Bibliotheken und einseitige Version-1-Vorlagen werden beim Lesen migriert; ein defekter Einzeleintrag blockiert nicht mehr die restliche Bibliothek.
 3. **Rekursiver Canvas-Szenengraph:** `LayoutGroup` wird rekursiv als echter Konva-Gruppenknoten gerendert. Gruppendrag bewegt einen Container und schreibt erst am Ende die Kindgeometrie zurück. Gruppenrotation ist persistierbar. Schatten, Unschärfe, Deckkraft und Mischmodus können am kompositierten Gruppenknoten liegen, ohne die Effekte auf Kinder zu kopieren.
 4. **Browser-Regressionstests:** Playwright mit Chromium ist eingerichtet. Die erste Suite prüft leeren Start, frei dimensionierte leere Seiten, seitengebundene Auswahl, Gruppenziel/-effekte und den Roundtrip einer mehrseitigen Dokumentvorlage.
 
@@ -235,14 +235,14 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **Empfehlung:** Playwright oder vergleichbaren Browserrunner einführen. Eine kleine risikobasierte Suite ist wertvoller als weitere flache Mount-Tests: leerer Start, Seite hinzufügen, Elementtransform am Rand, Gruppe verschieben/nesten, Seite wechseln, Termindaten austauschen, dynamisches Auto-Layout, PNG/JPEG-Export.
 
-### Teilweise behoben – Persistenzversion blieb trotz Schemaänderungen auf 1
+### Behoben – Persistenzversion blieb trotz Schemaänderungen zurück
 
-**Status:** Die Vorlagenbibliothek verwendet Version 2 mit expliziter V1-Migration. Das allgemeine Entwurfsformat ist weiterhin Version 1 und bleibt ein offener Migrationspunkt.
-**Evidenz:** `src/domain/publisherDesignTemplate.ts` enthält die V1-zu-V2-Migration; `src/domain/publisherDraft.ts` verwendet noch Version 1.
+**Status:** Entwurf, Dokumentrecord, portable Datei, Vorlagenbibliothek und CCM-Envelope besitzen getrennte aktuelle Versionen und akzeptieren ihre unterstützten Vorgänger explizit.
+**Evidenz:** Das Entwurfsformat migriert V1/V2 auf V3, Dokumentrecords V1/V2 auf V3, portable Dateien V1 auf V2 und die Vorlagenbibliothek V1–V3 auf V4. Neue CCM-Schreibvorgänge verwenden Envelope V2, der Leser akzeptiert weiterhin V1. Roundtrip- und Migrationsfälle sind für alle Pfade getestet.
 
-**Auswirkung:** Kompatibilität beruht auf verteilten optionalen Defaults statt nachvollziehbaren Migrationen. Ein Parserfehler kann als „ungültig“ erscheinen, ohne klarzumachen, von welchem Schema migriert werden müsste.
+**Auswirkung:** Die neue Repeat-Konfiguration kann nicht unbemerkt von älteren lokalen Formaten überschrieben werden. Bestehende Records bleiben lesbar und werden beim nächsten Speichern im aktuellen Format geschrieben.
 
-**Empfehlung:** Zentrale, sequentielle Migrationen `v1 -> v2 -> ...`, Fixture-Dateien alter Versionen und Roundtrip-Tests. Version des Dokuments und Version der Vorlagenbibliothek getrennt halten.
+**Empfehlung:** Bei jeder weiteren persistierten Eigenschaft die betroffene Version erneut erhöhen und die Vorgängerversion als eigenen Migrationstest behalten. Für komplexere künftige Umbauten echte Fixture-Dateien ergänzen.
 
 ### Behoben – Ein defekter Vorlageneintrag blockierte die gesamte Bibliothek
 
@@ -309,14 +309,14 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 
 **UI-Stand:** Die drei semantischen Bildfarben werden nicht mehr als zweite Palette dupliziert. Primär-, Hintergrund- und Vordergrundrolle sind direkt innerhalb der neun extrahierten Farbfelder markiert und können über einen Rollenmodus manuell einem anderen Farbfeld zugewiesen werden. Die Standardpalette deckt zusätzlich abgestufte Neutral-, Blau-, Türkis-, Grün-, Gelb-, Rot- und Violetttöne ab.
 
-### Teilweise behoben – Datenformatierung ist für Template-Automation noch zu begrenzt
+### Behoben – Datenformatierung und Wiederholungen waren für Template-Automation zu begrenzt
 
-**Status:** die sichere Ausdrucks- und Formatierungsebene ist umgesetzt; gestaltete Repeat-Container fehlen noch.
-**Beobachtung:** Bestehende Platzhalter bleiben kompatibel. Neue `v1`-Pipelines unterstützen Datum, Zeit, Listen, Zahlen, Währungen, Groß-/Kleinschreibung, Fallbacks und vordefinierte Vergleiche ohne `eval` oder freie JavaScript-Auswertung. Ein gemeinsamer Dialog erzeugt diese Ausdrücke visuell; Zahlenfelder aus Anmeldegruppen werden entsprechend typisiert. Ein Repeat-Container mit einem Canvas-Knoten je Eintrag fehlt weiterhin.
+**Status:** sichere Ausdrücke und persistente Repeat-Gruppen sind umgesetzt.
+**Beobachtung:** Bestehende Platzhalter bleiben kompatibel. Neue `v1`-Pipelines unterstützen Datum, Zeit, Listen, Zahlen, Währungen, Groß-/Kleinschreibung, Fallbacks und vordefinierte Vergleiche ohne `eval` oder freie JavaScript-Auswertung. Ein gemeinsamer Dialog erzeugt diese Ausdrücke visuell; Zahlenfelder aus Anmeldegruppen werden entsprechend typisiert. Eine Gruppe kann außerdem an ein Listenfeld gebunden und horizontal oder vertikal mit festem Abstand wiederholt werden. Pro Eintrag entsteht ein eigener gerenderter Gruppenbaum mit lokalem Wert und Index, während nur der Prototyp persistiert wird.
 
-**Auswirkung:** Terminabhängige Leerwerte, Statushinweise und lokalisierte Zahlen lassen sich terminneutral in Vorlagen behandeln. Für individuell gestaltete Wiederholungen sind weiterhin vorbereitete Daten oder zusätzliche Elemente nötig.
+**Auswirkung:** Terminabhängige Leerwerte, Statushinweise, lokalisierte Zahlen und individuell gestaltete Dienstlisten lassen sich terminneutral in Vorlagen behandeln. Ein Datenwechsel verändert nur die Renderprojektion und vervielfältigt keine persistenten Ebenen.
 
-**Empfehlung:** Als nächsten Schritt dieselbe sichere Auswertungslogik für einen persistenten Repeat-Container nutzen. Die `v1`-Syntax bei zukünftigen Semantikänderungen migrieren statt still umzudeuten.
+**Empfehlung:** Die `v1`-Syntax und Repeat-Konfiguration bei zukünftigen Semantikänderungen migrieren statt still umzudeuten. Die feste Obergrenze von 100 Instanzen bei weiteren Datenquellen beibehalten beziehungsweise bewusst anpassen.
 
 ### Behoben – Stammdatenfehler wurden still verschluckt
 
@@ -501,7 +501,7 @@ Die Analyse soll nicht nur Defizite festhalten. Mehrere Grundlagen sind solide u
 2. Dokumentoperationen in Store-Actions verschieben.
 3. ~~Auswahl, aktive Gruppe und eine dokumentweite Historie im Store ablegen.~~ Umgesetzt; die Historie führt Canvas-, Seiten- und Vorlagenaktionen chronologisch zusammen.
 4. `EventTemplate` schrittweise auf Storeprojektion und Gestenadapter reduzieren.
-5. Explizite Persistenzmigrationen einführen.
+5. ~~Explizite Persistenzmigrationen einführen.~~ Umgesetzt für Draft, Dokumentrecord, portable Datei, Vorlagenbibliothek und CCM-Envelope.
 
 ### Phase 3 – Vorlagen und Assets produktionsfähig machen
 
@@ -517,7 +517,7 @@ Die Analyse soll nicht nur Defizite festhalten. Mehrere Grundlagen sind solide u
 2. Gruppensnapping und Gruppentransform stabilisieren.
 3. gemeinsame Gruppeneffekte über Cache/Offscreen-Komposition implementieren.
 4. ~~Typisierten Filterstack für Ebenen und gemeinsam gerenderte Gruppen ergänzen.~~ Umgesetzt; Anpassungsebenen sind nicht vorgesehen.
-5. Variablensyntax um sichere Fallback-, Listen- und Repeaterfunktionen erweitern.
+5. ~~Variablensyntax um sichere Fallback-, Listen- und Repeaterfunktionen erweitern.~~ Umgesetzt mit `v1`-Pipelines und renderseitig projizierten Repeat-Gruppen.
 
 ### Phase 5 – Store- und Release-Reife
 

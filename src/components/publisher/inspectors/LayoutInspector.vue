@@ -101,6 +101,15 @@ const filterElementIds = computed(() => Object.entries(activeLayout.value?.filte
     .map(([elementId]) => elementId));
 const hiddenElementIds = computed(() => activeLayout.value?.hidden ?? []);
 const lockedElementIds = computed(() => activeLayout.value?.locked ?? []);
+const repeatGroupIds = computed(() => activeLayout.value?.groups.flatMap((group) => {
+    const ids: string[] = [];
+    const visit = (candidate: typeof group) => {
+        if (candidate.repeat) ids.push(candidate.id);
+        candidate.children.forEach((child) => { if (typeof child !== 'string') visit(child); });
+    };
+    visit(group);
+    return ids;
+}) ?? []);
 const selectionIsLocked = computed(() => selectedLayoutElements.value.length > 0 &&
     selectedLayoutElements.value.every((elementId) => lockedElementIds.value.includes(elementId)));
 const selectionContainsLocked = computed(() => selectedLayoutElements.value.some((elementId) =>
@@ -479,7 +488,7 @@ const toggleFontStyle = (style: 'bold' | 'italic') => {
                         <label title="Deckkraft der ausgewählten Ebene"><span>Deckkraft</span><input type="number" min="0" max="100" step="1" :disabled="!canEditSelectedEffects || selectionContainsLocked" :value="Math.round(selectedLayerEffects.opacity * 100)" @input="updateLayerOpacity" /><span>%</span></label>
                         <select title="Mischmodus der ausgewählten Ebene" aria-label="Mischmodus" :disabled="!canEditSelectedEffects || selectionContainsLocked" :value="selectedLayerEffects.blendMode" @change="updateLayerBlendMode"><option value="source-over">Normal</option><option value="multiply">Multiplizieren</option><option value="screen">Negativ multiplizieren</option><option value="overlay">Ineinanderkopieren</option><option value="darken">Abdunkeln</option><option value="lighten">Aufhellen</option></select>
                     </div>
-                    <LayoutLayerTree class="inspector-layer-list" aria-label="Ebenenliste" :effect-element-ids="effectElementIds" :filter-element-ids="filterElementIds" :element-labels="elementLabels" :element-previews="elementPreviews" :expanded-group-ids="selectedLayoutGroupPath" :hidden-element-ids="hiddenElementIds" :locked-element-ids="lockedElementIds" :nodes="layerTree" :selected-element-ids="selectedLayoutElements" @drill-into-element="emit('drillIntoElement', $event)" @edit-effects="openEffectsDialog([$event])" @edit-filters="openFiltersDialog([$event])" @move-layer="(source, target, placement) => emit('moveLayer', source, target, placement)" @select-element="(elementId, event) => emit('selectElement', elementId, event)" @select-group="(groupId, event) => emit('selectGroup', groupId, event)" @toggle-visibility="emit('toggleVisibility', $event)" />
+                    <LayoutLayerTree class="inspector-layer-list" aria-label="Ebenenliste" :effect-element-ids="effectElementIds" :filter-element-ids="filterElementIds" :element-labels="elementLabels" :element-previews="elementPreviews" :expanded-group-ids="selectedLayoutGroupPath" :hidden-element-ids="hiddenElementIds" :locked-element-ids="lockedElementIds" :nodes="layerTree" :repeat-group-ids="repeatGroupIds" :selected-element-ids="selectedLayoutElements" @drill-into-element="emit('drillIntoElement', $event)" @edit-effects="openEffectsDialog([$event])" @edit-filters="openFiltersDialog([$event])" @move-layer="(source, target, placement) => emit('moveLayer', source, target, placement)" @select-element="(elementId, event) => emit('selectElement', elementId, event)" @select-group="(groupId, event) => emit('selectGroup', groupId, event)" @toggle-visibility="emit('toggleVisibility', $event)" />
                 </template>
             </div>
             <footer v-if="activeContentTab === 'layers'" class="inspector-layer-footer">

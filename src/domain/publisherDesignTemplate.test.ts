@@ -145,6 +145,6 @@ describe('publisher design templates', () => {
             .toEqual(createLayoutOrder().filter((elementId) => !['background', 'image'].includes(elementId)));
         expect(savePublisherDesignTemplate(storage, { ...createTemplate('template-2'), name: 'Neue Vorlage' }))
             .toHaveLength(2);
-        expect(storage.getItem(PUBLISHER_DESIGN_TEMPLATE_STORAGE_KEY)).toContain('"version":3');
+        expect(storage.getItem(PUBLISHER_DESIGN_TEMPLATE_STORAGE_KEY)).toContain('"version":4');
     });
 });

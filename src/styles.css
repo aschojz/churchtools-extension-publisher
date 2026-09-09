@@ -1184,20 +1184,29 @@
     border: 1px solid transparent;
     border-radius: 6px;
     background: var(--color-surface);
-    grid-template-columns: 22px minmax(0, 1fr) 46px 22px 30px;
+    grid-template-columns: 22px minmax(0, 1fr) 60px 22px 30px;
     align-items: center;
 }
 
 .inspector-layer-list__row--group {
-    grid-template-columns: 22px 26px minmax(0, 1fr) 46px 22px 30px;
+    grid-template-columns: 22px 26px minmax(0, 1fr) 60px 22px 30px;
     background: var(--color-surface-subtle);
 }
 
 .inspector-layer-list__indicators {
     display: flex;
-    width: 44px;
+    width: 58px;
     min-width: 0;
     justify-content: flex-end;
+}
+
+.inspector-layer-list__repeat {
+    display: grid;
+    width: 14px;
+    flex: none;
+    color: var(--color-accent);
+    font-size: 10px;
+    place-items: center;
 }
 
 .inspector-layer-list .inspector-layer-list__effect,

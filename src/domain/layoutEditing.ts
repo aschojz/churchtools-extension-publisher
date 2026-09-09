@@ -332,10 +332,17 @@ export interface LayoutGroupAutoLayout {
     verticalOrigin: LayoutVerticalOrigin;
     anchor: LayoutPoint;
 }
+export interface LayoutGroupRepeat {
+    sourceFieldId: string;
+    itemAlias: string;
+    axis: LayoutDistributionAxis;
+    gap: number;
+}
 export interface LayoutGroup {
     id: string;
     children: (LayoutElementId | LayoutGroup)[];
     autoLayout?: LayoutGroupAutoLayout;
+    repeat?: LayoutGroupRepeat;
     rotation?: number;
 }
 export type LayoutGroups = LayoutGroup[];

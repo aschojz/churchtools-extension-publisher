@@ -12,17 +12,19 @@ import {
 import { layoutFilterStackHasEnabled, type LayoutFilterStack } from '../domain/layoutFilters';
 import { configureLayoutKonvaFilterValues, layoutKonvaFilterFunctions } from '../utils/layoutKonvaFilters';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
     draggable: boolean;
     editorScale: number;
     effects: LayoutElementEffects;
     filters: LayoutFilterStack;
     frame: LayoutFrame;
     groupId: string;
+    instanceKey?: string;
+    interactive?: boolean;
     locked: boolean;
     renderRevision: string;
     selected: boolean;
-}>();
+}>(), { instanceKey: '', interactive: true });
 
 const effectGroupRef = ref<VueKonvaRef<Konva.Group> | null>(null);
 const effectConfig = computed(() => ({
@@ -113,9 +115,10 @@ const emitTransform = (event: Konva.KonvaEventObject<Event>) => {
             width: frame.width,
             height: frame.height,
             draggable: draggable && !locked,
-            id: `editable-group-${groupId}`,
+            id: `editable-group-${groupId}${instanceKey}`,
             name: 'editable-layout-group',
-            layoutGroupId: groupId,
+            layoutGroupId: interactive ? groupId : undefined,
+            listening: interactive,
         }"
         @dragstart="emitGroupEvent('dragStart', $event)"
         @dragmove="emitGroupEvent('dragging', $event)"

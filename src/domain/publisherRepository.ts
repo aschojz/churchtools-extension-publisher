@@ -1,7 +1,7 @@
 import { parsePublisherDesignTemplate, type PublisherDesignTemplate } from './publisherDesignTemplate';
 import { parsePublisherDraft, type PublisherDraft } from './publisherDraft';
 
-export const PUBLISHER_RECORD_VERSION = 2;
+export const PUBLISHER_RECORD_VERSION = 3;
 
 export interface PublisherAppointmentReference {
     appointmentId: number;
@@ -67,10 +67,10 @@ export const appointmentKeyFromReference = (reference: PublisherAppointmentRefer
     reference ? `${reference.appointmentId}:${reference.occurrenceStart}` : '';
 
 export const parsePublisherDocumentRecord = (value: unknown): PublisherDocumentRecord | null => {
-    if (!isRecord(value) || (value.version !== 1 && value.version !== PUBLISHER_RECORD_VERSION)) return null;
-    const candidate = value.version === 1
-        ? { ...value, version: PUBLISHER_RECORD_VERSION }
-        : value;
+    if (!isRecord(value) || ![1, 2, PUBLISHER_RECORD_VERSION].includes(Number(value.version))) return null;
+    const candidate = value.version === PUBLISHER_RECORD_VERSION
+        ? value
+        : { ...value, version: PUBLISHER_RECORD_VERSION };
     if (typeof candidate.id !== 'string' || !candidate.id ||
         typeof candidate.name !== 'string' || !candidate.name.trim() || typeof candidate.revision !== 'number' ||
         !Number.isInteger(candidate.revision) || candidate.revision < 0 || typeof candidate.createdAt !== 'string' ||
