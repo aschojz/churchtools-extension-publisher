@@ -457,11 +457,11 @@ Dabei enthält ein `PublisherDocument` alle Seiten. Jede Seite enthält genau ei
 **Beobachtungen:**
 
 - Seiten hinzufügen/löschen und Dialog schließen nutzen teilweise `＋`/`×` statt Font Awesome.
-- Native `<details>`-Popover für Ebenen und Ausrichtung haben keine gemeinsame Outside-click- und Fokuslogik.
-- „Einrasten“ bleibt in der zweiten Leiste, seine konkrete Wirkung wird dort noch nicht erklärt. Der redundante Layout-Reset wurde zugunsten von Undo/Redo und erneutem Anwenden einer Vorlage entfernt.
+- Ebenen und Ausrichtung verwenden nun ein gemeinsames, teleportiertes Popover mit Outside-click, Escape, Fokus-Rückgabe und Viewport-Positionierung.
+- „Einrasten“ erklärt seine Wirkung per Tooltip. Der redundante Layout-Reset wurde zugunsten von Undo/Redo und erneutem Anwenden einer Vorlage entfernt.
 - Transformieren bleibt korrekt sichtbar und deaktiviert, könnte aber noch dichter sein.
 - Der Hauptcanvas ist bei festen Seitenleisten auf kleinen Desktopbreiten schnell stark beschnitten.
-- `index.html` deklariert `lang="en"`, obwohl die Oberfläche deutsch ist, und setzt für den Standalone-Entwicklungsfall `body class="dark"` fest.
+- `index.html` deklariert die deutsche Dokumentsprache und überlässt den Dark Mode vollständig der Hostklasse `.dark`.
 
 **Empfehlung:** Glyphen durch gemeinsame Icon-Buttons ersetzen, Popover-Primitiv einführen, Snapping per Tooltip erläutern, `lang="de"` setzen und Dark Mode ausschließlich aus der Hostumgebung beziehungsweise einer klaren lokalen Simulation beziehen.
 

@@ -313,8 +313,8 @@ const toggleFontStyle = (style: 'bold' | 'italic') => {
 <template>
     <section id="layout-editor" class="publisher-inspector__content publisher-inspector__content--layout">
         <div class="inspector-fixed-block inspector-fixed-block--appearance">
-            <DesignTabs v-model="activeAppearanceTab" label="Farbe und Kontur" :items="appearanceTabs" />
-            <div class="inspector-fixed-block__scroll">
+            <DesignTabs id="layout-appearance" v-model="activeAppearanceTab" label="Farbe und Kontur" :items="appearanceTabs" />
+            <div :id="`layout-appearance-${activeAppearanceTab}-panel`" class="inspector-fixed-block__scroll" role="tabpanel" :aria-labelledby="`layout-appearance-${activeAppearanceTab}-tab`">
                 <template v-if="activeAppearanceTab === 'fill'">
                     <div v-if="(selectedLayoutStyle || selectedLayoutVisualStyle) && !selectedLineElement" class="inspector-color-field">
                         <PublisherColorPicker
@@ -409,8 +409,8 @@ const toggleFontStyle = (style: 'bold' | 'italic') => {
         </div>
 
         <div class="inspector-fixed-block inspector-fixed-block--content">
-            <DesignTabs v-model="activeContentTab" label="Text und Ebenen" :items="contentTabs" />
-            <div class="inspector-fixed-block__scroll" :class="{ 'inspector-fixed-block__scroll--layers': activeContentTab === 'layers' }">
+            <DesignTabs id="layout-content" v-model="activeContentTab" label="Text und Ebenen" :items="contentTabs" />
+            <div :id="`layout-content-${activeContentTab}-panel`" class="inspector-fixed-block__scroll" :class="{ 'inspector-fixed-block__scroll--layers': activeContentTab === 'layers' }" role="tabpanel" :aria-labelledby="`layout-content-${activeContentTab}-tab`">
                 <template v-if="activeContentTab === 'text'">
                     <template v-if="selectedLayoutStyle">
                         <div v-if="selectedLayoutTextMode" class="inspector-control-group inspector-control-group--unlabeled" title="Textart">

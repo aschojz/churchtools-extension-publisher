@@ -19,7 +19,7 @@ const mountContextBar = () => {
     editorStore.selectedLayoutGroupDepth = 1;
     return mount(PublisherContextBar, {
         props: { hasImage: false },
-        global: { plugins: [pinia] },
+        global: { plugins: [pinia], stubs: { teleport: true } },
     });
 };
 
@@ -37,7 +37,7 @@ const mountTextContextBar = () => {
     ];
     return mount(PublisherContextBar, {
         props: { hasImage: false },
-        global: { plugins: [pinia] },
+        global: { plugins: [pinia], stubs: { teleport: true } },
     });
 };
 
@@ -54,17 +54,20 @@ describe('PublisherContextBar alignment popover', () => {
         await wrapper.vm.$nextTick();
 
         const layerPopover = wrapper.get('.publisher-layer-popover');
-        expect(layerPopover.get('summary').text()).toBe('Ebenen');
-        expect(layerPopover.findAll('button').map((button) => button.text())).toEqual([
+        expect(layerPopover.get('.design-popover__trigger').text()).toBe('Ebenen');
+        await layerPopover.get('.design-popover__trigger').trigger('click');
+        const layerActions = layerPopover.findAll('.publisher-alignment-popover__buttons button');
+        expect(layerActions.map((button) => button.text())).toEqual([
             'Nach hinten', 'Nach vorne', 'Gruppieren', 'Gruppe lösen',
         ]);
-        await layerPopover.findAll('button')[0]!.trigger('click');
+        await layerActions[0]!.trigger('click');
         expect(wrapper.emitted('changeLayer')).toEqual([[-1]]);
         expect(wrapper.text()).not.toContain('Zurücksetzen');
     });
 
     it('offers one-time equal distribution on both axes', async () => {
         const wrapper = mountContextBar();
+        await wrapper.findAll('.design-popover__trigger')[1]!.trigger('click');
 
         const distribute = wrapper.findAll('button').filter((button) => button.text() === 'Verteilen');
         await distribute[0]!.trigger('click');
@@ -75,6 +78,7 @@ describe('PublisherContextBar alignment popover', () => {
 
     it('enables persistent group layout with an eight pixel default gap', async () => {
         const wrapper = mountContextBar();
+        await wrapper.findAll('.design-popover__trigger')[1]!.trigger('click');
 
         await wrapper.get('.publisher-alignment-popover__toggle input').setValue(true);
 
@@ -90,6 +94,7 @@ describe('PublisherContextBar alignment popover', () => {
             placeholder: '{{eventService-12}}', formatType: 'list', values: ['Ada', 'Grace'],
         }];
         await wrapper.vm.$nextTick();
+        await wrapper.findAll('.design-popover__trigger')[1]!.trigger('click');
 
         const toggles = wrapper.findAll('.publisher-alignment-popover__toggle input');
         await toggles[1]!.setValue(true);
@@ -157,7 +162,7 @@ describe('PublisherContextBar content controls', () => {
         ];
         const wrapper = mount(PublisherContextBar, {
             props: { hasImage: false },
-            global: { plugins: [pinia] },
+            global: { plugins: [pinia], stubs: { teleport: true } },
         });
 
         expect(wrapper.get('[aria-label="QR-Inhalt"]').attributes('value')).toBe('https://church.tools');

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { faAngleDown, faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons';
+import { faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { storeToRefs } from 'pinia';
 import { computed, ref } from 'vue';
@@ -26,6 +26,7 @@ import { usePublisherAppointmentsStore } from '../../stores/publisherAppointment
 import { usePublisherDocumentStore } from '../../stores/publisherDocument';
 import DesignButton from '../design/DesignButton.vue';
 import DesignIconButton from '../design/DesignIconButton.vue';
+import DesignPopover from '../design/DesignPopover.vue';
 import PublisherVariableDialog from './PublisherVariableDialog.vue';
 
 const props = defineProps<{
@@ -177,9 +178,7 @@ const placeholderLabel = (fieldId: string) => `{{${fieldId}}}`;
             ><FontAwesomeIcon :icon="faWandMagicSparkles" aria-hidden="true" /></DesignIconButton>
         </div>
         <div v-if="hasLayoutSelection" class="publisher-contextbar__actions" aria-label="Kontextaktionen für Auswahl">
-            <details class="publisher-alignment-popover publisher-layer-popover">
-                <summary><span>Ebenen</span><FontAwesomeIcon :icon="faAngleDown" aria-hidden="true" /></summary>
-                <div class="publisher-alignment-popover__panel publisher-layer-popover__panel">
+            <DesignPopover label="Ebenen" :width="310" class="publisher-alignment-popover publisher-layer-popover" panel-class="publisher-alignment-popover__panel publisher-layer-popover__panel">
                     <section>
                         <strong>Reihenfolge und Gruppen</strong>
                         <small v-if="selectedLayoutElement && !hasMultipleLayoutSelection">Ebene {{ selectedLayerPosition }} von {{ selectedLayerTotal }}</small>
@@ -190,11 +189,8 @@ const placeholderLabel = (fieldId: string) => `{{${fieldId}}}`;
                             <DesignButton variant="secondary" size="compact" :disabled="!canUngroupLayoutSelection" @click="emit('ungroup')">Gruppe lösen</DesignButton>
                         </div>
                     </section>
-                </div>
-            </details>
-            <details class="publisher-alignment-popover">
-                <summary><span>Ausrichtung</span><FontAwesomeIcon :icon="faAngleDown" aria-hidden="true" /></summary>
-                <div class="publisher-alignment-popover__panel">
+            </DesignPopover>
+            <DesignPopover label="Ausrichtung" :width="430" class="publisher-alignment-popover" panel-class="publisher-alignment-popover__panel">
                     <section>
                         <strong>Horizontal ausrichten</strong>
                         <div class="publisher-alignment-popover__buttons" role="group" aria-label="Horizontal ausrichten">
@@ -229,14 +225,13 @@ const placeholderLabel = (fieldId: string) => `{{${fieldId}}}`;
                         </template>
                         <p v-else-if="repeatableFields.length === 0">Lade zuerst ein Datenfeld mit mehreren Werten, zum Beispiel einen Dienst mit mehreren Personen.</p>
                     </section>
-                </div>
-            </details>
+            </DesignPopover>
         </div>
         <div v-else-if="activeEditorTool === 'data' && hasImage" class="publisher-contextbar__actions">
             <DesignButton variant="ghost" size="compact" @click="emit('resetImageFocus')">Bildausschnitt zentrieren</DesignButton>
         </div>
         <div v-else class="publisher-contextbar__hint">{{ activeEditorTool === 'layout' ? 'Element auf der Seite oder in der Ebenenliste auswählen' : 'Einstellungen im rechten Bedienfeld' }}</div>
-        <label class="publisher-contextbar__toggle"><input type="checkbox" :checked="snapEnabled" @change="updateSnap" /> Einrasten</label>
+        <label class="publisher-contextbar__toggle" title="Richtet Position, Größe und Drehung beim Verschieben an Seitenrändern, anderen Elementen und sinnvollen Rasterwerten aus."><input type="checkbox" :checked="snapEnabled" @change="updateSnap" /> Einrasten</label>
     </div>
     <PublisherVariableDialog
         :fields="dataFields.filter(({ type }) => type === 'text')"

@@ -6,6 +6,7 @@ import { layoutGradientCss, type LayoutGradient } from '../../domain/layoutGradi
 import { type ImagePaletteToken, type LayoutColorBinding } from '../../domain/imagePalette';
 import { PUBLISHER_DEFAULT_COLORS, usePublisherColorsStore } from '../../stores/publisherColors';
 import { usePublisherImagePalettesStore } from '../../stores/publisherImagePalettes';
+import DesignTabs from '../design/DesignTabs.vue';
 import PublisherImagePaletteSwatches from './PublisherImagePaletteSwatches.vue';
 
 type PublisherColorPickerTab = 'color' | 'gradient';
@@ -116,6 +117,9 @@ const clearBinding = () => {
     emit('update:colorBinding', null);
     closePopover(true);
 };
+const selectTab = (tab: string) => {
+    if (tab === 'color' || tab === 'gradient') activeTab.value = tab;
+};
 const handlePointerDown = (event: PointerEvent) => {
     const target = event.target as Node;
     if (!open.value || trigger.value?.contains(target) || popover.value?.contains(target) ||
@@ -172,11 +176,16 @@ watch(availableTabs, (tabs) => {
                 role="dialog"
                 :aria-label="label"
             >
-                <nav v-if="availableTabs.length > 1" class="publisher-color-picker__tabs" role="tablist" aria-label="Farbmodus">
-                    <button v-if="availableTabs.includes('color')" type="button" role="tab" :aria-selected="activeTab === 'color'" @click="activeTab = 'color'">Farbe &amp; Farbfelder</button>
-                    <button v-if="availableTabs.includes('gradient')" type="button" role="tab" :aria-selected="activeTab === 'gradient'" @click="activeTab = 'gradient'">Verlauf</button>
-                </nav>
-                <div v-if="activeTab === 'color'" class="publisher-color-picker__pane" role="tabpanel">
+                <DesignTabs
+                    v-if="availableTabs.length > 1"
+                    :id="`${popoverId}-mode`"
+                    class="publisher-color-picker__tabs"
+                    label="Farbmodus"
+                    :items="availableTabs.map((id) => ({ id, label: id === 'color' ? 'Farbe & Farbfelder' : 'Verlauf' }))"
+                    :model-value="activeTab"
+                    @update:model-value="selectTab"
+                />
+                <div v-if="activeTab === 'color'" :id="`${popoverId}-mode-color-panel`" class="publisher-color-picker__pane" role="tabpanel" :aria-labelledby="`${popoverId}-mode-color-tab`">
                     <label class="publisher-color-picker__native">
                         <input type="color" :aria-label="`${label} mit Farbwähler`" :value="modelValue" @change="selectNativeColor" />
                         <code>{{ modelValue.toUpperCase() }}</code>
@@ -212,7 +221,7 @@ watch(availableTabs, (tabs) => {
                         </div>
                     </section>
                 </div>
-                <div v-else class="publisher-color-picker__pane publisher-color-picker__pane--gradient" role="tabpanel">
+                <div v-else :id="`${popoverId}-mode-gradient-panel`" class="publisher-color-picker__pane publisher-color-picker__pane--gradient" role="tabpanel" :aria-labelledby="`${popoverId}-mode-gradient-tab`">
                     <slot name="gradient" />
                 </div>
             </div>
