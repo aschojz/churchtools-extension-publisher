@@ -17,7 +17,6 @@
         "@churchtools/api-types": "file:../churchtools/frontend-packages/api-types",
         "@churchtools/churchtools-client": "^1.6.0",
         "@churchtools/utils": "file:../churchtools/frontend-packages/utils",
-        "@churchtools/vue-query": "file:../churchtools/frontend-packages/vue-query",
         "@fortawesome/fontawesome-svg-core": "^7.3.1",
         "@fortawesome/free-solid-svg-icons": "^7.3.1",
         "@fortawesome/vue-fontawesome": "^3.3.3",

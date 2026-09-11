@@ -111,7 +111,7 @@ onBeforeUnmount(() => compactQuery?.removeEventListener('change', syncCompactVie
 <style scoped>
 .publisher-shell {
     display: grid;
-    height: 100vh;
+    height: calc(100vh - var(--menu-height, 0px));
     min-width: 320px;
     overflow: hidden;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
@@ -197,7 +197,7 @@ onBeforeUnmount(() => compactQuery?.removeEventListener('change', syncCompactVie
 
 @media (max-width: 1100px) {
     .publisher-shell {
-        height: 100dvh;
+        height: calc(100dvh - var(--menu-height, 0px));
     }
 
     .publisher-shell__body {

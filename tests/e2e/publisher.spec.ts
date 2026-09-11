@@ -13,6 +13,13 @@ test('starts with an empty transparent page without opening the appointment dial
     await expect(page.locator('.template-preview canvas')).toHaveCount(3);
 });
 
+test('fits below the ChurchTools menu when its height is provided', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.evaluate(() => document.documentElement.style.setProperty('--menu-height', '56px'));
+
+    await expect(page.locator('.publisher-shell')).toHaveCSS('height', '844px');
+});
+
 test('creates differently sized blank pages without injecting a standard layout', async ({ page }) => {
     await page.getByRole('button', { name: 'Seite hinzufügen' }).first().click();
     await expect(page.getByRole('heading', { name: 'Neue Seite' })).toBeVisible();

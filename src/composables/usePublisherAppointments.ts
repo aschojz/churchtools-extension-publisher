@@ -1,12 +1,11 @@
 import type { AppointmentCalculatedWithIncludes } from '@churchtools/api-types';
-import { useAppointmentQuery, useCalendarsQuery } from '@churchtools/vue-query';
 import { storeToRefs } from 'pinia';
 import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue';
 
 import { isAppointmentWithinDays, matchesAppointmentFilters } from '../domain/appointmentFilters';
 import { mapAppointmentToTemplateProps } from '../domain/mapAppointmentToTemplateProps';
 import { usePublisherAppointmentsStore } from '../stores/publisherAppointments';
-import { useAppointmentsQuery } from './useAppointmentsQuery';
+import { useAppointmentQuery, useAppointmentsQuery, useCalendarsQuery } from './useAppointmentsQuery';
 
 export const usePublisherAppointments = (
     appointmentDocumentKeys: MaybeRefOrGetter<ReadonlySet<string>>,
