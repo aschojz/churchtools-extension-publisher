@@ -1,4 +1,4 @@
-import type { AppointmentBase, AppointmentCalculatedWithIncludes } from '@churchtools/api-types';
+import type { AppointmentBase, AppointmentCalculatedWithIncludes } from '../utils/ct-types';
 
 import type { EventTemplateProps } from './EventTemplateProps';
 

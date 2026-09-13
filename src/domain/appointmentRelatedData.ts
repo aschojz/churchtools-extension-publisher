@@ -6,7 +6,7 @@ import type {
     EventMasterData,
     EventService,
     Group,
-} from '@churchtools/api-types';
+} from '../utils/ct-types';
 
 import type { PublisherDataField } from './appointmentDataFields';
 import type { AppointmentMappingOptions } from './mapAppointmentToTemplateProps';

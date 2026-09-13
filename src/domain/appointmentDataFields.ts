@@ -1,4 +1,4 @@
-import type { AppointmentCalculatedWithIncludes } from '@churchtools/api-types';
+import type { AppointmentCalculatedWithIncludes } from '../utils/ct-types';
 
 import { mapAppointmentToTemplateProps, type AppointmentMappingOptions } from './mapAppointmentToTemplateProps';
 import type {

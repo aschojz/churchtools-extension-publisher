@@ -1,4 +1,4 @@
-import type { AppointmentCalculatedWithIncludes, Event, Group } from '@churchtools/api-types';
+import type { AppointmentCalculatedWithIncludes, Event, Group } from '../utils/ct-types';
 import { describe, expect, it } from 'vitest';
 
 import {

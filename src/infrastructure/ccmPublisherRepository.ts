@@ -5,7 +5,7 @@ import type {
     CustomModuleDataCategoryCreate,
     CustomModuleDataValue,
     CustomModuleDataValueCreate,
-} from '@churchtools/api-types';
+} from '../utils/ct-types';
 
 import {
     PUBLISHER_RECORD_VERSION,

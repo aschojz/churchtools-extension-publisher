@@ -2,7 +2,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,7 +17,7 @@ const version = packageJson.version;
 // Get git commit hash (short)
 let gitHash = '';
 try {
-    gitHash = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+    gitHash = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: rootDir, encoding: 'utf8' }).trim();
 } catch (error) {
     console.warn('Warning: Could not get git hash, using timestamp');
     gitHash = Date.now().toString(36);
@@ -46,10 +46,15 @@ if (!fs.existsSync(distDir)) {
     process.exit(1);
 }
 
+const stagingDir = fs.mkdtempSync(path.join(releasesDir, '.package-'));
 try {
-    // Create ZIP archive using system zip command
-    const zipCommand = `cd "${rootDir}" && zip -r "${archivePath}" dist/ -x "*.map" "*.DS_Store"`;
-    execSync(zipCommand, { stdio: 'inherit' });
+    // Build a fresh archive so repeated releases cannot retain stale assets.
+    const stagedArchive = path.join(stagingDir, 'package.zip');
+    execFileSync('zip', ['-r', stagedArchive, 'dist/', '-x', '*.map', '*.DS_Store'], {
+        cwd: rootDir,
+        stdio: 'inherit',
+    });
+    fs.renameSync(stagedArchive, archivePath);
     
     console.log('✅ Package created successfully!');
     console.log(`📁 Location: ${archivePath}`);
@@ -68,5 +73,7 @@ try {
     
 } catch (error) {
     console.error('❌ Error creating package:', error.message);
-    process.exit(1);
+    process.exitCode = 1;
+} finally {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
 }

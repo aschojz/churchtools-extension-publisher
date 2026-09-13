@@ -6,7 +6,7 @@ Eine vollständige Produktbeschreibung steht in [EXTENSION_STORE.md](EXTENSION_S
 
 ## Erste Version
 
-`v0.1.0` ist die erste öffentliche Vorschau. Funktionsumfang und bekannte Einschränkungen stehen im [Changelog](CHANGELOG.md). Die Releases enthalten neben dem Quellcode ein gebautes ZIP zur Installation als ChurchTools-Extension.
+`v0.1.0` ist die erste öffentliche Vorschau. Funktionsumfang und bekannte Einschränkungen stehen im [Changelog](CHANGELOG.md). Die [GitHub-Releases](https://github.com/aschojz/churchtools-extension-publisher/releases) enthalten neben dem Quellcode ein gebautes ZIP zur Installation als ChurchTools-Extension.
 
 Das Installationspaket verwendet den Extension-Key `publisher-26` und den Pfad `/ccm/publisher-26/`. Der Key des Custom Modules muss dazu passen. Für einen anderen Key kann ein eigenes Paket gebaut werden. Dokumente und Vorlagen benötigen das CCM-Modul mit passenden Berechtigungen; ohne verfügbaren Remote-Speicher bleibt die lokale Recovery-Kopie nutzbar.
 
@@ -30,23 +30,17 @@ Eigene Bild-Uploads sind bis zu einem offiziellen ChurchTools-Speicherpfad bewus
 
 ## Lokale Entwicklung
 
-Das ChurchTools-Monorepo und dieses Repository müssen als Geschwisterverzeichnisse vorliegen, weil mehrere interne Pakete lokal eingebunden werden:
-
-```text
-git/
-├── churchtools/
-└── extension-publisher-gpt/
-```
+Voraussetzung ist Node.js 24 ab Version 24.15.0 mit npm sowie `zip` für die Paketierung. Alle npm-Abhängigkeiten sind öffentlich verfügbar; das ChurchTools-Monorepo wird nicht benötigt.
 
 ```bash
 cp .env-example .env
-npm install
+npm ci
 npm run dev
 ```
 
 Die lokale Konfiguration basiert auf `.env-example`. Der Vite-Basispfad lautet `/ccm/<VITE_KEY>/`.
 
-Der Quellcode ist derzeit nicht unabhängig vom ChurchTools-Monorepo baubar. Zum Installieren des fertigen Release-ZIPs werden die lokalen Entwicklungspakete nicht benötigt.
+Die benötigten URL-Parameter- und Gruppenstatus-Helfer liegen in `src/utils/churchtoolsApi.ts`. Die ChurchTools-API-Typen werden aus dem versionierten, generierten Snapshot `src/utils/ct-types.d.ts` bezogen. Dieser Snapshot wird bei API-Aktualisierungen aus einer neu generierten Typdatei übernommen und nicht von Hand verändert.
 
 ## Release erstellen
 

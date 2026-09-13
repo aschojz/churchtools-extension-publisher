@@ -3,6 +3,9 @@
     "private": true,
     "version": "0.1.0",
     "type": "module",
+    "engines": {
+        "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+    },
     "scripts": {
         "dev": "vite",
         "build": "vue-tsc --noEmit && vite build",
@@ -15,9 +18,7 @@
         "release": "node scripts/release.js"
     },
     "dependencies": {
-        "@churchtools/api-types": "file:../churchtools/frontend-packages/api-types",
         "@churchtools/churchtools-client": "^1.6.0",
-        "@churchtools/utils": "file:../churchtools/frontend-packages/utils",
         "@fortawesome/fontawesome-svg-core": "^7.3.1",
         "@fortawesome/free-solid-svg-icons": "^7.3.1",
         "@fortawesome/vue-fontawesome": "^3.3.3",

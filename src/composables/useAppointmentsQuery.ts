@@ -2,9 +2,9 @@ import type {
     GetCalendarsAppointmentsAppointmentIdStartDateResponse,
     GetCalendarsAppointmentsResponse,
     GetCalendarsResponse,
-} from '@churchtools/api-types';
+} from '../utils/ct-types';
 import { churchtoolsClient } from '@churchtools/churchtools-client';
-import { getParams } from '@churchtools/utils';
+import { getParams } from '../utils/churchtoolsApi';
 import { useQuery } from '@tanstack/vue-query';
 import type { MaybeRefOrGetter } from 'vue';
 import { toValue } from 'vue';

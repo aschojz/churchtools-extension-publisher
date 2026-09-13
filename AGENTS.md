@@ -13,7 +13,7 @@ Der Publisher ist ein browserbasierter Layout-Editor innerhalb von ChurchTools. 
 - Konva und `vue-konva` für Canvas und Export
 - TanStack Vue Query sowie ChurchTools-Clientpakete für API-Daten
 - Vitest und Vue Test Utils für Tests
-- Lokale ChurchTools-Pakete werden aus `../churchtools/frontend-packages/` bezogen. Dieses Geschwisterverzeichnis muss für Installation, Typecheck und Build vorhanden sein.
+- Installation, Typecheck und Build benötigen nur dieses Repository und öffentliche npm-Pakete. Die benötigten API-Hilfsfunktionen liegen in `src/utils/churchtoolsApi.ts`; API-Typen sind als generierter Snapshot in `src/utils/ct-types.d.ts` versioniert.
 - Die Extension läuft unter `/ccm/<VITE_KEY>/`.
 
 ## Wichtige Befehle

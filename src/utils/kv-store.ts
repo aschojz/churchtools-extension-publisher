@@ -66,6 +66,7 @@ async function createModule(
         shorty: extensionkey,
         description: description,
         sortKey: 100,
+        inMenu: false,
     };
 
     const newModule = await churchtoolsClient.post<CustomModule>(

@@ -1,4 +1,4 @@
-import type { AppointmentCalculatedWithIncludes } from '@churchtools/api-types';
+import type { AppointmentCalculatedWithIncludes } from '../utils/ct-types';
 import { churchtoolsClient } from '@churchtools/churchtools-client';
 import { nextTick, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

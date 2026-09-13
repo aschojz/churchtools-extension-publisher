@@ -5,7 +5,7 @@ import {
     parsePublisherDataTransfer,
     resolvePublisherPlaceholders,
 } from './appointmentDataFields';
-import type { AppointmentCalculatedWithIncludes } from '@churchtools/api-types';
+import type { AppointmentCalculatedWithIncludes } from '../utils/ct-types';
 
 const appointment = {
     appointment: {

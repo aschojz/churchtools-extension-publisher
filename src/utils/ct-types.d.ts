@@ -71,8 +71,16 @@ export type Account = {
      */
     budgetLastPeriod: number | null;
     id: number;
-    identifier: string;
+    identifier: string | null;
     isDonationAccount: boolean;
+    /**
+     * Flag indicating if this account must be included in euBP submissions.
+     */
+    isMandatoryEubp: boolean;
+    /**
+     * Flag indicating if isMandatoryEubp was set by a ChurchTools account template and cannot be edited manually.
+     */
+    isMandatoryEubpLocked: boolean;
     isOpeningBalanceAccount: boolean;
     meta: MetaDataEntityId;
     name: string;
@@ -86,22 +94,24 @@ export type Account = {
     taxRateId: number | null;
 };
 
-export type AccountClass = {
-    accountTypeId: number;
+export type AccountClass = AccountClassCreate & {
     id: number;
+    meta: MetaDataEntityId;
+};
+
+export type AccountClassCreate = {
+    /**
+     * ID of the related account type.
+     */
+    accountTypeId: number;
     /**
      * If true, an additional row is added to that class in the report, which lists the profit-loss sum.
      */
-    includeProfitLoss: boolean;
-    meta: MetaDataEntityId;
-    name: string;
-    sortKey: number;
-};
-
-export type AccountClassNew = {
-    accountTypeId: number;
     includeProfitLoss?: boolean;
     name: string;
+    /**
+     * Sort order of the account class.
+     */
     sortKey?: number;
 };
 
@@ -127,6 +137,7 @@ export type AccountNew = {
     budget?: number;
     identifier?: string;
     isDonationAccount?: boolean;
+    isMandatoryEubp?: boolean;
     isOpeningBalanceAccount?: boolean;
     name: string;
     number: string;
@@ -173,13 +184,14 @@ export type AccountUpdate = {
     budget?: number;
     identifier?: string;
     isDonationAccount?: boolean;
+    isMandatoryEubp?: boolean;
     isOpeningBalanceAccount?: boolean;
     name: string;
     number: string;
 };
 
 export type AccountingPeriod = AccountingPeriodBase & {
-    donationReceiptsCreated: string;
+    donationReceiptsCreated: string | null;
     id: number;
     meta: MetaDataEntityId;
     permissions: {
@@ -191,6 +203,10 @@ export type AccountingPeriod = AccountingPeriodBase & {
          * Flag if current user can edit this accounting period, like changing the name.
          */
         'edit accounting period': boolean;
+        /**
+         * Flag if current user can view this accounting period, like see the name and dates.
+         */
+        'view accounting period': boolean;
     };
 };
 
@@ -214,36 +230,40 @@ export type AccountingPeriodCreate = AccountingPeriodBase & {
 };
 
 export type AccountingPeriodUpdate = AccountingPeriodBase & {
+    balances?: {
+        from?: Array<number>;
+        openingBalanceAccount?: number;
+    };
     id: number;
     setImmutability?: boolean;
 };
 
 export type Action = {
     actionMetaData: ActionMetaData;
-    color?: CtColor;
-    description?: string;
-    domainType: DomainType;
+    domainType: string;
     group: ActionGroup | null;
-    icon?: string;
     key:
         | 'add-member-to-group'
-        | 'edit-group-membership'
-        | 'change-member-status-requested-waiting'
+        | 'archive-member'
+        | 'change-member-status-active-requested'
+        | 'change-member-status-active-to_delete'
         | 'change-member-status-requested-active'
         | 'change-member-status-requested-to_delete'
-        | 'change-member-status-active-requested'
-        | 'change-member-status-active-waiting'
-        | 'change-member-status-active-to_delete'
-        | 'change-member-status-to_delete-requested'
-        | 'change-member-status-to_delete-waiting'
+        | 'change-member-status-requested-waiting'
         | 'change-member-status-to_delete-active'
+        | 'change-member-status-to_delete-requested'
         | 'change-member-status-waiting-active'
+        | 'change-member-status-waiting-requested'
         | 'change-member-status-waiting-to_delete'
-        | 'send-member-email'
         | 'create-follow-up'
-        | 'special:wait'
-        | 'special:repeat';
-    name?: string;
+        | 'edit-group-membership'
+        | 'edit-member'
+        | 'edit-tags-for-member'
+        | 'invite-member'
+        | 'remove-member'
+        | 'send-member-email'
+        | 'special:repeat'
+        | 'special:wait';
 };
 
 export type ActionGroup = {
@@ -253,27 +273,49 @@ export type ActionGroup = {
 
 export type ActionMetaData = {
     color: CtColor;
-    description: string;
+    description: string | null;
     icon: string;
     name: string;
 };
 
+export enum AdapterType {
+    CHURCHTOOLS = 'churchtools',
+    OPTIGEM = 'optigem',
+    DAVIP = 'davip',
+}
+
 export type Address = AddressUpdate & {
     /**
+     * Use `latitude` instead
+     *
      * @deprecated
      */
     geoLat: string | null;
     /**
+     * Use `longitude` instead
+     *
      * @deprecated
      */
     geoLng: string | null;
+    /**
+     * Use `latitude` instead
+     *
+     * @deprecated
+     */
     latitudeLoose: string | null;
+    /**
+     * Use `longitude` instead
+     *
+     * @deprecated
+     */
     longitudeLoose: string | null;
     /**
      * @deprecated
      */
-    markerColor: string | null;
+    markerColor: AddressColor | CtColor | null;
     /**
+     * Use `icon` instead
+     *
      * @deprecated
      */
     markerIcon: string | null;
@@ -282,10 +324,14 @@ export type Address = AddressUpdate & {
      */
     markerUrl: string | null;
     /**
+     * Use `name` instead
+     *
      * @deprecated
      */
     meetingAt: string | null;
     /**
+     * Use `zip` instead
+     *
      * @deprecated
      */
     postalcode: string | null;
@@ -308,8 +354,14 @@ export type AddressCreate = {
      */
     country: string | null;
     district: string | null;
-    domainIdentifier: string;
-    domainType: string;
+    /**
+     * The identifier of the domain object. This field is set automatically from the path parameter and should not be included in the request body.
+     */
+    domainIdentifier?: string;
+    /**
+     * The domain type of the address. This field is set automatically from the path parameter and should not be included in the request body.
+     */
+    domainType?: 'appointment' | 'campus' | 'church' | 'group';
     icon: string | null;
     latitude: string | null;
     longitude: string | null;
@@ -319,6 +371,7 @@ export type AddressCreate = {
 };
 
 export type AddressInterface = {
+    addition: string | null;
     city: string | null;
     country: string | null;
     district: string | null;
@@ -354,20 +407,45 @@ export type AgeGroupUpdate = AgeGroupCreate & {
 };
 
 export type Agenda = {
+    '@deprecated'?: {
+        [key: string]: string;
+    };
     calendarId: number;
+    /**
+     * Position in the agenda where the event starts (0-based).
+     */
+    eventStartPosition: number;
     id: number;
+    /**
+     * Use `isLocked` instead.
+     *
+     * @deprecated
+     */
     isFinal: boolean;
+    /**
+     * If true, the agenda is locked for changes.
+     */
+    isLocked: boolean;
     items: Array<AgendaItem>;
-    meta: MetaModified;
-    name: string;
-    series: string;
+    meta: MetaDataEntityId;
+    name: string | null;
+    series: string | null;
     /**
      * Total of agenda items (without headers)
      */
     total: number;
 };
 
-export type AgendaItem = AgendaItemNormal | AgendaItemSong | AgendaItemHeader;
+/**
+ * Agenda export output format
+ */
+export enum AgendaExportOutputFormat {
+    SONG_BEAMER = 'SONG_BEAMER',
+    PRO_PRESENTER_6 = 'PRO_PRESENTER_6',
+    PRO_PRESENTER_7 = 'PRO_PRESENTER_7',
+}
+
+export type AgendaItem = AgendaItemText | AgendaItemSong | AgendaItemHeader;
 
 /**
  * Agenda Item
@@ -379,19 +457,36 @@ export type AgendaItemBase = {
     duration: number;
     id: number;
     isBeforeEvent: boolean;
-    meta: MetaModified;
-    note: string;
+    meta: MetaDataEntityId;
+    /**
+     * @deprecated
+     */
     position: number;
+    /**
+     * The start time of a position is dynamically calculated based on previous items and the start time of the event.
+     */
+    start: string | null;
+    /**
+     * Start times keyed by event ID if this agenda is shared between multiple events. A value is null when the item is hidden for that event.
+     */
+    startTimes: {
+        [key: string]: string | null;
+    };
+    title: string;
+};
+
+export type AgendaItemContent = AgendaItemBase & {
+    note: string;
     responsible: {
         /**
          * Array of all persons, who could be resolved from the text string. If a service has multiple positions, multiple objects are in the array with the same `service` text string. If a service is not yet set the `person` object will be null.
          */
         persons: Array<{
             /**
-             * Flat to indicate if the person has accepted the service or is requested.
+             * Flag to indicate if the person has accepted the service or is requested.
              */
             accepted: boolean;
-            person: DomainObjectPerson | null;
+            person: DomainObjectExternalPerson | DomainObjectPerson | null;
             /**
              * Name of the service, which is also the placeholder in the raw text string.
              */
@@ -409,52 +504,141 @@ export type AgendaItemBase = {
         note: string;
         serviceGroupId: number;
     }>;
-    /**
-     * The start time of a position is dynamically calculated based on previous items and the start time of the event.
-     */
-    start: string;
-    /**
-     * List of start times if this agenda is shared between multiple events.
-     */
-    startTimes: {
-        [key: string]: string;
-    };
-    title: string;
 };
 
 export type AgendaItemHeader = AgendaItemBase & {
     type: 'header';
 };
 
-export type AgendaItemNormal = AgendaItemBase & {
-    type: 'normal';
+/**
+ * Input schema for creating or updating an agenda item
+ */
+export type AgendaItemInput = AgendaItemInputHeader | AgendaItemInputSong | AgendaItemInputText;
+
+export type AgendaItemInputBase = {
+    /**
+     * Duration in seconds
+     */
+    duration?: number;
+    /**
+     * The title of the agenda item
+     */
+    title: string | null;
 };
 
-export type AgendaItemSong = AgendaItemBase & {
+export type AgendaItemInputContent = AgendaItemInputBase & {
     /**
-     * If the type is `song` the song object is added to this item. `normal` and `header` items do not include this object.
+     * Additional notes for this item
+     */
+    note?: string | null;
+    /**
+     * The responsible person or service placeholder
+     */
+    responsible?: string | null;
+    /**
+     * Array of notes per service group
+     */
+    serviceGroupNotes?: Array<{
+        /**
+         * The note text for the service group
+         */
+        note: string;
+        serviceGroupId: number;
+    }>;
+};
+
+export type AgendaItemInputHeader = AgendaItemInputBase & {
+    type: 'header';
+};
+
+export type AgendaItemInputSong = AgendaItemInputContent & {
+    /**
+     * The ID of the song arrangement
+     */
+    arrangementId: number | null;
+    type: 'song';
+};
+
+export type AgendaItemInputText = AgendaItemInputContent & {
+    type: 'text';
+};
+
+export type AgendaItemSong = AgendaItemContent & {
+    /**
+     * The selected song arrangement, or `null` if no arrangement is assigned. `text` and `header` items do not include this field.
      */
     song: {
-        arrangement?: string;
-        arrangementId?: number;
-        bpm?: string;
-        category?: string;
-        defaultArrangement?: string;
-        key?: string;
-        songId?: number;
-        title?: string;
+        arrangement: string;
+        arrangementId: number;
+        bpm: number | null;
+        category: string;
+        isDefault: boolean;
+        key: string | null;
+        songId: number;
+        title: string;
+    } | null;
+    type: 'song';
+};
+
+export type AgendaItemText = AgendaItemContent & {
+    type: 'text';
+};
+
+/**
+ * Input schema for creating or updating an agenda template
+ */
+export type AgendaTemplateInput = {
+    /**
+     * The calendar ID for the template
+     */
+    calendarId: number;
+    /**
+     * Position in the agenda where the event starts (0-based)
+     */
+    eventStartPosition?: number;
+    /**
+     * Array of agenda items to include in the template
+     */
+    items?: Array<AgendaItemInput>;
+    /**
+     * The name of the agenda template
+     */
+    name: string;
+    /**
+     * The series name for this template
+     */
+    series: string;
+};
+
+export type ApiError = {
+    response: {
+        data: ApiErrorObj;
+        status: number;
     };
-    type: 'header';
+};
+
+export type ApiErrorObj = {
+    args?: Array<{
+        name: string;
+        value: string;
+    }>;
+    errors?: Array<ValidationError>;
+    message: string;
+    messageKey?: string;
+    translatedMessage?: string;
 };
 
 export type AppointmentAdditionals = {
     date: DateString;
     id: number;
     isRepeated: boolean;
-    meta: MetaModified;
+    meta: MetaDataEntityId;
 };
 
 export type AppointmentBase = {
+    '@deprecated': {
+        [key: string]: string;
+    };
     additionals: Array<AppointmentAdditionals>;
     /**
      * Use 'additionals' instead
@@ -462,7 +646,7 @@ export type AppointmentBase = {
      * @deprecated
      */
     additions?: Array<AppointmentAdditionals>;
-    address: Address;
+    address: Address | null;
     allDay: boolean;
     calendar: Calendar;
     /**
@@ -496,7 +680,7 @@ export type AppointmentBase = {
     /**
      * ID of the repeat pattern, NONE = 0, DAILY = 1, WEEKLY = 7, MONTHLY_BY_DATE = 31, MONTHLY_BY_WEEKDAY = 32, YEARLY = 365, MANUALLY = 999
      */
-    repeatId: 0 | 1 | 7 | 31 | 32 | 365 | 999;
+    repeatId: 0 | 1 | 7 | 31 | 32 | 365 | 999 | null;
     repeatOption: number | null;
     repeatUntil: DateStringNullable;
     signup: AppointmentSignup | null;
@@ -515,24 +699,64 @@ export type AppointmentBooking = {
 };
 
 export type AppointmentCalculated = {
-    base: AppointmentBase;
-    calculated: {
-        endDate: ZuluDate;
-        startDate: ZuluDate;
-    };
-};
-
-export type AppointmentCalculatedWithIncludes = {
-    appointment: {
-        base: AppointmentBase;
-        calculated: {
+    additionalInfos:
+        | {
+              [key: string]: unknown;
+          }
+        | Array<unknown>;
+    appointment: AppointmentBase;
+    calculatedDates: {
+        [key: string]: {
             endDate: ZuluDate;
+            event?: DomainObjectEvent;
+            iCalUid: string;
             startDate: ZuluDate;
         };
     };
 };
 
-export type AppointmentCreate = AppointmentBase & {
+export type AppointmentCalculatedWithIncludes = {
+    '@deprecated'?: {
+        [key: string]: string;
+    };
+    appointment: {
+        base: AppointmentBase;
+        calculated: {
+            endDate: ZuluDate;
+            iCalUid: string;
+            startDate: ZuluDate;
+        };
+    };
+    base?: AppointmentBase;
+    bookings?: Array<{
+        [key: string]: unknown;
+    }>;
+    calculated?: {
+        endDate: ZuluDate;
+        iCalUid: string;
+        startDate: ZuluDate;
+    };
+    event?: DomainObjectEvent | null;
+    group?: DomainObjectGroup | null;
+    meetingRequests?: Array<MeetingRequest>;
+};
+
+export type AppointmentCreate = {
+    additionals?: Array<{
+        date: DateString;
+        isRepeated: boolean;
+    }>;
+    address?: {
+        addition?: string | null;
+        city?: string | null;
+        country?: string | null;
+        district?: string | null;
+        latitude?: number | null;
+        longitude?: number | null;
+        meetingAt?: string | null;
+        street?: string | null;
+        zip?: string | null;
+    };
     bookings?: Array<{
         /**
          * Minutes after the appointment, the resource is blocked. Max is one day, 1440 minutes
@@ -545,27 +769,55 @@ export type AppointmentCreate = AppointmentBase & {
         resourceId: number;
         statusId: StatusId;
     }>;
+    calendarId: number;
+    description?: string | null;
+    endDate: ZuluDate | DateString;
     events?: Array<{
         adminIds?: Array<number>;
         eventTemplateId?: number;
-        facts?: Array<{
+        facts?: {
             [key: string]: unknown;
-        }>;
+        };
         note?: string | null;
         services?: Array<{
             count: number;
             serviceId: number;
         }>;
-        startDate?: ZuluDate;
+        startDate: ZuluDate;
     }>;
+    exceptions?: Array<{
+        date: DateString;
+    }>;
+    /**
+     * Set `false` for a regular appointment. Use `true` only when the appointment is intended to be visible exclusively to signed-in users.
+     */
+    isInternal: boolean;
+    link?: string | null;
     meetingrequests?: Array<{
         inviteeId: number;
     }>;
+    onBehalfOfPid?: number;
+    repeatFrequency?: number;
+    /**
+     * ID of the repeat pattern, NONE = 0, DAILY = 1, WEEKLY = 7, MONTHLY_BY_DATE = 31, MONTHLY_BY_WEEKDAY = 32, YEARLY = 365, MANUALLY = 999
+     */
+    repeatId?: 0 | 1 | 7 | 31 | 32 | 365 | 999 | null;
+    repeatOption?: number;
+    repeatUntil?: DateStringNullable;
+    signup?: {
+        signupDaysArchiveGroupNo?: number;
+        signupDaysForwardNo?: number;
+        signupGroupTypeId?: number;
+        signupTemplateGroupId?: number;
+    };
+    startDate: ZuluDate | DateString;
+    subtitle?: string | null;
+    title: string;
 };
 
-export type AppointmentEvent = Array<{
-    eventTemplateId?: string;
-}>;
+export type AppointmentEvent = {
+    eventTemplate?: string;
+};
 
 export type AppointmentExeptions = {
     date: string;
@@ -575,36 +827,51 @@ export type AppointmentExeptions = {
 
 export type AppointmentSignup = {
     signupDaysArchiveGroupNo: number | null;
+    signupDaysForwardNo: number | null;
     signupGroupTypeId: number | null;
-    signupSetCompletionDate: boolean;
     signupTemplateGroupId: number | null;
+    /**
+     * Use 'signupDaysForwardNo' instead. Misspelled legacy field.
+     *
+     * @deprecated
+     */
     singupDaysForwardNo: number | null;
 };
 
 export type AppointmentTemplateGet = AppointmentTemplatePost & {
-    id: string;
+    id: number;
+    meta: MetaDataEntityId;
 };
 
 export type AppointmentTemplatePost = {
-    address?: Address;
+    address?: Address | null;
     allDay?: boolean;
-    bookings?: AppointmentBooking;
+    bookings?: Array<AppointmentBooking>;
     calendarId: number;
+    daysArchiveGroupNo?: number;
+    daysForwardNo?: number;
     description?: string | null;
     /**
      * Duration in seconds
      */
-    duration: string;
+    duration: number;
     events?: Array<AppointmentEvent>;
-    image?: DomainObjectFile;
+    grouptypeId?: number;
+    image?: DomainObjectFile | null;
     isInternal?: boolean;
-    link?: string;
+    link?: string | null;
+    onBehalfOfPid?: number;
     repeatDuration?: number | null;
-    repeatFrequence?: number | null;
+    repeatFrequency?: number | null;
     repeatId?: number;
     repeatOptionId?: number | null;
     startTime: string;
     subtitle?: string | null;
+    /**
+     * List of tag IDs assigned to the appointment template
+     */
+    tags?: Array<number>;
+    templateGroupId?: number;
     title: string;
 };
 
@@ -620,7 +887,7 @@ export type Arrangement = ArrangementCreate & {
      *
      * @deprecated
      */
-    keyOfArrangement?: unknown;
+    keyOfArrangement?: string;
     /**
      * List of links "uploaded" to that arrangement
      */
@@ -631,7 +898,7 @@ export type Arrangement = ArrangementCreate & {
      *
      * @deprecated
      */
-    note?: unknown;
+    note?: string;
     source: SongSource;
 };
 
@@ -686,46 +953,64 @@ export enum ArrangementKey {
 
 export type Association = {
     abbreviation: string;
-    country: string;
+    /**
+     * ISO 3166-1 alpha-2 country code of the association.
+     */
+    country: string | null;
     id: number;
     key: string;
     name: string;
 };
 
-/**
- * Automatic Email
- */
-export type AutomaticEmail = {
-    body: string;
-    id: number;
-    isActive: boolean;
-    isForWaitinglist: boolean;
-    roleId: number;
-    sender: DomainObjectPerson;
-    subject: string;
-};
-
 export type Bill = {
     accountingPeriodId: number;
-    file: CtFile;
+    file: BillFile;
     id: number;
     meta: MetaDataEntityId;
-    splitTransactionId?: number;
+    splitTransactionId?: number | null;
     submittedDate: string;
     submittedPid: number;
     transactionId?: number;
-    transactionSuggestionId?: number;
+    transactionSuggestionId?: number | null;
 };
 
-export type BillNew = {
+export type BillCreate = BillCreateWithTransaction | BillCreateWithSplit;
+
+export type BillCreateWithSplit = {
     accountingPeriodId: number;
     fileId: number;
     filename?: string;
-    splitTransactionId?: number;
+    splitTransactionId: number;
     submittedDate: string;
     submittedPid: number;
-    transactionId?: number;
     transactionSuggestionId?: number;
+};
+
+export type BillCreateWithTransaction = {
+    accountingPeriodId: number;
+    fileId: number;
+    filename?: string;
+    submittedDate: string;
+    submittedPid: number;
+    transactionId: number;
+    transactionSuggestionId?: number;
+};
+
+export type BillFile = {
+    domainId: string;
+    domainType: string;
+    fileUrl: string;
+    filename: string;
+    imageUrl?: string | null;
+    meta: BillFileMetaData;
+    name: string;
+};
+
+export type BillFileMetaData = {
+    createdDate?: ZuluDate;
+    createdPerson?: MetaDataPersonId | DomainObjectPerson;
+    modifiedDate: ZuluDate;
+    modifiedPerson: MetaDataPersonId | DomainObjectPerson;
 };
 
 export type BillUpdate = {
@@ -752,9 +1037,11 @@ export type BookingBase = {
         date: DateString;
         id: number;
         isRepeated: boolean;
-        meta: MetaModified;
+        meta: MetaDataEntityId;
     }>;
     allDay: boolean;
+    answeredDate: ZuluDateNullable;
+    answeredPid: number | null;
     /**
      * @deprecated
      */
@@ -770,14 +1057,19 @@ export type BookingBase = {
     exceptions: Array<{
         date: DateString;
         id: number;
-        meta: MetaModified;
+        meta: MetaDataEntityId;
     }>;
     id: number;
     involvedPersonsDomainObjects?: {
+        answeredBy?: DomainObjectPerson;
         createdBy?: DomainObjectPerson;
         modifiedBy?: DomainObjectPerson;
         onBehalfOf?: DomainObjectPerson;
     };
+    /**
+     * If true, the booking details (title, subtitle, description) are anonymized because the user lacks calendar access
+     */
+    isAnonymized: boolean | null;
     /**
      * Use 'subtitle' instead
      *
@@ -906,19 +1198,124 @@ export type BulkResultNew = {
     numberOfQueuedJobs?: number;
 };
 
+export type Bulkletter = {
+    /**
+     * HTML content of the bulkletter, may contain placeholders.
+     */
+    content: string;
+    /**
+     * Date the bulkletter was created (`Y-m-d H:i:s`).
+     */
+    created: string;
+    /**
+     * ID of the person that created the bulkletter (returned as string).
+     */
+    created_pid: string;
+    /**
+     * ID of the generated PDF file. `0` until the worker has finished building the bulkletter.
+     */
+    fileId: number;
+    /**
+     * Optional group the bulkletter is associated with. `0` if no group is set.
+     */
+    groupId: number;
+    /**
+     * ID of the HTML template used to render the bulkletter.
+     */
+    htmlTemplateId: number;
+    id: number;
+    name: string;
+    /**
+     * Processing status of the bulkletter. `TODO` is the initial status, `DONE` when the PDF is generated.
+     */
+    status: 'TODO' | 'IN_PROGRESS' | 'DONE' | 'ERROR';
+    /**
+     * Date the bulkletter was last updated (`Y-m-d H:i:s`).
+     */
+    updated: string;
+    /**
+     * Public download URL of the generated PDF file (relative to the ChurchTools base URL). `null` until the worker has finished.
+     */
+    url: string | null;
+};
+
+export type BulkletterCreate = {
+    /**
+     * HTML content of the bulkletter, may contain placeholders.
+     */
+    content: string;
+    /**
+     * If `true`, persons that belong to the same household will receive a single letter (sent to the head of household).
+     */
+    groupByHousehold: boolean;
+    /**
+     * Optional ID of a group the bulkletter is linked to. `null` if no group is set.
+     */
+    groupId?: number | null;
+    /**
+     * ID of the HTML template used to render the bulkletter.
+     */
+    htmlTemplateId: number;
+    name: string;
+    /**
+     * IDs of the persons that should receive the bulkletter.
+     */
+    personIds: Array<number>;
+};
+
+export type BulkletterReceiver = {
+    /**
+     * Person ID (returned as string).
+     */
+    id: string;
+    /**
+     * Last name of the person.
+     */
+    name: string;
+    /**
+     * City of the person.
+     */
+    ort: string;
+    /**
+     * Postal code of the person.
+     */
+    plz: string;
+    /**
+     * Street address of the person.
+     */
+    strasse: string;
+    /**
+     * First name of the person.
+     */
+    vorname: string;
+    /**
+     * Additional address line of the person.
+     */
+    zusatz: string;
+};
+
 export type Calendar = CalendarCreate & {
+    campusId: number | null;
+    evTermineEventTypeId: number | null;
+    eventTemplateId: number | null;
+    iCalSourceUrl: string | null;
     id: number;
     /**
+     * Use 'type' instead.
+     *
      * @deprecated
      */
-    isPrivate?: boolean;
+    isPrivate: boolean;
     /**
+     * Use 'type' instead.
+     *
      * @deprecated
      */
-    isPublic?: boolean;
-    meta: MetaModified;
+    isPublic: boolean;
+    meta: MetaDataEntityId;
     nameTranslated: string;
     randomUrl: string;
+    syncToEvTermine: boolean;
 };
 
 export type CalendarCreate = CalendarUpdate & {
@@ -943,15 +1340,25 @@ export type CalendarUpdate = {
  * Campus with possible address.
  */
 export type Campus = {
-    address?: Address;
+    address: Address | null;
     guid: string;
     id: number;
     meta: MetaDataEntityId;
     name: string;
     nameTranslated: string;
-    shortName: string;
+    shortName: string | null;
     shorty: string;
     sortKey: number;
+};
+
+export type CampusCreate = {
+    name: string;
+    shorty: string;
+    sortKey?: number;
+};
+
+export type CampusUpdate = CampusCreate & {
+    id: number;
 };
 
 export type CashDiscount = {
@@ -1066,6 +1473,14 @@ export type Client = {
      */
     datevSupported?: boolean;
     email?: string | null;
+    /**
+     * Business name (Betriebsname) for euBP transmission
+     */
+    eubpBusinessName?: string | null;
+    /**
+     * Business number (Betriebsnummer) for euBP transmission
+     */
+    eubpBusinessNumber?: string | null;
     id: number;
     meta: MetaDataEntityId;
     name: string;
@@ -1083,6 +1498,8 @@ export type Client = {
 export type ClientNew = {
     city?: string;
     email?: string;
+    eubpBusinessName?: string;
+    eubpBusinessNumber?: string;
     name: string;
     phone?: string;
     postalCode?: string;
@@ -1098,7 +1515,7 @@ export type ClientNew = {
  */
 export type Color = {
     key: CtColor;
-    shade: 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
+    shade: 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900 | null;
 };
 
 export type CommentViewer = {
@@ -1114,6 +1531,31 @@ export type CommentViewer = {
      * Translated name of comment viewer group
      */
     nameTranslated: string;
+    /**
+     * Position of the comment viewer group in sorted lists
+     */
+    sortKey: number;
+};
+
+/**
+ * Request body for creating a comment viewer
+ */
+export type CommentViewerCreate = {
+    /**
+     * Name of the comment viewer
+     */
+    name: string;
+    /**
+     * Sort order of the comment viewer
+     */
+    sortKey?: number;
+};
+
+export type CommentViewerUpdate = CommentViewerCreate & {
+    /**
+     * ID of the comment viewer
+     */
+    id: number;
 };
 
 export type Config = {
@@ -1140,19 +1582,20 @@ export type Config = {
     allowedstations?: string;
     allowedsyncconnections?: string;
     allowedsyncjobs?: string;
+    allowedtextgenerations?: string;
     alloweduser?: string;
     allowfinance?: BooleanString;
     allowldap?: BooleanString;
     allowoptigemsync?: BooleanString;
     allowsync?: BooleanString;
-    alpha_book_affiliate_id?: string;
-    alpha_book_enabled?: boolean;
     app_security_request?: boolean;
+    auth_cache_time?: number | string;
     authorized_persons?: string;
     brand: 'ChurchTools' | 'VereinTools';
     build?: string;
     ccli_access_token?: string;
     ccli_auto_reporting_enabled?: boolean;
+    ccli_enabled?: boolean;
     ccli_last_token_refresh?: string;
     ccli_refresh_token?: string;
     chatServer: string;
@@ -1196,11 +1639,14 @@ export type Config = {
     churchdb_archivedeletehistory?: boolean;
     churchdb_birthdaylist_station?: string;
     churchdb_birthdaylist_status?: string;
+    churchdb_cleverreach_access_token?: string;
     churchdb_cleverreach_client_id?: string;
     churchdb_cleverreach_client_secret?: string;
-    churchdb_cleverreach_connected?: boolean;
+    churchdb_cleverreach_connected?: 'false' | 'true';
+    churchdb_cleverreach_refresh_token?: string;
+    churchdb_cleverreach_scopes?: string;
+    churchdb_cleverreach_token_expiry?: string;
     churchdb_emailseparator?: string;
-    churchdb_groupnotchoosable?: number;
     churchdb_home_lat?: string;
     churchdb_home_lng?: string;
     churchdb_mailchimp_apikey?: string;
@@ -1224,7 +1670,7 @@ export type Config = {
     churchgroup_inmenu?: boolean;
     churchgroup_name?: string;
     churchgroup_name_default?: string;
-    churchgroup_sortcode?: string;
+    churchgroup_sortcode?: number;
     churchreport_active?: boolean;
     churchreport_name?: string;
     churchreport_name_default?: string;
@@ -1252,15 +1698,16 @@ export type Config = {
     churchsync_inmenu?: boolean;
     churchsync_name?: string;
     churchsync_name_default?: string;
-    churchsync_sortcode?: string;
+    churchsync_sortcode?: number;
     churchwiki_active?: boolean;
     churchwiki_name?: string;
     churchwiki_name_default?: string;
     churchwiki_sortcode?: number;
     cron_daily?: ZuluDate;
     cron_hour_8?: ZuluDate;
+    cron_last_execution?: string;
+    cronjob_dbdump?: BooleanString;
     cronjob_delay?: number;
-    csrf_enabled?: boolean;
     currently_mail_sending?: BooleanString;
     datasecurityPrivacyDeclarationWikiLink?: string;
     datasecurity_banner_enabled?: boolean;
@@ -1280,7 +1727,9 @@ export type Config = {
     db_password?: string;
     db_server?: string;
     db_user?: string;
+    deactivate_default_login?: boolean;
     default_phone_area_code?: string;
+    deprecation_usage_mail_last_execution?: string;
     emailServer?: 'own' | 'churchtools';
     encryptionkey?: string;
     env?: string;
@@ -1289,7 +1738,30 @@ export type Config = {
     evangelische_termine_name?: string;
     evangelische_termine_url?: string;
     evangelische_termine_vid?: string;
+    feature_appointment_search?: boolean;
+    feature_automation?: BooleanString;
     feature_custommodule?: BooleanString;
+    feature_darkmode?: BooleanString;
+    feature_dynamic_groups?: BooleanString;
+    feature_eubp?: boolean;
+    feature_event_fact_widget?: boolean;
+    feature_finance_donators_datatable?: boolean;
+    feature_flags_ui?: boolean;
+    feature_group?: BooleanString;
+    feature_markdown_group?: boolean;
+    feature_mobile_groups?: BooleanString;
+    feature_newsfeed_comment_reactions?: boolean;
+    feature_old_group_module?: boolean;
+    feature_org_chart_groups?: string;
+    feature_person_settings?: boolean;
+    feature_posts?: BooleanString;
+    feature_resources_app?: BooleanString;
+    feature_saml_settings?: boolean;
+    feature_sessionless_login?: boolean;
+    feature_sync?: BooleanString;
+    feature_usechurchquery?: string;
+    file_meta_cron_last_file_size_id?: string;
+    file_meta_cron_last_image_metadata_id?: string;
     finance_active?: boolean;
     finance_inmenu?: BooleanString;
     finance_name?: string;
@@ -1301,14 +1773,19 @@ export type Config = {
     hideBetaStates?: boolean;
     hide_all_hints?: boolean;
     hostingservice?: BooleanString;
-    https_only?: BooleanString;
+    https_only?: string;
+    ical_invitation_hmac_secret?: string;
     image_extension?: string;
-    impressum_external?: boolean;
+    impressum_external?: string;
     impressum_external_link?: string;
-    impressum_internal?: boolean;
+    impressum_internal?: BooleanString;
     imprintWikiLink?: string;
     installation_verification_code?: string;
     invite_email_text?: string;
+    /**
+     * Whether the current user is configured as an authorized person.
+     */
+    isCurrentUserAuthorizedPerson: boolean;
     isPostsActive: boolean;
     isSamlActive?: boolean;
     is_churchtools_blog_widget_active?: boolean;
@@ -1318,6 +1795,7 @@ export type Config = {
     language?: LanguageCode;
     last_cron?: string;
     last_cron_finished?: string;
+    last_db_dump?: string;
     last_import_clear?: string;
     last_translation_update?: string;
     ldap_otp_enabled?: boolean;
@@ -1334,6 +1812,7 @@ export type Config = {
     mail_smtp_args_port?: string;
     mail_smtp_args_smtpsecure?: string;
     mail_smtp_args_username?: string;
+    matomo_uri?: string;
     max_uploadfile_size_kb?: number;
     memberlist_birthday_full?: BooleanString;
     memberlist_email?: BooleanString;
@@ -1345,6 +1824,7 @@ export type Config = {
     memberlist_telefonhandy?: BooleanString;
     memberlist_telefonprivat?: BooleanString;
     onboarding_start?: ZuluDate;
+    openai_api_key?: string;
     openstreetmaps_enabled?: boolean;
     orderstatus?: OrderStatus;
     orderstatus_since_date?: ZuluDate;
@@ -1352,7 +1832,10 @@ export type Config = {
     post_active?: boolean;
     post_edit_time_limited?: boolean;
     post_email_summary_default_enabled?: boolean;
+    post_email_summary_default_filter?: 'all' | 'my_groups' | 'featured_groups';
+    post_email_summary_default_weekdays?: string;
     post_featured_groups?: string;
+    post_inmenu?: boolean;
     post_name?: string;
     post_sortcode?: number;
     post_wizard_completed?: boolean;
@@ -1367,21 +1850,24 @@ export type Config = {
     privacy_policy_internal?: boolean;
     privacy_policy_relationships?: string;
     profile?: string;
+    public_channel_registry?: string;
     public_channel_registry_url?: string;
     rabbitmq_config_host?: string;
     rabbitmq_config_password?: string;
     rabbitmq_config_port?: string;
     rabbitmq_config_user?: string;
+    redis_server?: string;
     rss_widget_link?: string;
-    safe_mode_enable_authorized_persons?: BooleanString;
-    safe_mode_enable_chat_sync?: BooleanString;
-    safe_mode_enable_consolidation?: BooleanString;
-    safe_mode_enable_guid_sync?: BooleanString;
+    safe_mode_enable_authorized_persons?: string;
+    safe_mode_enable_chat_sync?: string;
+    safe_mode_enable_consolidation?: string;
+    safe_mode_enable_guid_sync?: string;
     safe_mode_enable_job_queueing?: BooleanString;
-    safe_mode_enable_mail?: BooleanString;
-    safe_mode_enable_newsletter?: BooleanString;
-    safe_mode_enable_notification?: BooleanString;
+    safe_mode_enable_mail?: string;
+    safe_mode_enable_newsletter?: string;
+    safe_mode_enable_notification?: string;
     send_data_security_mails?: boolean;
+    session_handler?: string;
     short_name?: string;
     showAIAssistant?: boolean;
     show_remember_me?: boolean;
@@ -1391,11 +1877,13 @@ export type Config = {
     site_mail?: string;
     site_name?: string;
     site_offline?: boolean;
+    site_region?: string;
     site_startpage?: string;
     site_url?: string;
     'support-user-active-since'?: ZuluDate;
     test?: BooleanString;
     timezone?: string;
+    url_metadata_url?: string;
     verificationStatus: VerificationStatus;
     version?: string;
     webchatLink: string;
@@ -1406,16 +1894,21 @@ export type Config = {
     website_url?: string;
     welcome?: string;
     welcome_subtext?: string;
+    wget_path?: string;
+    [key: string]: unknown;
 };
 
 /**
  * Master Data for Contact Labels. Used to label E-Mail Adresses.
  */
-export type ContactLabel = {
+export type ContactLabel = ContactLabelUpdate & {
     /**
-     * ID of Record
+     * Translated Name of Label
      */
-    id: number;
+    nameTranslated: string;
+};
+
+export type ContactLabelCreate = {
     /**
      * Indicator if label is the default. Used for new person emails
      */
@@ -1424,11 +1917,14 @@ export type ContactLabel = {
      * Name of Label
      */
     name: string;
-    /**
-     * Translated Name of Label
-     */
-    nameTranslated: string;
     sortKey: number;
+};
+
+export type ContactLabelUpdate = ContactLabelCreate & {
+    /**
+     * ID of Record
+     */
+    id: number;
 };
 
 /**
@@ -1440,26 +1936,40 @@ export type CostCenter = {
     /**
      * Budget is in cent.
      */
-    budget: number;
+    budget: number | null;
     /**
      * Remaining amount. (Budget - Cost Center Expenses). Budget balance is in cent.
      */
-    budgetBalance: number;
+    budgetBalance: number | null;
     /**
      * Budget balance of matching cost center from last period in euro cent.
      */
-    budgetBalanceLastPeriod: number;
+    budgetBalanceLastPeriod: number | null;
     /**
      * Budget for the cost center with the same number in the previous accounting period.
      */
-    budgetLastPeriod: number;
+    budgetLastPeriod: number | null;
     /**
      * Cost Center Expences. (Outcome - Income). In cent
      */
-    budgetSpent: number;
-    group?: DomainObjectGroup;
+    budgetSpent: number | null;
+    group?: DomainObjectGroup | null;
     id: number;
     meta: MetaDataEntityId;
+    name: string;
+    number: string;
+};
+
+/**
+ * Cost Center New
+ */
+export type CostCenterCreate = {
+    accountingPeriodId?: number;
+    annotation?: string | null;
+    /**
+     * Budget is in cent.
+     */
+    budget?: number | null;
     name: string;
     number: string;
 };
@@ -1521,34 +2031,51 @@ export enum CtColor {
 }
 
 export type CtFile = {
-    additionalInfos: Array<string>;
+    /**
+     * Domain-specific extra data. Empty for most files (serialized as an empty array), but some domains add a key-value object (e.g. statement uploads return `{ "statementId": 1 }`).
+     */
+    additionalInfos?:
+        | {
+              [key: string]: unknown;
+          }
+        | Array<unknown>;
+    /**
+     * Whether the image was generated by artificial intelligence.
+     */
+    aiGenerated: boolean;
+    annotation: string | null;
+    annotationLink: string | null;
+    description: string | null;
     domainId: string;
     domainType: string;
     fileUrl: string;
     filename: string;
     id: number;
+    /**
+     * Read-only image dimensions calculated from the file. Cannot be modified via API.
+     */
+    imageMetadata: {
+        aspectRatio?: number;
+        height?: number;
+        width?: number;
+    } | null;
     imageOption: {
-        crop?: {
+        crop: {
             bottom: number;
             left: number;
             right: number;
             top: number;
         };
-        focus?: {
+        focus: {
             x: number;
             y: number;
         };
     } | null;
     imageUrl: string | null;
-    meta: {
-        createdDate: ZuluDate;
-        createdPerson?: DomainObjectPerson;
-        modifiedDate: ZuluDate;
-        modifiedPerson?: DomainObjectPerson;
-    };
+    meta: FileMetaData;
     name: string;
     relativeUrl: string;
-    securityLevelId: number;
+    securityLevelId: number | null;
     showOnlyWhenEditable: boolean;
     /**
      * The file size in byte
@@ -1572,15 +2099,20 @@ export enum CtModule {
     POST = 'post',
 }
 
-export type CustomModule = CustomModuleCreate & {
+export type CustomModule = CustomModuleBase & {
     id: number;
+    shorty: string;
 };
 
-export type CustomModuleCreate = {
+export type CustomModuleBase = {
     description?: string;
+    inMenu: boolean;
     name: string;
-    shorty: string;
     sortKey: number;
+};
+
+export type CustomModuleCreate = CustomModuleBase & {
+    shorty: string;
 };
 
 export type CustomModuleDataCategory = CustomModuleDataCategoryCreate & {
@@ -1619,6 +2151,10 @@ export type CustomModulePermission = {
     'view custom data': Array<number>;
 };
 
+export type CustomModuleUpdate = CustomModuleBase & {
+    id: number;
+};
+
 /**
  * A simple date in ISO format, e.g. '2022-10-19'
  */
@@ -1634,12 +2170,10 @@ export type DateStringNullable = string | null;
  */
 export type DateTimeString = string;
 
-/**
- * A simple timestamp in ISO format, e.g. '2022-10-19 12:00:00'
- */
-export type DateTimeStringNullable = string | null;
-
 export type DbField = DbFieldBase & {
+    '@deprecated': {
+        [key: string]: string;
+    };
     /**
      * @deprecated
      */
@@ -1663,6 +2197,7 @@ export type DbField = DbFieldBase & {
     isNotConfigurable: boolean;
     isNullable: boolean;
     key: string;
+    nameTranslated: string;
     /**
      * @deprecated
      */
@@ -1682,10 +2217,10 @@ export type DbFieldBase = {
     /**
      * @deprecated
      */
-    lineEnding: string;
+    lineEnding: string | null;
     name: string;
     securityLevel: number;
-    shorty?: string;
+    shorty?: string | null;
     sortKey: number;
     useAsPlaceholder: boolean;
 };
@@ -1714,8 +2249,23 @@ export type DbFieldUpdate = DbFieldBase & {
  * Denomination of a church
  */
 export type Denomination = {
-    key: string;
-    name: string;
+    /**
+     * Technical enum case name used by ChurchTools.
+     */
+    key: 'NONE' | 'PROTESTANT' | 'FREE_EVANGELICAL' | 'CATHOLIC' | 'ECUMENICAL' | 'ORTHODOX';
+    /**
+     * Translation key of the denomination.
+     */
+    name:
+        | 'denomination.none'
+        | 'denomination.protestant'
+        | 'denomination.free.evangelical'
+        | 'denomination.catholic'
+        | 'denomination.ecumenical'
+        | 'denomination.orthodox';
+    /**
+     * Localized denomination name.
+     */
     nameTranslated: string;
 };
 
@@ -1723,6 +2273,13 @@ export type Department = {
     id: number;
     name: string;
     nameTranslated: string;
+    /**
+     * Use `shorty` instead
+     *
+     * @deprecated
+     */
+    short?: string;
+    shorty: string;
     sortKey: number;
 };
 
@@ -1737,21 +2294,25 @@ export type Device = {
      */
     appVersion: string | null;
     /**
-     * Use meta.createdDate instead
+     * Use `meta.createdDate` instead
      *
      * @deprecated
      */
-    createdAt?: unknown;
+    createdAt?: string;
     /**
      * Unique ID generated by the App
      */
     deviceId: string;
     /**
+     * Expiration date of device registration
+     */
+    expirationDate: string;
+    /**
      * Use `deviceId` instead
      *
      * @deprecated
      */
-    id?: unknown;
+    id?: string;
     meta: MetaDataEntityId;
     personId: number;
     /**
@@ -1759,7 +2320,9 @@ export type Device = {
      */
     pushId: string | null;
     /**
-     * Time To Live of Device
+     * Use `expirationDate` instead
+     *
+     * @deprecated
      */
     ttl: string;
     /**
@@ -1767,24 +2330,23 @@ export type Device = {
      */
     type: 'APN' | 'FCM';
     /**
-     * Use meta.modifiedDate instead
+     * Use `meta.modifiedDate` instead
      *
      * @deprecated
      */
-    updatedAt?: unknown;
+    updatedAt?: string;
     /**
      * Use `appVersion` instead
      *
      * @deprecated
      */
-    version?: unknown;
+    version?: string;
 };
 
 export type DomainObject = {
     apiUrl?: string | null;
-    color?: Color | null;
+    color?: Color | CtColor | null;
     domainIdentifier: string;
-    frontendUrl: string | null;
     imageUrl?: string | null;
     infos?: Array<string>;
     initials?: string | null;
@@ -1794,23 +2356,18 @@ export type DomainObject = {
 /**
  * Action as Domain Object
  */
-export type DomainObjectAction = {
-    apiUrl?: null;
-    color?: CtColor | null;
-    domainAttributes?: {
-        [key: string]: unknown;
+export type DomainObjectAction = DomainObject & {
+    domainAttributes: {
+        createDomainType?: string;
     };
-    domainIdentifier?: string;
-    domainType: '';
-    frontendUrl?: string;
+    domainType: 'action';
+    frontendUrl: null;
     icon: string;
-    imageUrl?: null;
-    infos?: Array<string>;
-    initials?: null;
-    title?: string;
 };
 
 export type DomainObjectAny =
+    | DomainObjectAppointment
+    | DomainObjectAppointmentOccurrence
     | DomainObjectExternalPerson
     | DomainObjectGroup
     | DomainObjectGroupMembership
@@ -1824,13 +2381,35 @@ export type DomainObjectAny =
     | DomainObjectFurtherLink;
 
 /**
+ * Appointment as Domain Object
+ */
+export type DomainObjectAppointment = DomainObject & {
+    domainAttributes: {
+        [key: string]: unknown;
+    };
+    domainType: 'appointment';
+    frontendUrl: string;
+    icon: 'calendar';
+};
+
+export type DomainObjectAppointmentOccurrence = DomainObject & {
+    domainAttributes: {
+        [key: string]: unknown;
+    };
+    domainType: 'appointment_occurrence';
+    frontendUrl: string;
+    icon: 'calendar';
+};
+
+/**
  * Calendar as Domain Object
  */
 export type DomainObjectCalendar = DomainObject & {
     domainAttributes: {
-        campusName: string;
+        campusName: string | null;
     };
     domainType: 'calendar';
+    frontendUrl: string;
     icon: 'calendar';
 };
 
@@ -1842,19 +2421,27 @@ export type DomainObjectEvent = DomainObject & {
         startDate?: string;
     };
     domainType: 'event';
+    frontendUrl: string;
     icon: 'calendar-day';
 };
 
 /**
- * Person as Domain Object
+ * External person as Domain Object
  */
-export type DomainObjectExternalPerson = DomainObject & {
+export type DomainObjectExternalPerson = {
     apiUrl: null;
+    color: null;
     domainAttributes: {
         email?: string;
     };
+    domainIdentifier: null;
     domainType: 'externalPerson';
+    frontendUrl: null;
     icon: 'user';
+    imageUrl: null;
+    infos: Array<string>;
+    initials: string | null;
+    title: string;
 };
 
 export type DomainObjectFile = DomainObject & {
@@ -1870,7 +2457,8 @@ export type DomainObjectFurtherLink = DomainObject & {
     domainAttributes: {
         [key: string]: unknown;
     };
-    domainType: 'furtherLink';
+    domainType: 'further_link';
+    frontendUrl: null;
     icon: 'link';
 };
 
@@ -1919,6 +2507,7 @@ export type DomainObjectGrouphomepage = DomainObject & {
         parentGroupId: number;
     };
     domainType: 'grouphomepage';
+    frontendUrl: string | null;
     icon: 'globe';
 };
 
@@ -1940,19 +2529,27 @@ export type DomainObjectImage = {
 };
 
 export type DomainObjectLogo = DomainObject & {
+    domainAttributes: {
+        [key: string]: unknown;
+    };
     domainType: 'logo';
+    frontendUrl: null;
     icon: string;
 };
 
 /**
- * Event as Domain Object
+ * OSM Address as Domain Object
  */
 export type DomainObjectOsmAddress = DomainObject & {
+    apiUrl?: null;
     domainAttributes: {
         [key: string]: unknown;
     };
     domainType: 'osm-address';
-    icon: 'location-dot';
+    frontendUrl?: null;
+    icon: string;
+    infos: Array<string>;
+    initials?: string | null;
 };
 
 export type DomainObjectPayload = {
@@ -1971,7 +2568,7 @@ export type DomainObjectPerson = DomainObject & {
         /**
          * Globally Unique Identifier
          */
-        guid: string;
+        guid: string | null;
         isArchived: boolean;
         lastName: string;
     };
@@ -1986,6 +2583,7 @@ export type DomainObjectPost = DomainObject & {
         [key: string]: unknown;
     };
     domainType: 'post';
+    frontendUrl: string;
     icon: 'newspaper';
     infos: Array<string>;
 };
@@ -1995,6 +2593,7 @@ export type DomainObjectSong = DomainObject & {
         [key: string]: unknown;
     };
     domainType: 'song';
+    frontendUrl: string;
     icon: 'music';
 };
 
@@ -2003,10 +2602,26 @@ export type DomainObjectWikiPage = DomainObject & {
         wikiCategoryId: number;
     };
     domainType: 'wiki_page';
+    frontendUrl: string;
     icon: 'file';
 };
 
 export type DomainType = string;
+
+export type DonationReceipt = {
+    accountingPeriodId: number;
+    attachment: string;
+    coverLetter: string;
+    donatorId: number;
+    donatorSpouseId: number | null;
+    type: 'DRAFT' | 'DUPLICATE' | 'ORIGINAL';
+};
+
+export type DonationReceiptJobResult = {
+    jobGroup: string;
+    statusUrl: string;
+    total: number;
+};
 
 export type Donator = {
     /**
@@ -2043,6 +2658,10 @@ export type Donator = {
     lastDonationDate: ZuluDate;
     lastDonationModifiedDate: ZuluDate;
     /**
+     * Total number of donation paybacks in the specified accounting period.
+     */
+    paybackCount?: number;
+    /**
      * Contains either one element (a single donator) or two elements (donator and their spouse).
      */
     persons: Array<DomainObjectPerson>;
@@ -2050,6 +2669,10 @@ export type Donator = {
      * Value is in cent.
      */
     sum: number;
+};
+
+export type DonatorMeta = MetaPagination & {
+    incompleteCount: number;
 };
 
 export type DynamicGroupProcess = {
@@ -2092,31 +2715,343 @@ export type DynamicGroupRule = {
  */
 export type DynamicGroupStatus = 'active' | 'inactive' | 'manual' | 'none' | null;
 
+export type ErrorObj = {
+    args?: {
+        name?: string;
+        value?: string;
+        [key: string]: unknown;
+    };
+    date?: string;
+    message: string;
+    messageKey?: string;
+};
+
+/**
+ * euBP service health information
+ */
+export type EubpHealthInfo = {
+    /**
+     * Current environment (test or production)
+     */
+    environment?: string;
+    /**
+     * Whether the eXTra service is available
+     */
+    extraServiceAvailable?: boolean;
+    /**
+     * URL of the eXTra service
+     */
+    extraServiceUrl?: string;
+};
+
+/**
+ * euBP options that depend on the current user
+ */
+export type EubpOptions = {
+    /**
+     * Whether the current user is the special support user
+     */
+    isSupportUser: boolean;
+};
+
+/**
+ * euBP submission for DRV audit
+ */
+export type EubpSubmission = {
+    /**
+     * ID of the finance client
+     */
+    clientId: number;
+    /**
+     * Client request ID from eXTra service
+     */
+    clientRequestId?: string | null;
+    /**
+     * Company name snapshot used for transmission
+     */
+    companyName: string | null;
+    /**
+     * Company number snapshot used for transmission
+     */
+    companyNumber: string | null;
+    /**
+     * Delivery deadline for the audit data
+     */
+    deliveryDate?: string | null;
+    /**
+     * URL to download the generated export ZIP file
+     */
+    downloadUrl?: string | null;
+    /**
+     * Status code from DRV
+     */
+    drvStatusCode?: string | null;
+    /**
+     * Status message from DRV
+     */
+    drvStatusMessage?: string | null;
+    /**
+     * ID of the generated export file in cc_file
+     */
+    fileId?: number | null;
+    /**
+     * Submission ID
+     */
+    id: number;
+    meta?: MetaDataEntityId;
+    /**
+     * Submission periods
+     */
+    periods?: Array<EubpSubmissionPeriod>;
+    /**
+     * Reference date for the audit (Stichtag der Prüfung)
+     */
+    referenceDate?: string | null;
+    /**
+     * Timestamp when submission was sent
+     */
+    sentDate?: string | null;
+    /**
+     * Server message ID from eXTra service
+     */
+    serverMessageId?: string | null;
+    /**
+     * Submission status
+     */
+    status?: 'draft' | 'pending' | 'sent' | 'accepted' | 'rejected' | 'cancelled' | 'finished';
+    /**
+     * Title of the submission
+     */
+    title: string | null;
+    /**
+     * Reason for transmission (1=audit, 2=software change, 3=provider change)
+     */
+    transmissionReason: 1 | 2 | 3;
+    /**
+     * Start year of the delivery period
+     */
+    yearFrom: number;
+    /**
+     * End year of the delivery period
+     */
+    yearTo: number;
+};
+
+/**
+ * An additional account linked to a submission period
+ */
+export type EubpSubmissionAccount = {
+    /**
+     * ID of the account
+     */
+    accountId?: number;
+    /**
+     * Name of the account
+     */
+    accountName?: string;
+    /**
+     * Account number
+     */
+    accountNumber?: string;
+    /**
+     * Submission account ID
+     */
+    id?: number;
+    /**
+     * ID of the parent submission period
+     */
+    submissionPeriodId?: number;
+};
+
+/**
+ * Data for creating a new euBP submission
+ */
+export type EubpSubmissionCreate = {
+    /**
+     * Map of year to array of additional account IDs
+     */
+    additionalAccountsPerYear?: {
+        [key: string]: Array<number>;
+    };
+    /**
+     * IDs of finance clients that belong to the audited company and should get their own submission periods. The main clientId is always added automatically.
+     */
+    affectedClientIds?: Array<number>;
+    /**
+     * ID of the finance client
+     */
+    clientId: number;
+    /**
+     * Delivery deadline for the audit data
+     */
+    deliveryDate?: string;
+    /**
+     * Reference date for the audit (Stichtag der Prüfung)
+     */
+    referenceDate?: string;
+    /**
+     * Title of the submission
+     */
+    title?: string;
+    /**
+     * Reason for transmission (1=audit, 2=software change, 3=provider change)
+     */
+    transmissionReason: 1 | 2 | 3;
+    /**
+     * Start year of the delivery period
+     */
+    yearFrom: number;
+    /**
+     * End year of the delivery period
+     */
+    yearTo: number;
+};
+
+/**
+ * A period (year) within an euBP submission
+ */
+export type EubpSubmissionPeriod = {
+    /**
+     * ID of the linked accounting period
+     */
+    accountingPeriodId?: number | null;
+    /**
+     * Additional accounts for this period
+     */
+    additionalAccounts?: Array<EubpSubmissionAccount>;
+    /**
+     * ID of the finance client this period belongs to
+     */
+    clientId?: number;
+    /**
+     * File number assigned during export
+     */
+    fileNumber?: string | null;
+    /**
+     * Whether this period has linked accounting data
+     */
+    hasData?: boolean;
+    /**
+     * Period ID
+     */
+    id?: number;
+    /**
+     * Whether this is the last period in the submission
+     */
+    isLast?: boolean;
+    /**
+     * ID of the parent submission
+     */
+    submissionId?: number;
+    /**
+     * Account IDs that were transmitted during submission (mandatory + additional accounts)
+     */
+    transmittedAccountIds?: Array<number> | null;
+    /**
+     * Year of this period
+     */
+    year?: number;
+};
+
+/**
+ * Preview data for an euBP submission
+ */
+export type EubpSubmissionPreview = {
+    /**
+     * Preview data per period
+     */
+    periods?: Array<{
+        dateRange?: {
+            from?: string;
+            to?: string;
+        };
+        hasData?: boolean;
+        isLast?: boolean;
+        year?: number;
+    }>;
+    /**
+     * Validation warnings
+     */
+    warnings?: Array<{
+        message?: string;
+        severity?: 'info' | 'warning' | 'error';
+        type?: string;
+        years?: Array<number>;
+    }>;
+};
+
+/**
+ * Unified account view across submission periods
+ */
+export type EubpUnifiedAccount = {
+    /**
+     * Name of the account group
+     */
+    accountGroupName: string;
+    /**
+     * Whether this is a donation account
+     */
+    isDonationAccount: boolean;
+    /**
+     * Unique key in format "number|name"
+     */
+    key: string;
+    /**
+     * Whether this account is mandatory for euBP
+     */
+    mandatory: boolean;
+    /**
+     * Account name
+     */
+    name: string;
+    /**
+     * Account number
+     */
+    number: string;
+    /**
+     * Whether this account is selected
+     */
+    selected: boolean;
+    /**
+     * Whether this account was already transmitted
+     */
+    transmitted: boolean;
+    /**
+     * Years in which this account has bookings
+     */
+    years: Array<number>;
+};
+
 export type Event = {
-    adminIds?: Array<number>;
-    appointmentId?: number;
-    calendar?: DomainObjectCalendar;
-    chatStatus?: ChatStatus;
+    '@deprecated'?: string;
+    adminIds: Array<number>;
+    appointmentId: number;
+    calendar: DomainObjectCalendar;
+    chatStatus: ChatStatus;
     /**
      * @deprecated
      */
     description?: string;
-    endDate?: string;
+    endDate: ZuluDate;
     /**
      * @deprecated
      */
     eventAdminIds?: Array<number>;
-    eventFiles?: Array<DomainObjectFile>;
+    eventFiles: Array<DomainObjectFile>;
     /**
      * to include set query-param `include=eventServices`
      */
     eventServices?: Array<EventService>;
-    guid?: string;
-    id?: number;
-    isCanceled?: boolean;
-    name?: string;
-    note?: string;
-    startDate?: ZuluDate;
+    guid: string;
+    id: number;
+    isCanceled: boolean;
+    name: string;
+    note: string | null;
+    permissions?: {
+        startChat: boolean;
+        useChat: boolean;
+    };
+    startDate: ZuluDate;
 };
 
 /**
@@ -2125,6 +3060,7 @@ export type Event = {
  * Fact entry for an event
  */
 export type EventFact = {
+    '@deprecated': string;
     eventId: number;
     factId: number;
     meta: MetaDataEntityId;
@@ -2146,6 +3082,9 @@ export type EventMasterData = {
 };
 
 export type EventService = {
+    '@deprecated'?: {
+        [key: string]: string;
+    };
     /**
      * use `isAccepted` instead
      *
@@ -2153,62 +3092,276 @@ export type EventService = {
      */
     agreed?: boolean;
     allowChat?: boolean;
-    comment?: string;
+    comment?: string | null;
     /**
      * use `index` instead
      *
      * @deprecated
      */
-    counter?: number;
+    counter?: number | null;
+    event?:
+        | DomainObjectEvent
+        | {
+              id: number;
+              name: string;
+              startDate: ZuluDate;
+          }
+        | null;
     id?: number;
     index?: number | null;
     isAccepted?: boolean;
     isValid?: boolean;
-    name?: string;
+    meta?: MetaDataEntityId;
+    name?: string | null;
     permissions?: {
         enterSelfIfFree?: boolean;
     } | null;
-    person?: DomainObjectPerson;
+    person?: DomainObjectPerson | null;
     /**
      * @deprecated
      */
-    personId?: number;
+    personId?: number | null;
     requestedDate?: string;
-    requesterPerson?: DomainObjectPerson;
+    requesterPerson?: DomainObjectPerson | null;
     /**
      * @deprecated
      */
     requesterPersonId?: number;
     serviceId?: number;
+    serviceName?: string;
 };
+
+export type EventTemplate = {
+    adminIds: Array<number | string> | null;
+    calendarId: number | null;
+    durationInSeconds: number;
+    eventName: string | null;
+    facts: {
+        [key: string]: string;
+    } | null;
+    hour: number | null;
+    id: number;
+    minute: number | null;
+    note: string | null;
+    services: Array<{
+        count: number;
+        serviceId: number;
+    }>;
+    sortKey: number;
+    templateName: string;
+};
+
+export type EventUpdate = {
+    adminIds: Array<number>;
+    appointment: AppointmentBase;
+    guid: string;
+    id: number;
+    isCanceled: boolean;
+    note: string | null;
+};
+
+/**
+ * Export output file format
+ */
+export enum ExportOutputFormat {
+    CSV = 'csv',
+    XLSX = 'xlsx',
+}
 
 export type ExternalLogin = ExternalLoginCreate & {
     id: number;
+    logoUrl?: string | null;
 };
 
+export type ExternalLoginConfig = ExternalLoginOAuthConfig | ExternalLoginOidcConfig | ExternalLoginSamlConfig;
+
 export type ExternalLoginCreate = {
-    /**
-     * config options for the external login type
-     */
-    config?: unknown;
+    config: ExternalLoginConfig;
     createNewPerson?: boolean;
+    hasRegistration: boolean;
+    /**
+     * Whether this external login is available on the login page.
+     */
+    isVisible?: boolean;
+    /**
+     * Determines how an authenticated external identity without an existing person mapping is handled. Legacy mode retains automatic name-and-email matching and person creation. Verified mode asks the user to either prove ownership of a local account or, when `createNewPerson` is enabled, explicitly create a person. Pre-provisioned mode rejects identities without a mapping.
+     */
+    matchingMode?: 'legacy_auto_match' | 'verified_user_linking' | 'preprovisioned_only';
     name: string;
-    newPersonCampusId: number;
-    newPersonDepartmentId: number;
-    newPersonStatusId: number;
-    type: string;
+    newPersonCampusId: number | null;
+    newPersonDepartmentId: number | null;
+    newPersonStatusId: number | null;
+    primaryLogin?: boolean;
+    subtitle?: string | null;
+    type: 'oauth' | 'oidc' | 'saml' | 'ldap';
     updateDataOnLogin?: boolean;
+};
+
+export type ExternalLoginOAuthConfig = {
+    accessTokenUrl: string;
+    authorizeUrl: string;
+    /**
+     * Retained for stored-data and API compatibility. Callback routing no longer depends on this value.
+     *
+     * @deprecated
+     */
+    callbackUrlVersion?: 2;
+    clientId: string;
+    clientSecret?: string | null;
+    scope?: string | null;
+    urlResourceOwnerDetails: string;
+};
+
+export type ExternalLoginOidcConfig = {
+    /**
+     * Optional allowlist for the `ct_connection` claim. When configured, an ID token without an allowed connection is rejected.
+     */
+    allowedConnections?: Array<string>;
+    /**
+     * Retained for stored-data and API compatibility. Callback routing no longer depends on this value.
+     *
+     * @deprecated
+     */
+    callbackUrlVersion?: 2;
+    clientId: string;
+    clientSecret?: string | null;
+    /**
+     * Optional installation identifier that must be present in the `ct_entitlements` claim.
+     */
+    installationId?: string | null;
+    /**
+     * Exact HTTPS issuer identifier used for OIDC discovery and ID-token validation.
+     */
+    issuer: string;
+    /**
+     * Optional minimum `acr`. Numeric values are ordered numerically; non-numeric values require an exact match.
+     */
+    minAcr?: string | null;
+    /**
+     * Space-separated scopes. Missing, null or empty values use `openid profile email`. The `openid` scope is always included. Claim policies do not automatically add scopes.
+     */
+    scope?: string | null;
+};
+
+export type ExternalLoginOidcTestResult = {
+    claimNames?: Array<string>;
+    /**
+     * Sanitized, actionable failure category without provider response details.
+     */
+    errorCode?:
+        | 'configuration_error'
+        | 'discovery_issuer_mismatch'
+        | 'discovery_private_network'
+        | 'discovery_unavailable'
+        | 'provider_error'
+        | 'token_exchange_failed'
+        | 'validation_failed';
+    status: 'pending' | 'success' | 'error' | 'expired';
+};
+
+export type ExternalLoginOidcTestStart = {
+    expiresAt: number;
+    state: string;
+    url: string;
+};
+
+export type ExternalLoginPersonMapping = {
+    externalLoginId: number;
+    externalLoginName: string;
+    externalLoginType: 'oauth' | 'oidc' | 'saml' | 'ldap';
+};
+
+export type ExternalLoginSamlCertificateMetadata = {
+    fingerprintSha256: string;
+    status: 'expired' | 'expiring' | 'not-yet-valid' | 'valid';
+    use: 'signing';
+    validFrom: string;
+    validTo: string;
+};
+
+export type ExternalLoginSamlConfig = {
+    /**
+     * Retained for stored-data and API compatibility. Callback routing no longer depends on this value.
+     *
+     * @deprecated
+     */
+    callbackUrlVersion?: 2;
+    emailAttribute?: string;
+    firstNameAttribute?: string;
+    idAttribute?: string;
+    /**
+     * Legacy signing certificate fingerprint. Ignored when multiple signing certificates are configured.
+     */
+    idpCertFingerprint?: string;
+    readonly idpCertificateMetadata?: Array<ExternalLoginSamlCertificateMetadata>;
+    idpEntityId?: string;
+    idpSingleLogoutService?: string;
+    idpSingleLogoutServiceBinding?: 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect';
+    idpSingleSignOnService?: string;
+    idpSingleSignOnServiceBinding?: 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect';
+    /**
+     * Legacy field for a single IdP signing certificate in PEM format.
+     */
+    idpX509cert?: string;
+    idpX509certMulti?: {
+        /**
+         * One or more IdP signing certificates in PEM format. Multiple certificates support signing key rollover; encryption certificates are not configured here.
+         */
+        signing?: Array<string>;
+    };
+    lastNameAttribute?: string;
+    /**
+     * Identifies providers imported from the legacy SAML configuration.
+     */
+    readonly migratedLegacySamlProvider?: boolean;
+    signRequests?: boolean;
+    signatureAlgorithm?: string;
+    /**
+     * Required signatures on inbound SAML authentication responses. `response` requires the outer SAML Response, `assertion` requires its Assertion, and `both` requires both. SP metadata exposes the Assertion requirement as `WantAssertionsSigned`; SAML metadata has no standard attribute for requiring the outer Response signature.
+     */
+    signatureRequirement?: 'response' | 'assertion' | 'both';
+    siteName?: string;
+    readonly spX509cert?: string;
+    usernameAttribute?: string;
+};
+
+export type ExternalLoginSamlTestMapping = {
+    claimName: string;
+    field: 'id' | 'email' | 'username' | 'firstName' | 'lastName';
+    present: boolean;
+};
+
+export type ExternalLoginSamlTestResult = {
+    claimNames?: Array<string>;
+    mappings?: Array<ExternalLoginSamlTestMapping>;
+    status: 'pending' | 'success' | 'error' | 'expired';
+};
+
+export type ExternalLoginSamlTestStart = {
+    expiresAt: number;
+    state: string;
+    url: string;
 };
 
 /**
  * ExternalSystem
  */
 export type ExternalSystem = {
+    adapter: AdapterType;
+    id: number;
+    jobConfigsCount: number;
+    name: string;
+};
+
+/**
+ * ExternalSystem
+ */
+export type ExternalSystemCreate = {
     /**
      * Key Value Pairs that define the access to the external system
      */
     accessHeaderValues: {
-        [key: string]: unknown;
+        [key: string]: string;
     };
     adapter: string;
     /**
@@ -2218,34 +3371,92 @@ export type ExternalSystem = {
     name: string;
 };
 
-/**
- * ExternalSystem
- */
-export type ExternalSystemReturn = {
-    adapter?: string;
-    id?: number;
-    jobConfigsCount?: number;
-    name?: string;
-};
-
-export type Fact = (FactNumber | FactSelect) & unknown;
+export type Fact = FactNumber | FactSelect;
 
 export type FactBase = {
+    /**
+     * Deprecated response field that points clients from fieldType to type.
+     */
+    '@deprecated': string;
+    fieldType: FactType;
+    /**
+     * ID of the fact master data entry.
+     */
     id: number;
+    /**
+     * Name of the fact.
+     */
     name: string;
+    /**
+     * Translated name of the fact.
+     */
     nameTranslated: string;
+    /**
+     * Sort key for ordering facts.
+     */
     sortKey: number;
 };
 
+/**
+ * Input schema for creating or updating a fact master data entry.
+ */
+export type FactInput = FactNumberInput | FactSelectInput;
+
 export type FactNumber = FactBase & {
     type: 'number';
-    unit?: string;
+    /**
+     * Unit for numeric values.
+     */
+    unit: string | null;
+};
+
+export type FactNumberInput = {
+    /**
+     * Name of the fact.
+     */
+    name: string;
+    /**
+     * Sort key for ordering facts.
+     */
+    sortKey?: number;
+    type: 'number';
+    /**
+     * Unit for numeric values.
+     */
+    unit: string;
 };
 
 export type FactSelect = FactBase & {
+    /**
+     * Allowed values for select facts.
+     */
     options: Array<string>;
     type: 'select';
 };
+
+export type FactSelectInput = {
+    /**
+     * Name of the fact.
+     */
+    name: string;
+    /**
+     * Allowed values for select facts.
+     */
+    options: Array<string>;
+    /**
+     * Sort key for ordering facts.
+     */
+    sortKey?: number;
+    type: 'select';
+};
+
+/**
+ * Type of fact value.
+ */
+export enum FactType {
+    NUMBER = 'number',
+    SELECT = 'select',
+}
 
 export type FeatureUsage = {
     /**
@@ -2320,6 +3531,13 @@ export enum FieldTypeCode {
     RADIOSELECT = 'radioselect',
 }
 
+export type FileMetaData = {
+    createdDate: ZuluDate;
+    createdPerson: MetaDataPersonId | DomainObjectPerson;
+    modifiedDate: ZuluDate;
+    modifiedPerson: MetaDataPersonId | DomainObjectPerson;
+};
+
 /**
  * File or Link
  *
@@ -2339,7 +3557,7 @@ export type FileOrLink = {
      * Filename of uploaded file or name of the link
      */
     filename?: string;
-    meta?: MetaModified;
+    meta?: MetaDataEntityId;
     /**
      * Name of that file, when it's been uploaded
      */
@@ -2361,6 +3579,7 @@ export type FinanceMasterData = {
 };
 
 export type FinancePermissions = {
+    canViewAllTransactions?: boolean;
     canViewBudgets?: boolean;
     canViewDonators?: boolean;
     canViewReports?: boolean;
@@ -2384,8 +3603,8 @@ export type FinanceTemplate = {
     id: number;
     name: string;
     relativeUrl: string;
-    securityLevelId?: number;
-    size?: number;
+    securityLevelId?: number | null;
+    size?: number | null;
     url: string;
 };
 
@@ -2397,7 +3616,7 @@ export type FollowUp = {
 };
 
 export type FollowUp2 = FollowUpCreate & {
-    doneDate: DateStringNullable;
+    doneDate: ZuluDateNullable;
     effectiveDueDate: DateStringNullable;
     groupId: number | null;
     id: number;
@@ -2411,6 +3630,14 @@ export type FollowUpCreate = {
     color?: CtColor;
     description?: string | null;
     dueDate?: DateStringNullable;
+    /**
+     * At least one of `dueDate` or `duration` MUST be specified. Within `duration`, at least one of `numDays`, `numMonths`, or `numYears` MUST be specified.
+     */
+    duration?: {
+        numDays?: number;
+        numMonths?: number;
+        numYears?: number;
+    };
     icon?: string;
     ownerId?: number | null;
     successGroupId?: number | null;
@@ -2427,14 +3654,6 @@ export enum FollowUpFilter {
     DUE_UNSPECIFIED = 'due-unspecified',
     DONE = 'done',
 }
-
-export type FollowUpInterval = {
-    count: number;
-    daysDiff: number;
-    followUpId: number;
-    id: number;
-    info?: string;
-};
 
 export type FollowUpStatistics = {
     /**
@@ -2476,7 +3695,7 @@ export type GetAllGroupMembersQueryParams = {
     allowed_chat_writers_only?: boolean;
     comment?: string;
     group_member_statuses?: Array<MemberStatus>;
-    include?: Array<'tags' | 'aggregations'>;
+    include?: Array<'newsletter' | 'tags' | 'aggregations'>;
     limit?: number;
     /**
      * A simple date in ISO format, e.g. '2022-10-19'
@@ -2495,11 +3714,14 @@ export type GetAllGroupMembersQueryParams = {
     role_ids?: Array<number>;
 };
 
+export type GetConfigResponse = Config;
+
 /**
  * Permissions grouped by known modules and user-defined modules.
  */
 export type GlobalPermissions = {
     churchcal?: {
+        'admin appointment tags'?: boolean;
         'admin church category': boolean;
         'admin group category': boolean;
         'admin personal category': boolean;
@@ -2531,6 +3753,7 @@ export type GlobalPermissions = {
         'simulate persons': boolean;
         'use church html templates': Array<number>;
         'use churchquery'?: boolean;
+        'view links'?: Array<number>;
         'view logfile': boolean;
         'view website': boolean;
     };
@@ -2589,7 +3812,7 @@ export type GlobalPermissions = {
         view: boolean;
         'view alldata': Array<number>;
         'view archive': boolean;
-        'view birthdaylist': boolean;
+        'view birthdaylist'?: boolean;
         'view comments': Array<number>;
         /**
          * @deprecated
@@ -2599,6 +3822,7 @@ export type GlobalPermissions = {
          * @deprecated
          */
         'view groups of grouptype': Array<number>;
+        'view history'?: boolean;
         'view memberliste': boolean;
         'view person history': boolean;
         'view person tags': boolean;
@@ -2681,203 +3905,19 @@ export type GlobalPermissions = {
     post?: {
         'moderate posts': boolean;
     };
-    [key: string]:
-        | CustomModulePermission
-        | {
-              'admin church category': boolean;
-              'admin group category': boolean;
-              'admin personal category': boolean;
-              'assistance mode': boolean;
-              'create group category': boolean;
-              'create personal category': boolean;
-              'edit calendar entry template': Array<number>;
-              'edit category': Array<number>;
-              view: boolean;
-              'view category': Array<number>;
-          }
-        | {
-              'create person': boolean;
-              'edit masterdata': boolean;
-              view: boolean;
-          }
-        | {
-              'administer church html templates': boolean;
-              'administer custom modules'?: boolean;
-              'administer persons': boolean;
-              'administer settings': boolean;
-              'edit languages': Array<number>;
-              'edit public profiles': boolean;
-              'edit translations masterdata': boolean;
-              'edit website releases': boolean;
-              'edit website staff': boolean;
-              'invite persons': boolean;
-              'login to external system': Array<number>;
-              'simulate persons': boolean;
-              'use church html templates': Array<number>;
-              'use churchquery'?: boolean;
-              'view logfile': boolean;
-              'view website': boolean;
-          }
-        | {
-              'administer global filters': boolean;
-              /**
-               * @deprecated
-               */
-              'administer groups': boolean;
-              'complex filter': boolean;
-              /**
-               * @deprecated
-               */
-              'create groups of grouptype': Array<number>;
-              'create person': boolean;
-              'create print labels': boolean;
-              /**
-               * @deprecated
-               */
-              'delete group': Array<number>;
-              /**
-               * @deprecated
-               */
-              'delete groups of grouptype': Array<number>;
-              'delete persons': boolean;
-              'edit bulkletter': boolean;
-              /**
-               * @deprecated
-               */
-              'edit group': Array<number>;
-              'edit group memberships': boolean;
-              /**
-               * @deprecated
-               */
-              'edit group memberships of group': Array<number>;
-              /**
-               * @deprecated
-               */
-              'edit group memberships of grouptype': Array<number>;
-              /**
-               * @deprecated
-               */
-              'edit groups of grouptype': Array<number>;
-              'edit masterdata': boolean;
-              'edit relations': boolean;
-              'export data': boolean;
-              'push/pull archive': boolean;
-              'security level edit own data': Array<number>;
-              /**
-               * @deprecated
-               */
-              'security level group': Array<number>;
-              'security level person': Array<number>;
-              'security level view own data': Array<number>;
-              'send sms': boolean;
-              view: boolean;
-              'view alldata': Array<number>;
-              'view archive': boolean;
-              'view birthdaylist': boolean;
-              'view comments': Array<number>;
-              /**
-               * @deprecated
-               */
-              'view group': Array<number>;
-              /**
-               * @deprecated
-               */
-              'view groups of grouptype': Array<number>;
-              'view memberliste': boolean;
-              'view person history': boolean;
-              'view person tags': boolean;
-              'view station': Array<number>;
-              'view statistics': boolean;
-              /**
-               * @deprecated
-               */
-              'view tags': boolean;
-              'write access': boolean;
-          }
-        | {
-              'administer global views': boolean;
-              'administer groups': boolean;
-              'create groups of grouptype': Array<number>;
-              'delete group': Array<number>;
-              'delete groups of grouptype': Array<number>;
-              'edit group': Array<number>;
-              'edit group memberships of group': Array<number>;
-              'edit group memberships of grouptype': Array<number>;
-              'edit groups of grouptype': Array<number>;
-              'edit masterdata': boolean;
-              'security level group': Array<number>;
-              view: boolean;
-              'view group': Array<number>;
-              'view group history': boolean;
-              'view group tags': boolean;
-              'view groups of grouptype': Array<number>;
-          }
-        | {
-              'edit masterdata': boolean;
-              view: boolean;
-              'view query': Array<number>;
-          }
-        | {
-              'administer bookings': Array<number>;
-              'assistance mode': boolean;
-              'create bookings': Array<number>;
-              'create virtual bookings': boolean;
-              'edit masterdata': boolean;
-              view: boolean;
-              'view resource': Array<number>;
-          }
-        | {
-              'edit agenda': Array<number>;
-              'edit agenda templates': Array<number>;
-              'edit events': Array<number>;
-              'edit fact': Array<number>;
-              'edit masterdata': boolean;
-              'edit servicegroup': Array<number>;
-              'edit songcategory': Array<number>;
-              'edit template': boolean;
-              'export facts': boolean;
-              'manage absent': boolean;
-              'use ccli': boolean;
-              view: boolean;
-              'view agenda': Array<number>;
-              'view events': Array<number>;
-              'view fact': Array<number>;
-              'view history': boolean;
-              'view servicegroup': Array<number>;
-              'view song statistics': boolean;
-              'view songcategory': Array<number>;
-          }
-        | {
-              view: boolean;
-          }
-        | {
-              'edit category': Array<number>;
-              'edit masterdata': boolean;
-              view: boolean;
-              'view category': Array<number>;
-          }
-        | {
-              'edit accounting period': Array<number>;
-              'edit masterdata': boolean;
-              view: boolean;
-              'view accounting period': Array<number>;
-          }
-        | {
-              'moderate posts': boolean;
-          }
-        | undefined;
+    [key: string]: unknown;
 };
 
 /**
  * The group model structures all information in different objects: `information`, `settings`, `followUp`, and `roles`. Custom group fields are added to the root level of this model.
  */
 export type Group = {
-    followUp: {
-        sendReminderMails?: boolean;
-        targetGroupMemberStatusId?: number | null;
-        targetObjectId?: number | null;
-        targetTypeId?: number;
-        typeId?: number | null;
+    '@deprecated'?: {
+        [key: string]: string;
+    };
+    averageMemberAge?: number | null;
+    followUp?: {
+        reminder?: boolean;
     };
     guid: string;
     hasPermissions?: boolean;
@@ -2893,6 +3933,7 @@ export type Group = {
         groupHomepageUrl: string | null;
         groupStatusId: number;
         groupTypeId: number;
+        imageAnnotation?: string;
         imageUrl: string | null;
         /**
          * Allowed maximal members
@@ -2908,6 +3949,7 @@ export type Group = {
          * The number of the weekday. Starting with 0 = Sunday, 1 = Monday, ...
          */
         weekday: number | null;
+        [key: string]: unknown;
     };
     memberStatistics?: {
         active: number;
@@ -2988,6 +4030,10 @@ export type Group = {
          */
         automaticMoveUp: boolean;
         /**
+         * Indicator whether the chat history should be visible for new chat group members.
+         */
+        chatHistoryVisible: boolean;
+        /**
          * Default value for whether posts can be commented on.
          */
         defaultPostCommentsActive: boolean;
@@ -3050,14 +4096,27 @@ export type Group = {
          * QR Codes are not automatically sent via email
          */
         qrCodeCheckinAutomaticEmail: boolean;
+        /**
+         * Send default sign up email to new members.
+         */
+        sendDefaultSignUpMail: boolean;
         showStreet: boolean;
         signUpClosingDate: ZuluDateNullable;
+        /**
+         * Email is required for all participants during group sign up (spouse, children, others).
+         */
+        signUpEmailRequiredForAll?: boolean;
         /**
          * Headline for group sign up.
          */
         signUpHeadline: string | null;
         signUpNotificationSentDate: ZuluDateNullable;
         signUpOpeningDate: ZuluDateNullable;
+        signUpOverrideRoleId?: number | null;
+        /**
+         * Require anonymous users to verify their email address before accessing the group sign up form.
+         */
+        verifyEmailAddress: boolean;
         visibility: GroupVisibility;
         /**
          * Maximum number of persons on waiting list.
@@ -3110,7 +4169,7 @@ export type GroupCategoryUpdate = GroupCategoryCreate & {
  */
 export type GroupHierarchy = {
     children: Array<number>;
-    group: DomainObjectGroup;
+    group: DomainObjectGroup | null;
     groupId: number;
     parents: Array<number>;
 };
@@ -3118,28 +4177,49 @@ export type GroupHierarchy = {
 /**
  * GroupHomepage
  *
- * The hierarchy of one group
+ * Public group homepage settings, filter definitions, and all public groups displayed on the page.
  */
 export type GroupHomepage = {
     /**
+     * Maps deprecated response field names to their replacements.
+     */
+    '@deprecated': {
+        [key: string]: string;
+    };
+    /**
+     * Stored custom description for the group homepage header.
+     */
+    customDescription: string | null;
+    /**
+     * Stored custom title for the group homepage header.
+     */
+    customTitle: string | null;
+    /**
      * Type how groups are listed on the page.
      */
-    defaultView?: 'tile' | 'minitile' | 'list';
+    defaultView: 'tile' | 'minitile' | 'list';
     /**
      * The depth of the group hierarchy that should be displayed on the group homepage.
      */
-    depth?: number;
+    depth: number;
     /**
+     * Description of the group that owns the group homepage.
+     */
+    description: string;
+    /**
+     * Selects whether the header description is hidden, inherited from the group, or custom.
+     */
+    descriptionMode: GroupHomepageHeaderContentMode;
+    /**
+     * Deprecated alias of filters.
+     *
      * @deprecated
      */
-    filter?: unknown;
+    filter: Array<GroupHomepageFilter>;
     /**
      * Specifies all filters that can be applied for this group homepage.
      */
-    filters: Array<{
-        show: boolean;
-        type: 'weekday' | 'targetgroups' | 'agegroups' | 'groupcategory' | 'campus';
-    }>;
+    filters: Array<GroupHomepageFilter>;
     /**
      * Array of groups to be displayed on the group homepage.
      */
@@ -3149,23 +4229,26 @@ export type GroupHomepage = {
      */
     id: number;
     /**
-     * Wheather the group homepage is enabled. Clients should not display the group homepage if it is not enabled.
+     * If true, nested groups are collapsed by default.
+     */
+    isCollapsed: boolean;
+    /**
+     * Whether the group homepage is enabled. Clients should not display the group homepage if it is not enabled.
      */
     isEnabled: boolean;
+    meta: MetaDataEntityId;
     /**
-     * Entity meta data
+     * Name of the group homepage's parent group.
      */
-    meta: {
-        [key: string]: unknown;
-    };
+    name: string;
     /**
      * Group field to sort groups by.
      */
-    orderBy?: 'name' | 'dateOfFoundation';
+    orderBy: 'name' | 'dateOfFoundation';
     /**
      * Direction if groups are sorted ascending or descending.
      */
-    orderDirection?: 'ASC' | 'DESC';
+    orderDirection: 'ASC' | 'DESC';
     /**
      * ID of the parent group of all groups that should be displayed in the group homepage
      */
@@ -3175,9 +4258,11 @@ export type GroupHomepage = {
      */
     randomUrl: string;
     /**
+     * Deprecated alias of showFilters.
+     *
      * @deprecated
      */
-    showFilter?: unknown;
+    showFilter: boolean;
     /**
      * If true, selected filters are displayed.
      */
@@ -3187,9 +4272,11 @@ export type GroupHomepage = {
      */
     showGroupImages: boolean;
     /**
+     * Deprecated alias of showLeaders.
+     *
      * @deprecated
      */
-    showLeader?: unknown;
+    showLeader: boolean;
     /**
      * If true, the group homepage is set to display the leaders of each group.
      */
@@ -3203,8 +4290,35 @@ export type GroupHomepage = {
      *
      * @deprecated
      */
-    sortBy?: unknown;
+    sortBy: 'name' | 'dateOfFoundation';
+    /**
+     * Selects whether the header title is hidden, inherited from the group, or custom.
+     */
+    titleMode: GroupHomepageHeaderContentMode;
 };
+
+export type GroupHomepageFilter = {
+    /**
+     * Available options for this filter type.
+     */
+    options?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * If true, this filter is enabled on the group homepage.
+     */
+    show: boolean;
+    type: 'weekday' | 'targetgroups' | 'agegroups' | 'groupcategory' | 'campus';
+};
+
+/**
+ * Determines which content is displayed in a group homepage header field.
+ */
+export enum GroupHomepageHeaderContentMode {
+    NONE = 'none',
+    GROUP = 'group',
+    CUSTOM = 'custom',
+}
 
 export type GroupMeeting = {
     /**
@@ -3276,14 +4390,13 @@ export type GroupMember = {
     fields?: {
         [key: string]: unknown;
     };
-    followUpDiffDays: number | null;
-    followUpStep: number | null;
-    followUpUnsuccessfulBackGroupId: number | null;
     group: DomainObjectGroup;
     groupMemberStatus: MemberStatus;
     groupTypeRoleId: number;
+    id: number;
     memberEndDate?: DateStringNullable;
     memberStartDate: ZuluDateNullable;
+    newsletter?: GroupMemberNewsletterPersonOptIn;
     person: DomainObjectPerson;
     personFields?: Array<{
         [key: string]: unknown;
@@ -3328,35 +4441,231 @@ export type GroupMemberField =
           type: 'group';
       };
 
-export type GroupMemberFieldGroup = GroupMemberFieldGroupCreate & {
-    groupId: number;
-    id: number;
-};
-
 /**
  * GroupMemberField
  */
-export type GroupMemberFieldGroupCreate = {
-    defaultValue: string;
+export type GroupMemberFieldGroup = {
     /**
+     * Default value stored for this member field. For select-like fields this is the selected option id; multiselect values are comma-separated option ids.
+     */
+    defaultValue: string | number | boolean | null;
+    /**
+     * Use `name` instead.
+     *
      * @deprecated
      */
     fieldName: string;
     fieldTypeCode: FieldTypeCode;
+    /**
+     * Numeric id of the field type.
+     */
     fieldTypeId: number;
+    /**
+     * ID of the group this member field belongs to.
+     */
+    groupId: number;
+    /**
+     * ID of the group member field.
+     */
+    id: number;
+    /**
+     * Maximum stored value length for member field data.
+     */
     maxLength: number;
+    /**
+     * Internal field name shown to administrators.
+     */
     name: string;
+    /**
+     * Optional field name shown in the signup form.
+     */
     nameInSignupForm: string | null;
+    /**
+     * Internal field description.
+     */
     note: string | null;
+    /**
+     * Optional field description shown in the signup form.
+     */
     noteInSignupForm: string | null;
-    options: Array<{
-        id: string;
-        name: string;
-    }>;
+    /**
+     * Backend-assigned options for select-like fields.
+     */
+    options: Array<GroupMemberFieldGroupOption>;
+    /**
+     * Stable machine-readable key for this field.
+     */
     referenceName: string;
+    /**
+     * Whether this field is mandatory in the signup form.
+     */
     requiredInRegistrationForm: boolean;
+    /**
+     * Security level required to see and edit this field.
+     */
     securityLevel: number;
+    /**
+     * Sort order among group member fields.
+     */
     sortKey: number;
+    /**
+     * Whether this field is shown in the signup form.
+     */
+    useInRegistrationForm: boolean;
+};
+
+/**
+ * GroupMemberFieldCreate
+ *
+ * Request body for creating a group member field.
+ */
+export type GroupMemberFieldGroupCreate = {
+    defaultValue?: GroupMemberFieldGroupDefaultValueInput;
+    fieldTypeCode: FieldTypeCode;
+    /**
+     * Internal field name shown to administrators.
+     */
+    name: string;
+    /**
+     * Optional field name shown in the signup form.
+     */
+    nameInSignupForm?: string | null;
+    /**
+     * Internal field description.
+     */
+    note?: string | null;
+    /**
+     * Optional field description shown in the signup form.
+     */
+    noteInSignupForm?: string | null;
+    /**
+     * Options for select, radioselect and multiselect fields. Create requests should send only names; if `id` is sent for compatibility it is ignored and new ids are assigned by the backend.
+     */
+    options?: Array<GroupMemberFieldGroupOptionCreate> | null;
+    /**
+     * Optional stable machine-readable key. If omitted, it is generated from the field name.
+     */
+    referenceName?: string;
+    /**
+     * Whether this field is mandatory in the signup form.
+     */
+    requiredInRegistrationForm: boolean;
+    /**
+     * Security level required to see and edit this field.
+     */
+    securityLevel: number;
+    /**
+     * Sort order among group member fields. Defaults to 0.
+     */
+    sortKey?: number;
+    /**
+     * Whether this field is shown in the signup form.
+     */
+    useInRegistrationForm: boolean;
+};
+
+/**
+ * Default value for the field. Select and radioselect fields accept an option id or option name. Multiselect fields accept a comma-separated string or an array of option ids/names. The stored response value is normalized to option ids for select-like fields.
+ */
+export type GroupMemberFieldGroupDefaultValueInput = string | Array<string | number> | null;
+
+export type GroupMemberFieldGroupOption = {
+    /**
+     * Id of the option. NB: For compatibility reasons, this will be returned as string. In due time, however, this will be returned as integer; prepare your code accordingly.
+     */
+    id: number | string;
+    /**
+     * Display value of the option.
+     */
+    name: string;
+};
+
+export type GroupMemberFieldGroupOptionCreate =
+    | string
+    | {
+          /**
+           * Display value of the option.
+           */
+          name: string;
+      };
+
+export type GroupMemberFieldGroupOptionPatch =
+    | string
+    | {
+          /**
+           * Existing backend-assigned option id. Omit or send null for a new option.
+           */
+          id?: number | null;
+          /**
+           * Display value of the option.
+           */
+          name: string;
+      };
+
+/**
+ * Request body for partially updating a group member field.
+ */
+export type GroupMemberFieldGroupPatch = {
+    defaultValue?: GroupMemberFieldGroupDefaultValueInput;
+    name?: string;
+    nameInSignupForm?: string | null;
+    note?: string | null;
+    noteInSignupForm?: string | null;
+    /**
+     * Full replacement list for select-like field options. Existing options should be sent with their numeric id; new options omit `id` or use null.
+     */
+    options?: Array<GroupMemberFieldGroupOptionPatch> | null;
+    referenceName?: string;
+    requiredInRegistrationForm?: boolean;
+    securityLevel?: number;
+    sortKey?: number;
+    useInRegistrationForm?: boolean;
+};
+
+/**
+ * Request body for replacing a group member field definition.
+ */
+export type GroupMemberFieldGroupUpdate = {
+    defaultValue?: GroupMemberFieldGroupDefaultValueInput;
+    /**
+     * Internal field name shown to administrators.
+     */
+    name: string;
+    /**
+     * Optional field name shown in the signup form.
+     */
+    nameInSignupForm?: string | null;
+    /**
+     * Internal field description.
+     */
+    note?: string | null;
+    /**
+     * Optional field description shown in the signup form.
+     */
+    noteInSignupForm?: string | null;
+    /**
+     * Full replacement list for select-like field options. Existing options should be sent with their numeric id; new options omit `id` or use null.
+     */
+    options?: Array<GroupMemberFieldGroupOptionPatch> | null;
+    /**
+     * Stable machine-readable key for this field.
+     */
+    referenceName: string;
+    /**
+     * Whether this field is mandatory in the signup form.
+     */
+    requiredInRegistrationForm: boolean;
+    /**
+     * Security level required to see and edit this field.
+     */
+    securityLevel: number;
+    /**
+     * Sort order among group member fields. Defaults to 0.
+     */
+    sortKey?: number;
+    /**
+     * Whether this field is shown in the signup form.
+     */
     useInRegistrationForm: boolean;
 };
 
@@ -3412,12 +4721,30 @@ export type GroupMemberHistoryEntry = {
     };
 };
 
+export type GroupMemberNewsletterPersonOptIn = {
+    id: number;
+    newsletter: {
+        [key: string]: GroupMemberNewsletterPersonStatus;
+    };
+};
+
+export type GroupMemberNewsletterPersonStatus = {
+    doiDate: ZuluDateNullable;
+    isSynced: boolean;
+    isUnsubscribed: boolean;
+    syncError?: string | null;
+};
+
 export type GroupMemberShort = {
-    groupId?: number;
-    groupMemberStatus?: string;
-    groupTypeRoleId?: number;
-    lastChange?: string;
-    personId?: number;
+    /**
+     * Whether this row represents a deleted historical membership
+     */
+    deleted: boolean;
+    groupId: number;
+    groupMemberStatus: MemberStatus | null;
+    groupTypeRoleId: number;
+    lastChange: ZuluDateNullable;
+    personId: number;
 };
 
 export type GroupMembershipRoutine = {
@@ -3512,14 +4839,14 @@ export type GroupStatus = {
 };
 
 export type GroupType = GroupTypeUpdate & {
-    namePluralTranslated?: string;
-    nameTranslated?: string;
+    namePluralTranslated: string;
+    nameTranslated: string;
 };
 
 export type GroupTypeCreate = {
     availableForNewPerson: boolean;
     color: CtColor;
-    description?: string;
+    description?: string | null;
     isLeaderNecessary: boolean;
     name: string;
     namePlural: string;
@@ -3543,6 +4870,12 @@ export enum GroupVisibility {
     PUBLIC = 'public',
 }
 
+export type GroupWikiCategoryPagesItem = {
+    category: WikiCategory;
+    pages: Array<SimpleWikiPage>;
+    total: number;
+};
+
 export type GroupedGroups = {
     groupedBy:
         | 'campus'
@@ -3562,23 +4895,136 @@ export type GroupedGroups = {
     };
 };
 
-export type GrowPath = {
-    color: string;
-    id: number;
-    name: string;
+/**
+ * Growth path master data
+ */
+export type GrowPath = GrowPathUpdate & {
+    meta: MetaDataEntityId;
     nameTranslated: string;
+};
+
+/**
+ * GrowPathCreate
+ *
+ * Request body for creating a growth path
+ */
+export type GrowPathCreate = {
+    /**
+     * Color of the growth path (must be a valid CTColor enum value)
+     */
+    color: string;
+    /**
+     * Name of the growth path
+     */
+    name: string;
+    /**
+     * Sort order of the growth path
+     */
     sortKey: number;
 };
 
-export type HtmlTemplate = {
-    domainType: HtmlTemplateDomainType;
-    htmlFileId: number;
+export type GrowPathUpdate = GrowPathCreate & {
+    /**
+     * ID of the growth path
+     */
     id: number;
-    isGlobal: boolean;
-    mjmlFileId?: number;
+};
+
+export type HistoryBeforeAfterValue = {
+    afterValue: string | null;
+    afterValueTranslated: string | null;
+    beforeValue: string | null;
+    beforeValueTranslated: string | null;
+    id: number;
+    key: string;
+    keyTranslated: string;
+    /**
+     * Type and serialization format of the historical value
+     */
+    type: 'text' | 'number' | 'boolean' | 'date' | 'datetime' | 'text-list' | 'date-list';
+};
+
+export type HistoryEntry = {
+    action: string;
+    beforeAfterValues: Array<HistoryBeforeAfterValue>;
+    id: number;
+    links: Array<HistoryLink>;
+    meta: MetaDataEntityId;
+    origin: string | null;
+    translatedTitle: string;
+    translationArgs: {
+        [key: string]: string;
+    };
+    translationKey: string;
+};
+
+export type HistoryLink = {
+    domainId: string;
+    domainType: string;
+    id: number;
+    role: string | null;
+};
+
+export type HtmlTemplate = HtmlTemplateBase & {
+    /**
+     * ID of the stored HTML content file, or `null` if no HTML content is stored.
+     */
+    htmlFileId: number | null;
+    /**
+     * ID of the HTML template.
+     */
+    id: number;
+    meta: MetaDataEntityId;
+    /**
+     * ID of the stored MJML content file, or `null` if no MJML content is stored.
+     */
+    mjmlFileId: number | null;
+    /**
+     * Owner of a private template, or `null` for templates without an owner.
+     */
+    owner: DomainObjectPerson | null;
+};
+
+export type HtmlTemplateAssetUpload = {
+    /**
+     * Original uploaded file name.
+     */
     name: string;
-    owner: DomainObjectPerson;
-    usedByAutomaticEmails: boolean;
+    /**
+     * Image URL to use inside the HTML template editor.
+     */
+    src: string;
+    /**
+     * Uploaded asset type used by the editor.
+     */
+    type: 'image';
+};
+
+export type HtmlTemplateBase = {
+    domainType: HtmlTemplateDomainType;
+    /**
+     * Whether the template is globally available for the domain type.
+     */
+    isGlobal?: boolean;
+    /**
+     * Display name of the HTML template.
+     */
+    name: string;
+};
+
+export type HtmlTemplateCreate = HtmlTemplateBase & {
+    /**
+     * ID of an existing template whose image assets should be copied to the new template.
+     */
+    copyAssetsFromId?: number;
+    /**
+     * Initial HTML content to store for the template.
+     */
+    html?: string | null;
+    /**
+     * Initial MJML content to store for the template.
+     */
+    mjml?: string | null;
 };
 
 export enum HtmlTemplateDomainType {
@@ -3591,6 +5037,29 @@ export enum HtmlTemplateDomainType {
 
 export type HtmlTemplateInfo = {
     id?: number;
+    name?: string;
+};
+
+export type HtmlTemplateUpdate = {
+    /**
+     * New HTML content. If provided, it replaces the stored HTML file content.
+     */
+    html?: string | null;
+    /**
+     * ID of an existing unbound HTML template file to attach. When this is used, the MJML file reference is cleared.
+     */
+    htmlFileId?: number;
+    /**
+     * Whether the template should be globally available for its domain type.
+     */
+    isGlobal?: boolean;
+    /**
+     * New MJML content. If provided, it replaces the stored MJML file content.
+     */
+    mjml?: string | null;
+    /**
+     * New display name of the HTML template.
+     */
     name?: string;
 };
 
@@ -3623,6 +5092,36 @@ export type Image = {
     type: string;
 };
 
+export type InternalEventPermissions = {
+    /**
+     * Event-level service permissions for the current user.
+     */
+    internalPerms:
+        | {
+              '+attach file'?: boolean;
+              '+edit agenda'?: boolean;
+              '+edit event'?: boolean;
+              '+edit info'?: boolean;
+          }
+        | Array<unknown>;
+    /**
+     * Service-group-level permissions keyed by service group ID.
+     */
+    serviceGroups: {
+        [key: string]: {
+            [key: string]: boolean;
+        };
+    };
+    /**
+     * Service-level permissions keyed by service ID.
+     */
+    services: {
+        [key: string]: {
+            [key: string]: boolean;
+        };
+    };
+};
+
 export type InternalGroupPermissions = {
     /**
      * Group Internal Permission, which Affect a Person
@@ -3633,6 +5132,8 @@ export type InternalGroupPermissions = {
         '+admin followup'?: boolean;
         '+admin group chat'?: boolean;
         /**
+         * Use "+admin group member fields" instead.
+         *
          * @deprecated
          */
         '+admin group fields'?: boolean;
@@ -3640,31 +5141,46 @@ export type InternalGroupPermissions = {
         '+admin meetings'?: boolean;
         '+admin posts'?: boolean;
         '+admin routines'?: boolean;
-        '+create group'?: boolean;
+        '+create group'?: number | Array<number>;
         '+create notes'?: boolean;
         '+create post group intern'?: boolean;
         '+create post group visible'?: boolean;
+        '+create posts'?: boolean;
         '+do followup'?: boolean;
         '+do group meeting'?: boolean;
         '+edit basic group memberships'?: boolean;
         '+edit group basic settings'?: boolean;
+        /**
+         * Use "edit group member fields" instead.
+         *
+         * @deprecated
+         */
+        '+edit group fields'?: number;
         '+edit group hierarchy'?: boolean;
         '+edit group infos'?: boolean;
         '+edit group member fields'?: number;
         /**
+         * Use "+edit basic group memberships" instead.
+         *
          * @deprecated
          */
         '+edit group memberships'?: boolean;
+        '+edit groupmemberstatus'?: boolean;
         '+edit own group member fields'?: number;
         /**
+         * Use "+edit own group member fields" instead.
+         *
          * @deprecated
          */
-        '+edit own groupmemberfields'?: boolean;
+        '+edit own groupmemberfields'?: number;
         '+edit person fields of group members'?: number;
         /**
+         * Use "+edit person fields of group members" instead.
+         *
          * @deprecated
          */
         '+edit persons'?: boolean;
+        '+exit group'?: boolean;
         '+export group members'?: boolean;
         '+get emails'?: boolean;
         '+invite person'?: boolean;
@@ -3674,6 +5190,8 @@ export type InternalGroupPermissions = {
         '+see group member fields'?: number;
         '+see group tags'?: boolean;
         /**
+         * Use "+see group member fields" instead.
+         *
          * @deprecated
          */
         '+see groupmemberfields'?: number;
@@ -3683,12 +5201,40 @@ export type InternalGroupPermissions = {
         '+see tags'?: boolean;
         '+view history'?: boolean;
     };
+    /**
+     * Group Internal Permission, which Affect a Person
+     */
+    churchservice?: {
+        '+admin service'?: boolean;
+        '+attach file'?: boolean;
+        '+edit agenda'?: boolean;
+        '+edit event'?: boolean;
+        '+edit info'?: boolean;
+        '+edit service'?: boolean;
+        '+entry all'?: boolean;
+        '+entry free'?: boolean;
+        '+see history'?: boolean;
+        '+see reason'?: boolean;
+        '+see workload'?: boolean;
+        '+start event chat'?: boolean;
+        '+view absence'?: boolean;
+        '+view service'?: boolean;
+    };
+    /**
+     * Group Internal Permission, which Affect a Person
+     */
+    finance?: {
+        '+allow posting'?: boolean;
+        '+see cost center budgets'?: boolean;
+        '+see cost centers'?: boolean;
+        '+see donators in cost centers'?: boolean;
+    };
 };
 
 export type InternalPersonPermissions = {
     churchdb: {
         '+do followup'?: boolean;
-        '+edit person field of group members'?: number;
+        '+edit person fields of group members'?: number;
         '+edit persons'?: boolean;
         '+invite person'?: boolean;
         '+see persons'?: number;
@@ -3751,7 +5297,7 @@ export type JobConfigurationReturn = {
     deleteBehaviorES?: string;
     deleteBehaviorMaster?: string;
     domainType: string;
-    externalSystem?: ExternalSystemReturn;
+    externalSystem?: ExternalSystem;
     id?: number;
     linkBehavior?: string;
     linkData?: string;
@@ -3814,6 +5360,7 @@ export enum LanguageCode {
     PL = 'pl',
     IT = 'it',
     FI = 'fi',
+    SV = 'sv',
 }
 
 export type Linking = LinkingOpenGraph;
@@ -3868,6 +5415,17 @@ export type LinkingOpenGraph = LinkingBase & {
     linkingType: 'opengraph';
 };
 
+export type LockedPermission = {
+    /**
+     * Numeric permission ID
+     */
+    authId: number;
+    /**
+     * Data value of a parameterized permission, -1 for all data values, or null for a permission without data values.
+     */
+    dataId: number | null;
+};
+
 /**
  * Log
  *
@@ -3877,29 +5435,35 @@ export type Log = {
     /**
      * Timestamp of log
      */
-    date?: string;
+    date: string;
     /**
      * Analog to the domain type, the ID is the explicit resource.
      */
-    domainId?: number;
+    domainId: number;
     /**
      * The domain type tells us, where in ChurchTools the action was performed.
      */
-    domainType?: string;
-    id?: number;
+    domainType: string;
+    id: number;
     /**
      * The log level indicates the importance. 1 = Warning, 2 = Notice, 3 = Info.
      */
-    level?: number;
-    message?: string;
+    level: number;
+    message: string;
+    person?: DomainObjectPerson | null;
     /**
      * If the person ID is `-1`, that means, no person but the system itself has logged that message.
      */
-    personId?: number;
+    personId: number;
+    /**
+     * The name of the person, who caused the log message. This is stored in the log, because the person could be deleted later. So we have the name in the log, even if the person is deleted.
+     */
+    personName: string;
+    simulatePerson: DomainObjectPerson | null;
     /**
      * If a person is simulated by an administrator, we log the personId as well. This makes it possible to see if a person did the action or an admin, who simulated that person.
      */
-    simulatePersonId?: number | null;
+    simulatePersonId: number | null;
 };
 
 /**
@@ -3948,17 +5512,59 @@ export type MarkdownRequest = {
 };
 
 export type MeetingRequest = {
-    accepted?: boolean | null;
-    appointment?: AppointmentBase;
-    appointmentId?: number;
-    eventDate?: ZuluDate;
-    id?: number;
-    mailSendDate?: ZuluDateNullable;
-    meta?: MetaDataEntityId;
-    nextEndDate?: ZuluDate;
-    nextStartDate?: ZuluDate;
-    person?: DomainObjectPerson;
-    responseDate?: ZuluDateNullable;
+    /**
+     * Use `state` instead
+     *
+     * @deprecated
+     */
+    accepted: boolean | null;
+    appointment: AppointmentBase;
+    /**
+     * Use `appointment` instead
+     *
+     * @deprecated
+     */
+    appointmentId: number;
+    /**
+     * Use `nextStartDate` instead
+     *
+     * @deprecated
+     */
+    eventDate: ZuluDate;
+    id: number;
+    invitee: DomainObjectPerson;
+    inviter: DomainObjectPerson | null;
+    mailSendDate: ZuluDateNullable;
+    meta: MetaDataEntityId;
+    nextEndDate: ZuluDateNullable;
+    nextStartDate: ZuluDateNullable;
+    /**
+     * Use `invitee` instead
+     *
+     * @deprecated
+     */
+    person: DomainObjectPerson;
+    responseDate: ZuluDateNullable;
+    /**
+     * The current state of the meeting request
+     */
+    state: 'accepted' | 'declined' | 'pending' | 'tentative';
+    [key: string]: unknown;
+};
+
+export type MeetingRequestIcsReply = {
+    /**
+     * Raw ICS content from the external calendar reply email
+     */
+    icsContent: string;
+    /**
+     * The participation status from the ICS reply
+     */
+    partstat: 'ACCEPTED' | 'DECLINED' | 'TENTATIVE';
+    /**
+     * The reply token embedded in the ICS calendar invite
+     */
+    token: string;
 };
 
 export type MeetingTemplate = MeetingTemplateUpdate;
@@ -3968,8 +5574,11 @@ export type MeetingTemplateCreate = {
     template: Array<MeetingTemplateField>;
 };
 
-export type MeetingTemplateField = {
+export type MeetingTemplateField = unknown & {
     label: string;
+    /**
+     * Only applicable to select fields, where it is required and non-empty. Strings contain comma-separated legacy options.
+     */
     options?: string | Array<string> | null;
     type: 'color' | 'textarea' | 'caption' | 'input' | 'checkbox' | 'select';
     value?: string | null;
@@ -3982,9 +5591,6 @@ export type MeetingTemplateUpdate = MeetingTemplateCreate & {
 export type MemberPreview = {
     members: Array<{
         comment?: string | null;
-        followUpDiffDays: number | null;
-        followUpStep: number | null;
-        followUpUnsuccessfulBackGroupId: number | null;
         group: DomainObjectGroup;
         groupMemberStatus: MemberStatus;
         memberEndDate?: DateStringNullable;
@@ -4010,9 +5616,10 @@ export type MembershipNew = {
     fields?: {
         [key: string]: unknown;
     } | null;
-    groupMemberStatus?: 'active' | 'requested' | 'to_delete' | 'waiting';
+    groupMemberStatus?: MemberStatus | null;
     groupTypeRoleId?: number | null;
     ignoreGroupFull?: boolean | null;
+    ignoreWaitingListFull?: boolean | null;
     informLeader?: boolean | null;
     memberEndDate?: DateStringNullable;
     /**
@@ -4058,8 +5665,8 @@ export type MetaDataEntityId = {
     createdPerson: {
         id: number;
     };
-    modifiedDate?: ZuluDate;
-    modifiedPerson?: {
+    modifiedDate: ZuluDate;
+    modifiedPerson: {
         id: number;
     };
 };
@@ -4068,10 +5675,12 @@ export type MetaDataEntityIdNullable = {
     createdDate?: ZuluDate;
     createdPerson?: {
         id?: number;
+        [key: string]: unknown;
     };
     modifiedDate?: ZuluDate;
     modifiedPerson?: {
         id?: number;
+        [key: string]: unknown;
     };
 } | null;
 
@@ -4089,6 +5698,10 @@ export type MetaDataModifiedId = {
     };
 };
 
+export type MetaDataPersonId = {
+    id: number;
+};
+
 export type MetaModified = {
     modifiedDate?: ZuluDate;
     modifiedPid?: number;
@@ -4097,9 +5710,9 @@ export type MetaModified = {
 export type MetaPagination = {
     all?: number;
     count?: number;
-    pagination?: {
-        current?: number;
-        lastPage?: number;
+    pagination: {
+        current: number;
+        lastPage: number;
         limit?: number;
         total?: number;
     };
@@ -4112,7 +5725,10 @@ export enum MovementState {
 }
 
 export type MovementSuggestion = {
-    bills: Array<{
+    /**
+     * Bills matched to the movement. Only present when requested via the `include=bills` query parameter.
+     */
+    bills?: Array<{
         [key: string]: unknown;
     }>;
     confidence: number;
@@ -4121,6 +5737,79 @@ export type MovementSuggestion = {
     reason: string;
     userOverwrite: boolean;
     value: string;
+};
+
+/**
+ * Associates one external newsletter list with one group. A newsletter list, identified by its provider and list ID, can be associated with at most one group.
+ */
+export type NewsletterIntegrationGroupMapping = {
+    groupId: number;
+    /**
+     * Provider-specific list identifier. The list must not already be associated with another group.
+     */
+    listId: string;
+    listName: string | null;
+    optInRequired: boolean;
+    provider: string;
+};
+
+export type NewsletterIntegrationGroupMappingCreateRequest = {
+    createListName?: string;
+    existingMembersHandling?: 'require_opt_in' | 'ignore_opt_in';
+    /**
+     * Provider-specific list identifier. The list must not already be associated with a group.
+     */
+    listId?: string;
+    optInRequired: boolean;
+    provider: string;
+};
+
+export type NewsletterIntegrationListOption = {
+    id: string;
+    /**
+     * Whether this list is already associated with a group.
+     */
+    isAssigned: boolean;
+    name: string;
+};
+
+export type NewsletterIntegrationOptions = {
+    canCreateLists: boolean;
+    doesDoubleOptIn: boolean;
+    lists: Array<NewsletterIntegrationListOption>;
+    provider: string;
+};
+
+export type NewsletterOptInData = {
+    newsletter: {
+        [key: string]: NewsletterOptInList;
+    };
+    persons: {
+        [key: string]: NewsletterOptInPerson;
+    };
+};
+
+export type NewsletterOptInList = {
+    ctDoesDoubleOptIn: boolean;
+    id: string;
+    listId: string;
+    listName: string | null;
+    optInRequired: boolean;
+    provider: string;
+};
+
+export type NewsletterOptInPerson = {
+    id: number;
+    newsletter: {
+        [key: string]: NewsletterOptInStatus;
+    };
+};
+
+export type NewsletterOptInStatus = {
+    doiDate: ZuluDateNullable;
+    isSynced: boolean;
+    isUnsubscribed: boolean;
+    syncError: string | null;
 };
 
 export type Note = NoteCreateOrUpdate &
@@ -4161,10 +5850,18 @@ export enum NoteDomainType {
 
 export type OAuthClient = OAuthClientNew & {
     identifier: string;
+    logoUrl?: string | null;
+};
+
+export type OAuthClientCreated = OAuthClient & {
+    /**
+     * Generated client secret. It is only returned when the client is created.
+     */
+    readonly clientSecret: string;
 };
 
 export type OAuthClientNew = {
-    isConfidential: boolean;
+    isConfidential?: boolean;
     name: string;
     redirectUri: string;
 };
@@ -4383,14 +6080,310 @@ export enum OrderStatus {
 }
 
 export type Permission = {
-    authId?: number;
-    dataId?: number | null;
-    domainId?: number;
-    domainType?: 'status' | 'group_type_role' | 'group_role' | 'person';
+    /**
+     * Numeric permission key from the internal authorization table
+     */
+    authId: number;
+    /**
+     * Optional permission data ID, or null for unrestricted data access
+     */
+    dataId: number | null;
+    /**
+     * ID of the object the permission belongs to
+     */
+    domainId: number;
+    /**
+     * Permission domain type
+     */
+    domainType: 'status' | 'group_type_role' | 'group_role' | 'person' | 'group_type' | 'group';
+    /**
+     * Whether the permission is inherited to subordinate objects
+     */
+    isInherited: boolean;
+    meta: MetaModified;
+    /**
+     * Optional reason why this permission was assigned
+     */
+    reason: string | null;
+    /**
+     * Whether the permission grants or revokes access
+     */
+    type: 'grant' | 'revoke';
+};
+
+export type PermissionAssignmentGroup = {
+    /**
+     * Group whose role grants the permission
+     */
+    groupId: number;
+    /**
+     * Group role IDs contributing to this assignment
+     */
+    groupRoleIds: Array<number>;
+    /**
+     * Number of distinct non-archived persons reached by this assignment
+     */
+    personCount: number;
+};
+
+export type PermissionAssignmentGroupType = {
+    /**
+     * Group type whose roles grant the permission
+     */
+    groupTypeId: number;
+    /**
+     * Group type role IDs contributing to this assignment
+     */
+    groupTypeRoleIds: Array<number>;
+    /**
+     * Number of distinct non-archived persons reached by this assignment
+     */
+    personCount: number;
+};
+
+export type PermissionAssignmentPerson = {
+    /**
+     * Person with a direct permission assignment
+     */
+    personId: number;
+};
+
+export type PermissionAssignmentStatus = {
+    /**
+     * Number of distinct non-archived persons reached by this assignment
+     */
+    personCount: number;
+    /**
+     * Person status granting the permission
+     */
+    statusId: number;
+};
+
+export type PermissionAssignmentSummary = {
+    assignments: {
+        groupTypes: Array<PermissionAssignmentGroupType>;
+        groups: Array<PermissionAssignmentGroup>;
+        persons: Array<PermissionAssignmentPerson>;
+        statuses: Array<PermissionAssignmentStatus>;
+    };
+    /**
+     * Numeric permission key
+     */
+    authId: number;
+    /**
+     * Selected permission value, or null for boolean permissions
+     */
+    dataId: number | null;
+    /**
+     * Total number of distinct non-archived persons with the effective permission
+     */
+    effectivePersonCount: number;
+};
+
+export type PermissionDefinition = {
+    /**
+     * Domain types to which this permission may be assigned
+     */
+    assignmentDomains: Array<'status' | 'group_type_role' | 'group_role' | 'person'>;
+    /**
+     * Numeric permission key
+     */
+    authId: number;
+    /**
+     * Translated description of the permission
+     */
+    description: string;
+    /**
+     * Permission key within its module
+     */
+    key: string;
+    /**
+     * Translated display name
+     */
+    name: string;
+    selections: Array<PermissionDefinitionSelection>;
+    /**
+     * How values from several assignments are combined
+     */
+    valueType: 'boolean' | 'multiple' | 'maximum';
+};
+
+export type PermissionDefinitionModule = {
+    /**
+     * Technical module key
+     */
+    key: string;
+    /**
+     * Translated module name
+     */
+    name: string;
+    permissions: Array<PermissionDefinition>;
+};
+
+export type PermissionDefinitionSelection = {
+    /**
+     * Selection ID; -1 represents unrestricted access to all current and future values
+     */
+    dataId: number;
+    kind: 'all' | 'value';
+    /**
+     * Translated selection name
+     */
+    name: string;
+};
+
+/**
+ * One source that contributes to a permission of a person. Which ID properties are present depends on `type`: `person` has `personId`, `status` has `statusId`, `groupRole` has `groupId`, `groupRoleId`, `groupTypeRoleId` and `inherited`, `groupTypeRole` has `groupId`, `groupTypeId`, `groupTypeRoleId` and `inherited`. `loggedIn` (base permissions every logged in person has), `superAdmin` and `publicUser` have no ID properties.
+ */
+export type PermissionOrigin = {
+    /**
+     * Group of the membership that grants the permission. For inherited permissions this is the superior group, not the target group.
+     */
+    groupId?: number;
+    /**
+     * ID of the group role (`cdb_group_role`) that grants the permission
+     */
+    groupRoleId?: number;
+    /**
+     * ID of the group type whose role grants the permission
+     */
+    groupTypeId?: number;
+    /**
+     * ID of the group type role of the membership
+     */
+    groupTypeRoleId?: number;
+    /**
+     * Whether the permission reaches the target group through inheritance from a superior group
+     */
+    inherited?: boolean;
+    /**
+     * ID of the person the permission is set on directly
+     */
+    personId?: number;
+    /**
+     * If set, this group type role permission is revoked by the group role with this ID and does not contribute to the effective value
+     */
+    revokedByGroupRoleId: number | null;
+    /**
+     * ID of the person status that grants the permission
+     */
+    statusId?: number;
+    /**
+     * Kind of source the permission comes from
+     */
+    type: 'loggedIn' | 'superAdmin' | 'publicUser' | 'person' | 'status' | 'groupRole' | 'groupTypeRole';
+    /**
+     * Value this source contributes: `true` for simple permissions, a number for level permissions (e.g. security levels) or a list of IDs for data permissions
+     */
+    value: boolean | number | Array<number>;
+};
+
+export type PermissionPersonSelection = {
+    /**
+     * Permission selection value, or null for permissions without selection values
+     */
+    dataId: number | null;
+    /**
+     * Sorted IDs of all non-archived persons for whom the permission is effective
+     */
+    personIds: Array<number>;
+    /**
+     * Present when `include=origins` is requested
+     */
+    persons?: Array<PermissionPersonWithOrigins>;
+};
+
+export type PermissionPersonSummaryEntry = {
+    /**
+     * Numeric permission key from the internal authorization table
+     */
+    authId: number;
+    selections: Array<PermissionPersonSummarySelection>;
+};
+
+export type PermissionPersonSummarySelection = {
+    /**
+     * Permission selection value, or null for permissions without selection values
+     */
+    dataId: number | null;
+    /**
+     * Number of non-archived persons for whom the permission is effective
+     */
+    personCount: number;
+    /**
+     * Up to three sorted person IDs for an overview preview
+     */
+    previewPersonIds: Array<number>;
+};
+
+export type PermissionPersonWithOrigins = {
+    /**
+     * Sources that contribute the requested permission selection
+     */
+    origins: Array<PermissionOrigin>;
+    personId: number;
+};
+
+export type PermissionPersons = {
+    /**
+     * Numeric permission key from the internal authorization table
+     */
+    authId: number;
+    meta?: {
+        limit: number;
+        page: number;
+        total: number;
+    };
+    /**
+     * Effective persons grouped by the requested permission selection values
+     */
+    selections: Array<PermissionPersonSelection>;
+};
+
+export type PermissionRequest = {
+    /**
+     * Numeric permission key to grant or revoke. For status, person and group_type_role domains this must be lower than 10000. Auth ID 10127 is no longer supported.
+     */
+    authId: number;
+    /**
+     * Optional permission data IDs. Omit for unrestricted data access.
+     */
+    dataId?: Array<number>;
+    /**
+     * Whether the permission is inherited. Only group_role and group_type_role permissions may be inherited.
+     */
     isInherited?: boolean;
-    meta?: MetaDataModifiedId;
-    reason?: string | null;
+    /**
+     * Optional reason why this permission is assigned
+     */
+    reason?: string;
+    /**
+     * Whether to grant or revoke this permission. Revoked permissions are only supported for group_role permissions.
+     */
     type?: 'grant' | 'revoke';
+};
+
+/**
+ * An effective permission of a person together with all its sources
+ */
+export type PermissionWithOrigins = {
+    /**
+     * Permission key within the module. Group internal permissions start with `+`.
+     */
+    auth: string;
+    /**
+     * Numeric permission key from the internal authorization table
+     */
+    authId: number;
+    /**
+     * Effective value of the permission after merging all sources: `true` for simple permissions, the maximum for level permissions or the union of all IDs for data permissions
+     */
+    effectiveValue: boolean | number | Array<number>;
+    /**
+     * Module the permission belongs to
+     */
+    module: string;
+    origins: Array<PermissionOrigin>;
 };
 
 /**
@@ -4402,7 +6395,7 @@ export type Person = {
     /**
      * This computed field contains the age of this person if the date of birth is visible. If this person already dead, the age is calculated until the date of death.
      */
-    age?: number;
+    age?: number | null;
     baptisedBy?: string;
     birthName?: string;
     birthday?: DateStringNullable;
@@ -4416,8 +6409,8 @@ export type Person = {
     dateOfBaptism?: DateStringNullable;
     dateOfBelonging?: DateStringNullable;
     dateOfDeath?: DateStringNullable;
-    dateOfEntry?: DateTimeStringNullable;
-    dateOfResign?: DateTimeStringNullable;
+    dateOfEntry?: DateStringNullable;
+    dateOfResign?: DateStringNullable;
     /**
      * List of department IDs
      */
@@ -4438,9 +6431,9 @@ export type Person = {
     familyImageUrl?: string | null;
     familyStatusId?: number | null;
     fax?: string;
-    firstContact?: DateTimeStringNullable;
+    firstContact?: DateStringNullable;
     firstName?: string;
-    growPathId?: number;
+    growPathId?: number | null;
     guid: string;
     id: number;
     imageUrl?: string | null;
@@ -4493,6 +6486,7 @@ export type Person = {
     title?: string;
     weddingDate?: DateStringNullable;
     zip?: string;
+    [key: string]: unknown;
 };
 
 export type PersonDuplicate = {
@@ -4503,7 +6497,7 @@ export type PersonDuplicate = {
     p2: {
         id: number;
     };
-    relationshipId?: string;
+    relationshipId?: number;
 };
 
 /**
@@ -4519,23 +6513,88 @@ export type PersonEmail = {
 };
 
 export type PersonMasterData = {
-    ageGroups?: Array<AgeGroup>;
-    campuses?: Array<Campus>;
-    commentViewers?: Array<CommentViewer>;
-    contactLabels?: Array<ContactLabel>;
-    departments?: Array<Department>;
-    followUpIntervals?: Array<FollowUpInterval>;
-    followUps?: Array<FollowUp>;
-    groupCategories?: Array<GroupCategory>;
-    groupMeetingTemplates?: Array<MeetingTemplate>;
-    groupStatuses?: Array<GroupStatus>;
-    groupTypes?: Array<GroupType>;
-    growPaths?: Array<GrowPath>;
-    relationshipTypes?: Array<RelationshipType>;
-    roles?: Array<Role>;
-    sexes?: Array<Sex>;
-    statuses?: Array<Status>;
-    targetGroups?: Array<TargetGroup>;
+    ageGroups: Array<AgeGroup>;
+    campuses: Array<Campus>;
+    commentViewers: Array<CommentViewer>;
+    contactLabels: Array<ContactLabel>;
+    departments: Array<Department>;
+    groupCategories: Array<GroupCategory>;
+    groupMeetingTemplates: Array<MeetingTemplate>;
+    groupStatuses: Array<GroupStatus>;
+    groupTypes: Array<GroupType>;
+    growPaths: Array<GrowPath>;
+    relationshipTypes: Array<RelationshipType>;
+    roles: Array<Role>;
+    sexes: Array<Sex>;
+    statuses: Array<Status>;
+    targetGroups: Array<TargetGroup>;
+};
+
+export type PersonMergeGroupDiff = {
+    groupMemberStatus: MemberStatus;
+    /**
+     * ID of the group
+     */
+    id: number;
+    /**
+     * Name of the member role
+     */
+    role: string;
+    /**
+     * ID of the member role
+     */
+    roleId: number;
+    /**
+     * Name of the group
+     */
+    title: string;
+    /**
+     * Name of the group type
+     */
+    type: string;
+};
+
+export type PersonMergeGroupsDiff = {
+    /**
+     * IDs of groups in which both persons are members
+     */
+    both: Array<number>;
+    /**
+     * Groups in which the duplicate person is involved
+     */
+    new: Array<PersonMergeGroupDiff>;
+    /**
+     * Groups in which the original person is involved
+     */
+    old: Array<PersonMergeGroupDiff>;
+};
+
+export type PersonMergeInfo = {
+    groupsDiff: PersonMergeGroupsDiff;
+    personDiff: Array<PersonMergePersonDiff>;
+};
+
+export type PersonMergePersonDiff = {
+    /**
+     * Translation key of the person field
+     */
+    key: string;
+    /**
+     * Name of the person field
+     */
+    name: string;
+    /**
+     * Value from the duplicate person
+     */
+    new: unknown;
+    /**
+     * Value from the original person
+     */
+    old: unknown;
+    /**
+     * Whether the difference should be included in change logs
+     */
+    printDiff: boolean;
 };
 
 export type PersonPostStatistics = {
@@ -4606,7 +6665,6 @@ export type PersonProperties = {
     invitationStatus: InvitationStatus;
     isArchived: boolean;
     isDead: boolean;
-    isSamlUser: boolean;
 };
 
 /**
@@ -4638,8 +6696,8 @@ export type PersonRelationship = {
  * Piece of meta information about a person, like is this person using two factor authentication or does she want service remind mails.
  */
 export type PersonSetting = {
-    attribute?: string;
-    module?:
+    attribute: string;
+    module:
         | 'churchcore'
         | 'churchdb'
         | 'finance'
@@ -4773,19 +6831,96 @@ export type PlaceCreate = {
     street?: string | null;
 };
 
+/**
+ * Entry in a recursive placeholder menu. Items with `items` are menu groups; items with `placeholder` and `label` are selectable placeholders.
+ */
+export type PlaceholderItem = {
+    /**
+     * Nested placeholder menu entries. Entries have the same shape as PlaceholderItem, but are documented without a recursive $ref because some OpenAPI tooling cannot resolve recursive schemas.
+     */
+    items?: Array<{
+        /**
+         * Further nested placeholder menu entries.
+         */
+        items?: Array<{
+            [key: string]: unknown;
+        }>;
+        /**
+         * Translated label shown for a selectable placeholder
+         */
+        label?: string;
+        /**
+         * Optional shorter label shown in nested placeholder menus
+         */
+        menuLabel?: string;
+        /**
+         * Translated name of a placeholder menu group
+         */
+        name?: string;
+        /**
+         * Placeholder expression to insert into a template
+         */
+        placeholder?: string;
+        [key: string]: unknown;
+    }>;
+    /**
+     * Translated label shown for a selectable placeholder
+     */
+    label?: string;
+    /**
+     * Optional shorter label shown in nested placeholder menus
+     */
+    menuLabel?: string;
+    /**
+     * Translated name of a placeholder menu group
+     */
+    name?: string;
+    /**
+     * Placeholder expression to insert into a template
+     */
+    placeholder?: string;
+};
+
+export type PollForNewsMeta = {
+    count?: number;
+    lastPollDate?: ZuluDate;
+};
+
+export type PollForNewsResult = {
+    domainId: number;
+    domainType:
+        | 'agenda'
+        | 'agenda_item'
+        | 'appointment'
+        | 'booking'
+        | 'calendar'
+        | 'event'
+        | 'event_service'
+        | 'follow_up'
+        | 'group'
+        | 'group_meeting'
+        | 'person'
+        | 'resource'
+        | 'routine';
+    /**
+     * The person id of the person that changed the object
+     */
+    personId: number;
+};
+
 export type PossibleEventPerson = {
     absences: Array<Absence>;
     connectedGroups: Array<DomainObjectGroup>;
     lastService: {
         event: DomainObjectEvent;
-        eventService: ServiceOfPerson;
+        eventService: EventService;
     } | null;
     monthlyUtilization: {
         [key: string]: number;
     };
     nextService: {
         event: DomainObjectEvent;
-        eventService: ServiceOfPerson;
+        eventService: EventService;
     } | null;
     partnerServices: boolean;
     person: DomainObjectPerson;
@@ -4808,8 +6943,9 @@ export type PossibleEventPerson = {
     serviceOnSameDay: boolean;
     servicesOnSameDay: Array<{
         event: DomainObjectEvent;
-        eventService: ServiceOfPerson;
+        eventService: EventService;
     }>;
+    servicesPreviouslyDeclined: Array<EventService>;
 };
 
 export type PossiblePostGroup = {
@@ -4824,11 +6960,20 @@ export type Post = PostBase & {
     actor: DomainObjectPerson;
     comments?: Array<PostComment>;
     commentsActive: boolean;
+    /**
+     * Person identified by expirationPid. Null when expirationPid is null or identifies the post author; otherwise populated with the person who last set or changed the expiration date.
+     */
+    expirationPerson: DomainObjectPerson | null;
+    /**
+     * ID of the person who last set or changed the expiration date.
+     */
+    expirationPid: number | null;
     group: DomainObjectGroup;
     groupVisibility: GroupVisibility;
     guid: string;
     id: number;
     images: Array<string>;
+    imagesMeta: Array<PostImageMeta>;
     instance?: {
         guid: string;
         siteName: string;
@@ -4844,8 +6989,8 @@ export type Post = PostBase & {
 
 export type PostBase = {
     content: string | null;
-    expirationDate?: ZuluDateNullable;
-    publicationDate?: ZuluDateNullable;
+    expirationDate?: string | null;
+    publicationDate?: string | null;
     title: string;
     visibility: PostVisibility;
 };
@@ -4857,6 +7002,7 @@ export type PostComment = {
     parentCommentId: number | null;
     person: DomainObjectPerson;
     postId: number;
+    reactions: Array<PostCommentReaction>;
 };
 
 export type PostCommentCreate = {
@@ -4865,10 +7011,26 @@ export type PostCommentCreate = {
     postId: number;
 };
 
+export type PostCommentReaction = {
+    commentId: number;
+    emoji: string;
+    meta: MetaDataEntityId;
+    person: DomainObjectPerson | null;
+};
+
+export type PostCommentReactionCreate = {
+    emoji: string;
+};
+
 export type PostCreate = PostBase & {
     commentsActive?: boolean;
     groupId: number;
     imageIds?: Array<number>;
+};
+
+export type PostImageMeta = {
+    aspectRatio: number | null;
+    imageUrl: string;
 };
 
 export type PostLinking = {
@@ -4891,9 +7053,9 @@ export type PostReaction = {
 export type PostUpdate = {
     commentsActive?: boolean;
     content?: string | null;
-    expirationDate?: ZuluDateNullable;
+    expirationDate?: string | null;
     imageIds?: Array<number>;
-    publicationDate?: ZuluDateNullable;
+    publicationDate?: string | null;
     title?: string;
     visibility?: PostVisibility;
 };
@@ -4909,10 +7071,20 @@ export enum PostVisibility {
  * A printer designated to print check-in codes
  */
 export type Printer = {
-    id?: number;
-    location?: string;
-    meta?: MetaDataEntityId;
-    title?: string;
+    /**
+     * Whether this printer is active and available for check-in printing.
+     */
+    active: boolean;
+    id: number;
+    /**
+     * Human-readable location of the printer.
+     */
+    location: string;
+    meta: MetaDataEntityId;
+    /**
+     * Human-readable printer name.
+     */
+    title: string;
 };
 
 export type PrivacyOwner = {
@@ -4965,7 +7137,10 @@ export type PrivacyRelation = {
  * Profiles are representing campuses and the church itself.
  */
 export type Profile = {
-    address: Address;
+    '@deprecated'?: {
+        [key: string]: string;
+    };
+    address: Address | null;
     /**
      * Will be the same for all profiles.
      */
@@ -4985,6 +7160,10 @@ export type Profile = {
     guid: string;
     id: number;
     isPublished: boolean;
+    /**
+     * Indicates whether registration is currently available for this profile. Only present when registration is active.
+     */
+    isRegistrationOpen?: boolean;
     logo: DomainObjectFile | null;
     meta: MetaDataEntityId;
     name: string;
@@ -4994,11 +7173,17 @@ export type Profile = {
      * church: Church profile for this installation; campus: one specific campus profile
      */
     profileType: 'church' | 'campus';
+    /**
+     * Use `serviceBanner_new` instead.
+     *
+     * @deprecated
+     */
+    serviceBanner?: string | null;
     serviceBanner_new: DomainObjectFile | null;
     services: Array<{
         day: number;
-        note: string;
-        repetition: string;
+        note: string | null;
+        repetition: 'weekly' | 'biweekly' | 'every_third_week' | 'every_fourth_week' | 'monthly';
         time: string;
     }> | null;
     shortName: string | null;
@@ -5014,9 +7199,9 @@ export type Profile = {
     };
     sortKey: number;
     tags: Array<{
-        key?: string | null;
-        name?: string | null;
-        nameTranslated?: string | null;
+        key: string;
+        name: string;
+        nameTranslated: string;
     }>;
     team: Array<{
         note: string;
@@ -5028,87 +7213,101 @@ export type Profile = {
     website: string | null;
 };
 
-export type ProfileUpdate = {
-    address: Address;
-    associationId: number;
+export type ProfileAddressUpdate = {
+    addition?: string | null;
+    city?: string | null;
+    country?: string | null;
+    district?: string | null;
+    latitude?: number | string | null;
+    longitude?: number | string | null;
     /**
-     * Either exact string or denomination object with name property
+     * Alias for `name` in the API request.
      */
-    denomination:
+    meetingAt?: string | null;
+    name?: string | null;
+    street?: string | null;
+    zip?: string | null;
+};
+
+export type ProfileNew = {
+    address?: ProfileAddressUpdate | null;
+    associationId?: number | null;
+    /**
+     * Either exact denomination key or denomination object with name property.
+     */
+    denomination?:
         | 'denomination.none'
         | 'denomination.protestant'
         | 'denomination.free.evangelical'
         | 'denomination.catholic'
         | 'denomination.ecumenical'
-        | 'denomination.orthodox';
-    description: string;
-    email: string;
+        | 'denomination.orthodox'
+        | {
+              name:
+                  | 'denomination.none'
+                  | 'denomination.protestant'
+                  | 'denomination.free.evangelical'
+                  | 'denomination.catholic'
+                  | 'denomination.ecumenical'
+                  | 'denomination.orthodox';
+          };
+    description?: string | null;
+    email?: string | null;
     /**
-     * Either array of group IDs or array of objects with group-property, which is a domain object wiht 'domainIdentifier'
+     * List of group IDs shown on the profile.
      */
-    groups: Array<
-        (
-            | {
-                  [key: string]: unknown;
-              }
-            | number
-        ) & {
-            group?: {
-                domainIdentifier: string;
-            };
-        }
-    >;
-    isPublished: boolean;
+    groups?: Array<number>;
+    isPublished?: boolean;
     name: string;
-    phone: string;
-    services: Array<{
+    phone?: string | null;
+    services?: Array<{
         day: number;
-        note: string;
-        repetition: string;
+        note?: string | null;
+        repetition: 'weekly' | 'biweekly' | 'every_third_week' | 'every_fourth_week' | 'monthly';
         time: string;
     }>;
-    shortName: string;
-    shorty: string;
-    signUpGroup: (
-        | {
-              [key: string]: unknown;
-          }
-        | number
-    ) & {
-        domainAttributes: {
-            note: string;
-        };
-        domainIdentifier: string;
-    };
-    slug: string;
+    shortName?: string | null;
+    shorty?: string;
+    /**
+     * Group ID used for profile sign-up or null to disable sign-up.
+     */
+    signUpGroupId?: number | null;
+    slug?: string | null;
     /**
      * Key-Value Pair, where key is the name of the network and value is the absolute link
      */
-    socialMedia: {
-        socialNetworkName: string;
+    socialMedia?: {
+        [key: string]: string;
     };
-    sortKey: number;
+    sortKey?: number;
     /**
      * List of tags.
      */
-    tags: Array<string>;
-    team: Array<{
-        note: string;
+    tags?: Array<string>;
+    team?: Array<{
+        note?: string;
         /**
          * DomainObject
          */
         person?: {
-            domainIdentifier: string;
+            domainIdentifier: number;
         };
-        personId?: number;
-        sortKey: number;
+        personId: number;
+        sortKey?: number;
     }>;
-    teamTitle: string;
+    teamTitle?: string | null;
     /**
      * Single integer, which represents a range.
      */
-    visitors: 0 | 1 | 50 | 100 | 250 | 500 | 1000;
-    website: string;
+    visitors?: 0 | 1 | 50 | 100 | 250 | 500 | 1000;
+    website?: string | null;
+};
+
+export type ProfileUpdate = ProfileNew & {
+    /**
+     * Campus profile ID. For `/profiles/church`, this is ignored.
+     */
+    id?: number;
 };
 
 /**
@@ -5149,18 +7348,28 @@ export type PublicGroup = {
          * List of target age groups for this group.
          */
         ageGroups?: Array<AgeGroup>;
-        campus?: Campus;
-        dateOfFoundation?: ZuluDate;
-        groupCategory?: GroupCategory;
+        campus?: Campus | null;
+        /**
+         * Color key used for displaying the group.
+         */
+        color?: string | null;
+        dateOfFoundation?: ZuluDate | null;
+        groupCategory?: GroupCategory | null;
         /**
          * List of the group's meeting places. Only returned if the group homepage is set to display a map.
          */
-        groupPlaces?: Array<Place>;
+        groupPlaces?: Array<{
+            [key: string]: unknown;
+        }>;
         groupStatusId?: number;
+        /**
+         * Annotation text for the group image if provided.
+         */
+        imageAnnotation?: string | null;
         /**
          * URL to a group image if provided.
          */
-        imageUrl?: string;
+        imageUrl?: string | null;
         /**
          * List of person objects of all group leaders if the group is set to display leaders.
          */
@@ -5168,12 +7377,12 @@ export type PublicGroup = {
         /**
          * Free text field when group meetings take place.
          */
-        meetingTime?: string;
+        meetingTime?: string | null;
         /**
          * The group description.
          */
         note?: string;
-        targetGroup?: TargetGroup;
+        targetGroup?: TargetGroup | null;
         /**
          * Week day when group meetings take place.
          */
@@ -5182,24 +7391,36 @@ export type PublicGroup = {
             name?: string;
             nameTranslated?: string;
             sortKey?: number;
-        };
+        } | null;
     };
     /**
      * Maximum number of members until the group is considered as full.
      */
-    maxMemberCount: number;
+    maxMemberCount: number | null;
     /**
      * Name of the group, e.g. to be displayed as title.
      */
     name: string;
     /**
-     * Number of member requests
+     * Use `requestedSeatsCount` instead.
+     *
+     * @deprecated
      */
     requestedPlacesCount: number;
     /**
-     * Number of member requests with waiting list position
+     * Number of requested seats
+     */
+    requestedSeatsCount: number;
+    /**
+     * Use `requestedWaitinglistSeatsCount` instead.
+     *
+     * @deprecated
      */
     requestedWaitinglistPlacesCount: number;
+    /**
+     * Number of requested seats with waiting list position
+     */
+    requestedWaitinglistSeatsCount: number;
     settings: {
         allowChildRegistration?: boolean;
         allowOtherRegistration?: boolean;
@@ -5208,18 +7429,32 @@ export type PublicGroup = {
         hideContactLeader?: boolean;
         hideLogin?: boolean;
         showStreet?: boolean;
-        signUpNotificationSent?: boolean;
+        signUpEmailRequiredForAll?: boolean;
+        signUpNotificationSent?: string | null;
+        /**
+         * Require anonymous users to verify their email address before accessing the group sign up form.
+         */
+        verifyEmailAddress?: boolean;
     };
     showPublicCannotViewGroup?: boolean;
     /**
      * Specifies conditions required to sign up in this group. Not all conditions apply to any user, e.g. some of the conditions only apply to users that are not logged in.
      */
     signUpConditions: {
+        '@deprecated': {
+            [key: string]: string;
+        };
+        atLeastOneLeaderCanCreateNewPerson: boolean;
         /**
          * If false, none of the group's leaders have an email address set. Only persons already signed in can sign up.
          */
         canContactLeader: boolean;
-        defaultRoleSetInGroup?: boolean;
+        canSignUp: boolean;
+        canSignUpAsNewPerson: boolean;
+        /**
+         * @deprecated
+         */
+        defaultRoleSetInGroup: boolean;
         /**
          * If false, the group's end date has passed and nobody can sign up.
          */
@@ -5251,7 +7486,7 @@ export type PublicGroup = {
          * If false, the group is not public and only users already signed in are allowed to sign up.
          */
         groupIsPublic: boolean;
-        groupVisibility?: GroupVisibility;
+        groupVisibility: GroupVisibility;
         /**
          * If false, the default department for new users is not set. When persons without an account attempt to sign up, no new user accounts will be created but the group leader will be requested by mail.
          */
@@ -5267,7 +7502,11 @@ export type PublicGroup = {
         /**
          * If false, the standard role and requester role are not set for the group and nobody can sign up.
          */
-        rolesSetInGroup: boolean;
+        rolesSetInGroup?: boolean;
+        /**
+         * If false, the sign-up role is not set for the group and nobody can sign up when that role is required.
+         */
+        signUpRoleSetInGroup: boolean;
     };
     /**
      * Text which can be displayed as a headline for the sign up section
@@ -5286,7 +7525,7 @@ export type PublicGroup = {
     /**
      * Maximum number of persons on the waiting list.
      */
-    waitinglistMaxPersons?: number;
+    waitinglistMaxPersons?: number | null;
 };
 
 export type PublicGroupFormResult = {
@@ -5319,6 +7558,10 @@ export type PublicGroupFormResult = {
          * The field's internal name. Not intended to be displayed.
          */
         name: string;
+        /**
+         * A note for the user filling out the form, e.g. to explain why certain information is required.
+         */
+        note?: string;
         /**
          * Provides the set of allowed options for select fields.
          */
@@ -5361,6 +7604,10 @@ export type PublicGroupFormResult = {
         hasAcceptedPrivacy?: boolean;
         person: DomainObjectPerson;
         /**
+         * Relation of this sign-up person to the requester.
+         */
+        relationType?: 'spouse' | 'child' | 'other' | null;
+        /**
          * Specifies whether this person is already in the group (IN_GROUP), in pending state for the group (REQUESTED), or selected by the user to be added into the group (CLICKED). Otherwise NOT_CLICKED.
          */
         status: string;
@@ -5383,22 +7630,255 @@ export type PublicGroupSignoutData = {
 };
 
 export type PublicRelationGroupHomepage = {
+    /**
+     * Absolute public URL of the group homepage.
+     */
     groupHomepageUrl: string;
+    /**
+     * ID of the group that owns the public group homepage.
+     */
     groupId: number;
 };
 
 export type PublicRelationTag = {
-    key: string;
-    name: string;
+    /**
+     * Technical enum case name used by ChurchTools.
+     */
+    key:
+        | 'ACTIVE'
+        | 'BIBLICALLY_DEVOTED'
+        | 'CHARISMATIC'
+        | 'PERSONAL'
+        | 'INTERNATIONAL'
+        | 'CHILD_FRIENDLY'
+        | 'CLASSICAL'
+        | 'CONTEMPLATIVE'
+        | 'LIVELY'
+        | 'MISSIONARY'
+        | 'MODERN'
+        | 'OPEN_TO_GUESTS'
+        | 'PROGRESSIVE'
+        | 'TRADITIONAL';
+    /**
+     * Translation key of the public relation profile tag.
+     */
+    name:
+        | 'active'
+        | 'biblically.devoted'
+        | 'charismatic'
+        | 'personal'
+        | 'international'
+        | 'child.friendly'
+        | 'classical'
+        | 'contemplative'
+        | 'lively'
+        | 'missionary'
+        | 'modern'
+        | 'open.to.guests'
+        | 'progressive'
+        | 'traditional';
+    /**
+     * Localized public relation profile tag name.
+     */
     nameTranslated: string;
 };
 
+/**
+ * Master data used by the public relations and public profile UI.
+ */
 export type PublicRelationsMasterData = {
+    /**
+     * Associations that can be assigned to a public profile.
+     */
     associations: Array<Association>;
+    /**
+     * Denominations that can be assigned to a public profile.
+     */
     denominations: Array<Denomination>;
+    /**
+     * Public group homepages with their owning group IDs and URLs.
+     */
     groupHomepages: Array<PublicRelationGroupHomepage>;
-    socialMedia: Array<string>;
+    /**
+     * Supported social media channels for public profile links.
+     */
+    socialMedia: Array<
+        | 'Facebook'
+        | 'Instagram'
+        | 'Pinterest'
+        | 'Spotify'
+        | 'Soundcloud'
+        | 'Snapchat'
+        | 'Telegram'
+        | 'TikTok'
+        | 'Twitter'
+        | 'Vimeo'
+        | 'WhatsApp'
+        | 'YouTube'
+    >;
+    /**
+     * Tags that can describe a public profile.
+     */
     tags: Array<PublicRelationTag>;
+};
+
+export type PutConfigRequest = {
+    accept_datasecurity?: boolean;
+    access_control_allow_origins?: string;
+    admin_mail?: string;
+    admin_message?: string;
+    ai_description_available_generation_tests?: number;
+    ai_description_generation_count?: number;
+    ai_description_generation_enabled?: boolean;
+    allowaiassistant?: boolean;
+    authorized_persons?: string;
+    ccli_auto_reporting_enabled?: boolean;
+    churchcal_active?: boolean;
+    churchcal_css?: string;
+    churchcal_entries_last_days?: number;
+    churchcal_firstdayinweek?: number;
+    churchcal_maincalname?: string;
+    churchcal_name?: string;
+    churchcal_sortcode?: number;
+    churchchat_allow_event_chat?: boolean;
+    churchchat_allow_group_chat?: boolean;
+    churchchat_allow_person_chat?: boolean;
+    churchchat_delete_event_chat_after_x_days?: number;
+    churchchat_invite_ct_event_chat?: boolean;
+    churchchat_invite_ct_group_chat?: boolean;
+    churchchat_start_event_chat_before_x_days?: number;
+    /**
+     * A stringified array of calendar ids
+     */
+    churchchat_start_event_chat_for_calendars?: string;
+    churchcheckin_active?: boolean;
+    churchcheckin_label_child?: string;
+    churchcheckin_label_parent?: string;
+    churchcheckin_label_standard?: string;
+    churchcheckin_name?: string;
+    churchcheckin_sortcode?: number;
+    churchcheckin_tags?: string;
+    churchdb_active?: boolean;
+    churchdb_archivedeletehistory?: boolean;
+    churchdb_birthdaylist_station?: string;
+    churchdb_birthdaylist_status?: string;
+    churchdb_cleverreach_connected?: 'false' | 'true';
+    churchdb_emailseparator?: string;
+    churchdb_groupnotchoosable?: number;
+    churchdb_home_lat?: string;
+    churchdb_home_lng?: string;
+    churchdb_mailchimp_apikey?: string;
+    churchdb_mailchimp_connected?: boolean;
+    churchdb_mailjet_apikey?: string;
+    churchdb_mailjet_apisecret?: string;
+    churchdb_mailjet_connected?: boolean;
+    churchdb_memberlist_station?: string;
+    churchdb_memberlist_status?: string;
+    churchdb_name?: string;
+    churchdb_sendgroupmails?: boolean;
+    churchdb_smscmtelecom_apikey?: string;
+    churchdb_sortcode?: number;
+    churchfinance_active?: boolean;
+    churchfinance_name?: string;
+    churchfinance_sortcode?: number;
+    churchgroup_active?: boolean;
+    churchgroup_name?: string;
+    churchgroup_sortcode?: number;
+    churchreport_active?: boolean;
+    churchreport_name?: string;
+    churchreport_sortcode?: number;
+    churchresource_active?: boolean;
+    churchresource_anonymize_for_public_user?: boolean;
+    churchresource_entries_last_days?: number;
+    churchresource_name?: string;
+    churchresource_send_emails?: boolean;
+    churchresource_sortcode?: number;
+    churchservice_active?: boolean;
+    churchservice_agendashowenumeration?: boolean;
+    churchservice_ccli_token?: string;
+    churchservice_ccli_token_secret?: string;
+    churchservice_entries_last_days?: number;
+    churchservice_invite_persons?: boolean;
+    churchservice_name?: string;
+    churchservice_openservice_rememberdays?: number;
+    churchservice_reminderhours?: number;
+    churchservice_songwithcategoryasdir?: boolean;
+    churchservice_sortcode?: number;
+    churchsync_active?: boolean;
+    churchsync_name?: string;
+    churchsync_sortcode?: number;
+    churchwiki_active?: boolean;
+    churchwiki_name?: string;
+    churchwiki_sortcode?: number;
+    cronjob_delay?: number;
+    data_privacy_text?: string;
+    datasecurity_banner_enabled?: boolean;
+    /**
+     * Only in extended config
+     */
+    datasecurity_privacy_agreement_text?: string;
+    /**
+     * Only in extended config
+     */
+    datasecurity_privacy_agreement_text_for_children?: string;
+    deactivate_default_login?: boolean;
+    emailServer?: 'own' | 'churchtools';
+    evangelische_termine_api_key?: string;
+    evangelische_termine_enabled?: boolean;
+    evangelische_termine_name?: string;
+    evangelische_termine_url?: string;
+    evangelische_termine_vid?: string;
+    feature_sessionless_login?: boolean;
+    hide_licensetab?: string;
+    impressum_external?: string;
+    impressum_external_link?: string;
+    impressum_internal?: BooleanString;
+    invite_email_text?: string;
+    is_churchtools_blog_widget_active?: boolean;
+    is_churchtools_onboarding_widget_active?: boolean;
+    is_pr_widget_active?: boolean;
+    is_rss_widget_active?: boolean;
+    ldap_otp_enabled?: boolean;
+    login_message?: string;
+    mail_enabled?: boolean;
+    mail_smtp_args_host?: string;
+    mail_smtp_args_password?: string;
+    mail_smtp_args_port?: string;
+    mail_smtp_args_smtpsecure?: string;
+    mail_smtp_args_username?: string;
+    matomo_uri?: string;
+    max_uploadfile_size_kb?: number;
+    post_active?: boolean;
+    post_edit_time_limited?: boolean;
+    post_email_summary_default_enabled?: boolean;
+    post_email_summary_default_filter?: 'all' | 'my_groups' | 'featured_groups';
+    post_email_summary_default_weekdays?: string;
+    post_featured_groups?: string;
+    post_inmenu?: boolean;
+    post_name?: string;
+    post_sortcode?: number;
+    post_wizard_completed?: boolean;
+    post_wizard_groups?: string;
+    prevent_export?: boolean;
+    privacy_policy_external?: boolean;
+    privacy_policy_external_link?: string;
+    privacy_policy_fields_mandatory?: boolean;
+    privacy_policy_fields_mandatory_api?: boolean;
+    privacy_policy_internal?: boolean;
+    rss_widget_link?: string;
+    send_data_security_mails?: boolean;
+    show_remember_me?: boolean;
+    site_licensekey?: string;
+    site_logo?: string;
+    site_mail?: string;
+    site_name?: string;
+    site_offline?: boolean;
+    site_region?: string;
+    site_startpage?: string;
+    'support-user-active-since'?: ZuluDate;
+    timezone?: string;
+    welcome?: string;
+    welcome_subtext?: string;
 };
 
 export type Registration = {
@@ -5414,12 +7894,13 @@ export type Registration = {
         };
         hasPassword: boolean;
     }>;
+    redirectAfterRegistration: string | null;
 };
 
 export type RegistrationConfig = {
     blacklist: Array<string>;
     campuses: Array<{
-        campus: Campus;
+        campus: Profile;
         campusId: number;
         groupIds: Array<number>;
     }>;
@@ -5464,17 +7945,43 @@ export type RegistrationConfigCreate = {
     tagsForNewPersons: Array<string>;
 };
 
-export type RelationshipType = {
-    degreeNameA: string;
-    degreeNameB: string;
-    exportTitle?: string;
+export type RelationshipType = RelationshipTypeCreate & {
+    degreeNameATranslated: string;
+    degreeNameBTranslated: string;
     functionKeys?: Array<'noduplicate' | 'nodelete' | 'openduplicate'>;
     id: number;
-    includeInExport: boolean;
-    name: string;
     nameTranslated: string;
+};
+
+export type RelationshipTypeCreate = {
+    /**
+     * Name of degree A (e.g. Parent)
+     */
+    degreeNameA: string;
+    /**
+     * Name of degree B (e.g. Child)
+     */
+    degreeNameB: string;
+    /**
+     * Title for export
+     */
+    exportTitle?: string | null;
+    /**
+     * Include in export
+     */
+    includeInExport?: boolean;
+    /**
+     * Name of relationship type
+     */
+    name?: string | null;
+    /**
+     * Security level ID
+     */
     securityLevelId: number;
-    sortKey: number;
+    /**
+     * Sort key for ordering
+     */
+    sortKey?: number;
 };
 
 export type Report = {
@@ -5519,7 +8026,7 @@ export type ReportObjectPost = ReportObjectBase & {
 };
 
 export type ReportObjectPostComment = ReportObjectBase & {
-    domainObject: PostComment;
+    domainObject: ReportPostComment;
     domainType: 'post_comment';
 };
 
@@ -5530,13 +8037,32 @@ export enum ReportObjectStatus {
     DECLINED = 'declined',
 }
 
+/**
+ * Output format for the selected financial report
+ */
+export enum ReportOutputFormat {
+    CSV = 'csv',
+    PDF = 'pdf',
+    XLSX = 'xlsx',
+}
+
+export type ReportPostComment = {
+    content: string;
+    id: number;
+    meta: MetaDataEntityId;
+    parentCommentId: number | null;
+    person: DomainObjectPerson;
+    postId: number;
+    reactions: Array<PostCommentReaction>;
+};
+
 export enum ReportStatus {
     PENDING = 'pending',
     ACCEPTED = 'accepted',
     DECLINED = 'declined',
 }
 
-export type Resource = ResourceTypeCreate & {
+export type Resource = ResourceCreate & {
     /**
      * use `needsAppointment` instead
      *
@@ -5638,15 +8164,24 @@ export type RoutineCreate = {
 };
 
 export type RoutineRun = {
+    /**
+     * Current iteration while in a loop, otherwise this attribute is undefined
+     */
+    currentIteration?: number;
     domainId: number;
     domainObject?: DomainObjectGroupMembership;
     domainType: string;
     errorCode: string | null;
+    /**
+     * Can be either an error message or an translatable messageKey
+     */
+    errorMessage: string | null;
     id: number | null;
-    meta: MetaDataEntityId;
+    meta: MetaDataEntityId | null;
     routineId: number;
     routineStepId: number | null;
     status: 'failed' | 'finished' | 'not-started' | 'paused' | 'started' | 'waiting';
+    waitingSince?: DateString;
 };
 
 export type RoutineStep = RoutineStepWithoutRepeat | RoutineStepRepeat;
@@ -5659,10 +8194,10 @@ export type RoutineStepCreateAddMemberToGroup = {
      */
     actionData: {
         comment?: string;
+        fields?: unknown;
         groupId?: number;
         roleId?: number;
         status?: MemberStatus;
-        [key: string]: unknown | string | number | MemberStatus | undefined;
     };
     actionKey: 'add-member-to-group';
     isEnabled: boolean;
@@ -5680,11 +8215,15 @@ export type RoutineStepCreateCreateFollowUp = {
         continuationType: 'immediately' | 'when-completed';
         description: string | null;
         dueDate?: DateStringNullable;
-        icon?: string;
         /**
-         * Either `numDays` or `dueDate` MUST be specified.
+         * At least one of `dueDate` or `duration` MUST be specified. Within `duration`, at least one of `numDays`, `numMonths`, or `numYears` MUST be specified.
          */
-        numDays?: number;
+        duration?: {
+            numDays?: number;
+            numMonths?: number;
+            numYears?: number;
+        };
+        icon?: string;
         ownerId?: number;
         successGroupId?: number | null;
         successGroupMemberStatus?: MemberStatus | null;
@@ -5699,14 +8238,45 @@ export type RoutineStepCreateCreateFollowUp = {
 export type RoutineStepCreateEditGroupMembership = {
     actionData: {
         comment?: string;
+        fields?: unknown;
         informLeader?: boolean;
         memberEndDate?: DateStringNullable;
         memberStartDate?: DateStringNullable;
         roleId?: number;
         waitinglistPosition?: number;
-        [key: string]: unknown | string | boolean | DateStringNullable | number | undefined;
     };
     actionKey: 'edit-group-membership';
+    isEnabled: boolean;
+};
+
+export type RoutineStepCreateEditMember = {
+    /**
+     * Person fields to update, keyed by their API field key. A nullable field can be cleared by assigning null.
+     */
+    actionData: {
+        [key: string]: unknown;
+    };
+    actionKey: 'edit-member';
+    isEnabled: boolean;
+};
+
+export type RoutineStepCreateEditPerson = {
+    /**
+     * Person fields to update, keyed by their API field key. A nullable field can be cleared by assigning null.
+     */
+    actionData: {
+        [key: string]: unknown;
+    };
+    actionKey: 'edit-person';
+    isEnabled: boolean;
+};
+
+export type RoutineStepCreateEditTagsForMember = {
+    actionData: {
+        tagIds: Array<number>;
+        type: 'add' | 'remove';
+    };
+    actionKey: 'edit-tags-for-member';
     isEnabled: boolean;
 };
 
@@ -5733,7 +8303,10 @@ export type RoutineStepCreateRepeat = {
 
 export type RoutineStepCreateSendMemberMail = {
     actionData: {
+        addSignOutUrl: boolean;
+        attachmentIds?: Array<number>;
         body: string;
+        emailId?: number;
         senderId?: number;
         subject: string;
         templateId?: number;
@@ -5745,23 +8318,29 @@ export type RoutineStepCreateSendMemberMail = {
 export type RoutineStepCreateStatus = {
     actionData: null;
     actionKey:
-        | 'change-member-status-requested-waiting'
+        | 'change-member-status-active-requested'
+        | 'change-member-status-active-to_delete'
         | 'change-member-status-requested-active'
         | 'change-member-status-requested-to_delete'
-        | 'change-member-status-active-requested'
-        | 'change-member-status-active-waiting'
-        | 'change-member-status-active-to_delete'
-        | 'change-member-status-to_delete-requested'
-        | 'change-member-status-to_delete-waiting'
+        | 'change-member-status-requested-waiting'
         | 'change-member-status-to_delete-active'
+        | 'change-member-status-to_delete-requested'
         | 'change-member-status-waiting-active'
+        | 'change-member-status-waiting-requested'
         | 'change-member-status-waiting-to_delete';
     isEnabled: boolean;
 };
 
 export type RoutineStepCreateWait = {
-    actionData: {
-        numDays?: number;
+    actionData: unknown & {
+        /**
+         * At least one of `untilDate` or `duration` MUST be specified. Within `duration`, at least one of `numDays`, `numMonths`, or `numYears` MUST be specified.
+         */
+        duration?: {
+            numDays?: number;
+            numMonths?: number;
+            numYears?: number;
+        };
         untilDate?: DateString;
     };
     actionKey: 'special:wait';
@@ -5772,7 +8351,10 @@ export type RoutineStepCreateWithoutRepeat =
     | RoutineStepCreateSendMemberMail
     | RoutineStepCreateCreateFollowUp
     | RoutineStepCreateEditGroupMembership
+    | RoutineStepCreateEditMember
+    | RoutineStepCreateEditPerson
     | RoutineStepCreateAddMemberToGroup
+    | RoutineStepCreateEditTagsForMember
     | RoutineStepCreateRemoveMember
     | RoutineStepCreateWait
     | RoutineStepCreateStatus
@@ -5826,43 +8408,52 @@ export type RssFeed = {
     totalCount?: number;
 };
 
-export type SsoLogins = {
-    id: number;
-    loginLink: string;
-    name: string;
-    type: string;
+export type SamlIdpMetadataDescriptor = {
+    encryptionCertificates: Array<string>;
+    entityId: string;
+    signingCertificates: Array<string>;
+    singleLogoutServices: Array<SamlMetadataEndpoint>;
+    singleSignOnServices: Array<SamlMetadataEndpoint>;
+};
+
+export type SamlMetadataEndpoint = {
+    binding: 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect';
+    url: string;
 };
 
 export type SearchDomainObject =
     | DomainObjectAction
     | DomainObjectGroup
+    | DomainObjectAppointmentOccurrence
     | DomainObjectPerson
     | DomainObjectSong
     | DomainObjectWikiPage;
 
-/**
- * SearchResult
- */
-export type SearchResult = {
-    apiUrl?: string;
-    domainAttributes?: {
-        [key: string]: unknown;
-    };
-    domainIdentifier?: string;
-    domainType?: string;
-    frontendUrl?: string;
-    imageUrl?: string | null;
-    preview?: string | null;
-    title?: string;
+export type SecurityLevel = {
+    id: number;
+    name: string;
+    sortKey: number;
+    /**
+     * @deprecated
+     */
+    sortkey?: number;
 };
 
 export type Service = {
+    '@deprecated'?: {
+        [key: string]: string;
+    };
     allowChat: boolean;
     allowCommentOnConfirmation: boolean;
     allowControlLiveAgenda: boolean;
     allowDecline: boolean;
     allowExchange: boolean;
     calTextTemplate: string;
+    /**
+     * Use `description` instead.
+     *
+     * @deprecated
+     */
     comment: string;
     /**
      * use `allowCommentOnConfirmation` instead
@@ -5870,9 +8461,11 @@ export type Service = {
      * @deprecated
      */
     commentOnConfirmation?: boolean;
-    groupIds: Array<number> | null;
+    description: string | null;
+    groupIds: Array<number>;
     hidePersonName: boolean;
     id: number;
+    meta: MetaDataEntityId;
     name: string;
     nameTranslated: string;
     onlyAssignFromGroups: boolean;
@@ -5881,7 +8474,7 @@ export type Service = {
     serviceGroupId: number;
     sortKey: number;
     standard: boolean;
-    tagIds: Array<number> | null;
+    tagIds: Array<number>;
 };
 
 export type ServiceExchangeRequest = {
@@ -5909,8 +8502,19 @@ export type ServiceExchangeRequest = {
 
 export type ServiceGroup = {
     campusId?: number | null;
+    description?: string | null;
     id?: number;
+    meta?: MetaDataEntityId;
     name?: string;
+    onlyVisibleInCampusFilter?: boolean;
+    sortKey?: number;
+    viewAll?: boolean;
+};
+
+export type ServiceGroupWrite = {
+    campusId?: number | null;
+    description?: string | null;
+    name: string;
     onlyVisibleInCampusFilter?: boolean;
     sortKey?: number;
     viewAll?: boolean;
@@ -5965,23 +8569,75 @@ export type ServiceRequest = {
     serviceId: number;
 };
 
-export type Sex = {
+export type ServiceWrite = {
+    allowChat?: boolean;
+    allowCommentOnConfirmation?: boolean;
+    allowControlLiveAgenda?: boolean;
+    allowDecline?: boolean;
+    allowExchange?: boolean;
+    calTextTemplate?: string | null;
     /**
-     * ID of sex
+     * Use `description` instead.
+     *
+     * @deprecated
      */
-    id: number;
-    /**
-     * Name of sex
-     */
+    comment?: string | null;
+    description?: string | null;
+    groupIds?: Array<number>;
+    hidePersonName?: boolean;
     name: string;
+    onlyAssignFromGroups?: boolean;
+    sendReminderMails?: boolean;
+    sendServiceRequestEmails?: boolean;
+    serviceGroupId: number;
+    sortKey?: number;
+    standard?: boolean;
+    tagIds?: Array<number>;
+};
+
+export type Sex = SexUpdate & {
+    meta: MetaDataEntityId;
     /**
      * Translated name of sex
      */
     nameTranslated: string;
     /**
-     * Used to sort all sexes
+     * Translated formal salutation for this sex
      */
-    sortKey: number;
+    salutationFormalTranslated: string;
+    /**
+     * Translated informal salutation for this sex
+     */
+    salutationInformalTranslated: string;
+};
+
+/**
+ * Request body for creating a sex.
+ */
+export type SexCreate = {
+    /**
+     * Name of the sex (translation key)
+     */
+    name: string;
+    /**
+     * Formal salutation for this sex entry (translation key)
+     */
+    salutationFormal?: string | null;
+    /**
+     * Informal salutation for this sex entry (translation key)
+     */
+    salutationInformal?: string | null;
+    /**
+     * Sort order of the sex
+     */
+    sortKey?: number;
+};
+
+export type SexUpdate = SexCreate & {
+    /**
+     * ID of sex
+     */
+    id: number;
 };
 
 export type SimpleAppointment = {
@@ -5994,17 +8650,39 @@ export type SimpleAppointment = {
  * WikiPage
  */
 export type SimpleWikiPage = {
-    identifier: string;
-    isMarkdown?: boolean;
-    meta?: MetaDataEntityPerson;
-    onStartpage?: boolean;
-    permissions?: {
+    '@deprecated'?: {
+        [key: string]: string;
+    };
+    guid: string;
+    /**
+     * Deprecated alias for `guid`. Use `guid` instead.
+     *
+     * @deprecated
+     */
+    identifier?: string;
+    isMarkdown: boolean;
+    meta: MetaDataEntityPerson;
+    onStartpage: boolean;
+    permissions: {
+        canDelete?: boolean;
         canEdit?: boolean;
     };
-    redirectTo?: string;
-    title?: string;
-    version?: number;
-    wikiCategory?: WikiCategory;
+    redirectTo: string | null;
+    /**
+     * Query-focused preview snippet. Present when the page list endpoint is called with a search query.
+     */
+    searchPreview?: string | null;
+    /**
+     * Page text. Present in the all-pages endpoint only when `include[]=text` is requested.
+     */
+    text?: string;
+    /**
+     * Start-of-page preview from normalized page text. Present in the all-pages endpoint only when `include[]=preview` is requested.
+     */
+    textPreview?: string;
+    title: string;
+    version: number;
+    wikiCategory: WikiCategory;
 };
 
 /**
@@ -6019,28 +8697,35 @@ export type Song = {
      * @deprecated
      */
     arrangements?: Array<Arrangement>;
-    author?: string | null;
-    category?: SongCategory;
+    author: string | null;
+    category: SongCategory;
     ccli?: string | null;
-    copyright?: string | null;
-    id?: number;
-    meta?: MetaDataEntityId;
-    name?: string;
+    copyright: string | null;
+    id: number;
+    meta: MetaDataEntityId;
+    name: string;
     /**
      * @deprecated
      */
     note?: string;
-    shouldPractice?: boolean;
+    shouldPractice: boolean;
 };
 
 /**
  * Song Category
  */
 export type SongCategory = {
-    campusId?: number;
+    campusId?: number | null;
     id?: number;
+    meta?: MetaDataEntityId;
     name?: string;
     nameTranslated?: string;
+    sortKey?: number;
+};
+
+export type SongCategoryWrite = {
+    campusId?: number | null;
+    name: string;
     sortKey?: number;
 };
 
@@ -6050,12 +8735,23 @@ export type SongCategory = {
  * Song information
  */
 export type SongCreate = {
+    arrangements?: Array<{
+        beat?: string;
+        description?: string;
+        duration?: number;
+        fileIds?: Array<number>;
+        isDefault: boolean;
+        key?: ArrangementKey;
+        name: string;
+        tempo?: number;
+    }>;
     author?: string | null;
     categoryId: number;
     ccli?: string | null;
     copyright?: string | null;
     name: string;
     shouldPractice?: boolean;
+    tags?: Array<string>;
 };
 
 /**
@@ -6067,25 +8763,181 @@ export type SongSource = {
     id: number;
     meta: MetaDataEntityId;
     name: string;
-    shorty: string;
+    shorty: string | null;
     sortKey: number;
 };
 
+export type SongSourceWrite = {
+    name: string;
+    shorty?: string | null;
+    sortKey?: number;
+};
+
+/**
+ * A split transaction groups several child transactions (`splitChildren`) that share either the same debit account or the same contra account. It is used to split one booking across multiple accounts or cost centers. The parent `amount` must equal the sum of all split children's amounts. When creating or updating, omit `id` on the parent and on children to create new entries; pass the existing `id`s to update them. If only a single split child remains, the split transaction is converted into a normal transaction.
+ */
 export type SplitTransaction = {
     /**
-     * Value is in currency's smallest denomination (e.g. cents).
+     * Total amount in the currency's smallest denomination (e.g. cents). Must equal the sum of all `splitChildren` amounts.
      */
-    amount?: number;
-    documentDate?: DateString;
-    documentNumber?: string;
+    amount: number;
+    /**
+     * Bills (receipts) attached to the split transaction.
+     */
+    bills?: Array<Bill>;
+    documentDate: DateString;
+    /**
+     * Document number of the split transaction. Auto-generated when the accounting period increments document numbers, otherwise required.
+     */
+    documentNumber: string;
+    /**
+     * Unique ID of the split transaction. Omit when creating a new split transaction.
+     */
+    id: number;
+    meta: MetaDataEntityId;
+    /**
+     * Free-text note describing the split booking.
+     */
+    note: string;
+    /**
+     * The child transactions of this split. All children must share the same debit account or the same contra account, and no account may be used as both account and contra account within the same split.
+     */
+    splitChildren: Array<Transaction>;
+};
+
+/**
+ * A child transaction within a split transaction create/update request. The document date and document number are taken from the parent split transaction and must not be sent here.
+ */
+export type SplitTransactionChildNew = {
+    /**
+     * ID of the debit account the amount is posted to.
+     */
+    accountId: number;
+    /**
+     * Booking amount in the currency's smallest denomination (e.g. cents).
+     */
+    amount: number;
+    /**
+     * Granted cash discount in the currency's smallest denomination (e.g. cents).
+     */
+    cashDiscountAmount?: number;
+    /**
+     * ID of the cash discount to apply.
+     */
+    cashDiscountId?: number;
+    /**
+     * ID of the credit (contra) account the amount is posted from. Must differ from `accountId`.
+     */
+    contraAccountId: number;
+    /**
+     * ID of the cost center to assign, or `null` for none.
+     */
+    costCenterId?: number | null;
+    /**
+     * ID of the donating person (for donation accounts).
+     */
+    donatorId?: number;
+    /**
+     * ID of the donator's spouse for joint donation receipts.
+     */
+    donatorSpouseId?: number;
+    /**
+     * True, if the transaction has been created through a sync.
+     */
+    isSynced?: boolean;
+    /**
+     * True, if this transaction is a waiver of reimbursement of expenses ("Aufwandsspende").
+     */
+    isWaiverOfReimbursementOfExpenses?: boolean;
+    /**
+     * Free-text note describing the child booking.
+     */
+    note: string;
+    /**
+     * If set, a corresponding tax split booking automatically gets created.
+     */
+    taxRateId?: number;
+};
+
+/**
+ * A child transaction within a split transaction update request. Same as `SplitTransactionChildNew`, but allows passing the `id` of an existing child to update it.
+ */
+export type SplitTransactionChildUpdate = SplitTransactionChildNew & {
+    /**
+     * ID of the existing child transaction to update. Omit to create a new child; existing children that are not listed are deleted.
+     */
     id?: number;
-    meta?: MetaCount;
-    note?: string;
-    splitChildren?: Array<Transaction>;
+};
+
+/**
+ * Payload to create a new split transaction. The split children must all share the same debit account or the same contra account, no account may be used as both account and contra account, and the sum of all children's amounts must equal the parent `amount`. `documentNumber` is only required if the accounting period does not auto-increment document numbers. If only a single child is provided, it is saved as a normal transaction instead.
+ */
+export type SplitTransactionNew = {
+    /**
+     * Total amount in the currency's smallest denomination (e.g. cents). Must equal the sum of all `splitChildren` amounts.
+     */
+    amount: number;
+    /**
+     * Date printed on the underlying document/receipt.
+     */
+    documentDate: string;
+    /**
+     * Document number of the split transaction. Only required if the accounting period does not auto-increment document numbers.
+     */
+    documentNumber?: string;
+    /**
+     * Free-text note describing the split booking.
+     */
+    note: string;
+    /**
+     * The child transactions of this split.
+     */
+    splitChildren: Array<SplitTransactionChildNew>;
+};
+
+/**
+ * Payload to update an existing split transaction. Same as `SplitTransactionNew`, but children may carry their existing `id` to be updated; children that are no longer present are deleted. If only a single child remains, the split transaction is converted into a normal transaction.
+ */
+export type SplitTransactionUpdate = {
+    /**
+     * Total amount in the currency's smallest denomination (e.g. cents). Must equal the sum of all `splitChildren` amounts.
+     */
+    amount: number;
+    /**
+     * Date printed on the underlying document/receipt.
+     */
+    documentDate: string;
+    /**
+     * Document number of the split transaction. Only required if the accounting period does not auto-increment document numbers.
+     */
+    documentNumber?: string;
+    /**
+     * ID of the split transaction to update.
+     */
+    id?: number;
+    /**
+     * Free-text note describing the split booking.
+     */
+    note: string;
+    /**
+     * The child transactions of this split.
+     */
+    splitChildren: Array<SplitTransactionChildUpdate>;
+};
+
+export type SsoLogin = {
+    hasRegistration: boolean;
+    id: number;
+    loginLink: string;
+    logoUrl?: string | null;
+    name: string;
+    primaryLogin: boolean;
+    subtitle: string | null;
+    type: 'oauth' | 'oidc' | 'saml' | 'ldap';
 };
 
 export type StartStopChat = {
-    enabled?: boolean;
+    enabled: boolean;
     triggerChatInviteMail?: boolean;
 };
 
@@ -6147,13 +8999,17 @@ export type Status = {
      */
     shorty: string;
     /**
+     * Translated abbreviation of name.
+     */
+    shortyTranslated?: string;
+    /**
      * Used to sort all statuses
      */
     sortKey: number;
 };
 
 /**
- * 1 = PENDING, 2 = CONFIRMED, 3 = CANCELED, 99 = DELETED
+ * 1 = PENDING, 2 = CONFIRMED, 3 = CANCELED
  */
 export enum StatusId {
     /**
@@ -6168,10 +9024,6 @@ export enum StatusId {
      * CANCELED
      */
     CANCELED = 3,
-    /**
-     * DELETED
-     */
-    DELETED = 99,
 }
 
 export type StatusNew = {
@@ -6194,17 +9046,26 @@ export type StatusUpdate = {
 
 export type Subscription =
     | SubscriptionGroup
+    | SubscriptionMeetingRequests
     | SubscriptionPost
     | SubscriptionPostSummary
     | SubscriptionPublicChannel
-    | SubscriptionMeetingRequests
+    | SubscriptionResource
     | SubscriptionServiceRequests;
 
 export type SubscriptionBase = {
     isActive: boolean;
     isExplicit: boolean;
     meta: MetaDataEntityIdNullable;
-    origin: 'default' | 'group-settings';
+    origin:
+        | 'default'
+        | 'group-settings'
+        | 'post-summary-default'
+        | 'meetingrequests-default'
+        | 'servicerequests-default'
+        | 'resource-root-default'
+        | 'resource-admin'
+        | 'resource-permission';
     /**
      * Translation key addressed to end user
      */
@@ -6218,7 +9079,7 @@ export type SubscriptionGroup = SubscriptionBase & {
 };
 
 export type SubscriptionMeetingRequests = SubscriptionBase & {
-    subject: 'meetingrequests';
+    subject: 'meetingrequest';
 };
 
 export type SubscriptionPost = SubscriptionBase & {
@@ -6237,8 +9098,16 @@ export type SubscriptionPublicChannel = SubscriptionBase & {
     subject: 'public_channel';
 };
 
+export type SubscriptionResource = SubscriptionBase & {
+    subject: 'resource';
+    /**
+     * root subscribes to all booking requests; numeric values subscribe to one specific resource id.
+     */
+    subjectIdentifier: 'root' | number;
+};
+
 export type SubscriptionServiceRequests = SubscriptionBase & {
-    subject: 'servicerequests';
+    subject: 'servicerequest';
 };
 
 export type SyncAdapter = SyncAdapterCreate & {
@@ -6373,7 +9242,7 @@ export type Tag = TagBase & {
 
 export type TagBase = {
     color: CtColor;
-    description: string;
+    description: string | null;
     id: number;
     name: string;
 };
@@ -6417,86 +9286,197 @@ export type TaxRateNew = {
     taxTypeId: number;
 };
 
-export type TaxType = {
+export type TaxType = TaxTypeCreate & {
     id: number;
     meta: MetaDataEntityId;
+};
+
+export type TaxTypeCreate = {
     name: string;
     sortKey: number;
 };
 
-export type TaxTypeNew = {
-    name: string;
-    sortKey: number;
-};
-
+/**
+ * A single accounting transaction (a booking). Every transaction posts a given `amount` between a debit account (`accountId`) and a credit account (`contraAccountId`) within one accounting period. Monetary values are always integers in the currency's smallest denomination (e.g. cents). A transaction that belongs to a split transaction references its parent via `splitTransactionId` and cannot be edited or deleted on its own.
+ */
 export type Transaction = {
+    /**
+     * Maps deprecated field names to their current replacement field names.
+     */
+    '@deprecated'?: {
+        [key: string]: string;
+    };
+    /**
+     * ID of the debit account the amount is posted to.
+     */
     accountId: number;
     /**
-     * Value is in cent.
+     * Booking amount in the currency's smallest denomination (e.g. cents). `7812` represents 78.12 €.
      */
     amount: number;
     /**
-     * Value is in cent.
+     * Bills (receipts) attached to this transaction.
      */
-    cashDiscountAmount?: number;
-    cashDiscountId?: number;
+    bills?: Array<Bill>;
+    /**
+     * Granted cash discount in the currency's smallest denomination (e.g. cents). `null` if no cash discount applies.
+     */
+    cashDiscountAmount?: number | null;
+    /**
+     * ID of the applied cash discount, or `null` if none.
+     */
+    cashDiscountId?: number | null;
+    /**
+     * ID of the credit (contra) account the amount is posted from.
+     */
     contraAccountId: number;
+    /**
+     * ID of the assigned cost center, or `null` if none.
+     */
     costCenterId?: number | null;
+    /**
+     * Date printed on the underlying document/receipt.
+     */
     documentDate: string;
+    /**
+     * Document number of the transaction. Auto-generated when the accounting period increments document numbers, otherwise required on creation.
+     */
     documentNumber: string;
-    donator?: DomainObjectPerson;
-    donatorSpouse?: DomainObjectPerson;
+    /**
+     * Resolved donator person. Only set for donation transactions the user is allowed to see.
+     */
+    donator?: DomainObjectPerson | null;
+    /**
+     * Deprecated: use `donator` instead.
+     *
+     * @deprecated
+     */
+    donatorId?: number | null;
+    /**
+     * Resolved donator's spouse for joint donation receipts.
+     */
+    donatorSpouse?: DomainObjectPerson | null;
+    /**
+     * Deprecated: use `donatorSpouse` instead.
+     *
+     * @deprecated
+     */
+    donatorSpouseId?: number | null;
+    /**
+     * Unique ID of the transaction.
+     */
     id: number;
     /**
-     * If a transaction is immutable, no field can be change or deleted.
+     * If a transaction is immutable, none of its fields can be changed and it cannot be deleted (it has been finalized/locked).
      */
     isImmutable: boolean;
     /**
      * True, if the transaction has been created through a sync.
      */
     isSynced: boolean;
+    /**
+     * True, if this transaction is a waiver of reimbursement of expenses ("Aufwandsspende").
+     */
     isWaiverOfReimbursementOfExpenses: boolean;
-    meta?: MetaCount;
+    meta?: MetaDataEntityId;
+    /**
+     * Free-text note describing the booking.
+     */
     note: string;
+    /**
+     * Permissions of the current user for this transaction.
+     */
     permissions?: {
         /**
          * Flag if user can edit this transaction
          */
         canEdit?: boolean;
     };
-    splitTransactionId?: number;
+    /**
+     * ID of the parent split transaction, or `null` if this is a normal standalone transaction.
+     */
+    splitTransactionId?: number | null;
+    /**
+     * Reference to the transaction which gets stornoed by this transaction.
+     */
+    stornoBaseId?: number | null;
+    /**
+     * Reference to the transaction which stornoed this transaction.
+     */
+    stornoTransactionId?: number | null;
+    /**
+     * Reference to the transaction which is the base for a tax split booking.
+     */
+    taxBaseId?: number | null;
     /**
      * If a tax rate is set for the transaction, the corresponding tax transaction is returned in the field taxTransactionId.
      */
-    taxRateId?: number;
+    taxRateId?: number | null;
     /**
      * Reference to the transaction which is a split booking for taxes.
      */
-    taxTransactionId?: number;
+    taxTransactionId?: number | null;
+    /**
+     * Date of the transaction. This is the date which counts for the booking, not the document date.
+     */
+    transactionDate?: string;
 };
 
+/**
+ * Payload to create a new transaction. The amount is posted between the debit account (`accountId`) and the credit account (`contraAccountId`), which must be different and belong to the same accounting period. Monetary values are integers in the currency's smallest denomination (e.g. cents). `documentNumber` is only required if the accounting period does not auto-increment document numbers.
+ */
 export type TransactionNew = {
+    /**
+     * ID of the debit account the amount is posted to.
+     */
     accountId: number;
     /**
-     * Value is in cent.
+     * Booking amount in the currency's smallest denomination (e.g. cents).
      */
     amount: number;
     /**
-     * Value is in cent.
+     * Granted cash discount in the currency's smallest denomination (e.g. cents).
      */
     cashDiscountAmount?: number;
+    /**
+     * ID of the cash discount to apply.
+     */
     cashDiscountId?: number;
+    /**
+     * ID of the credit (contra) account the amount is posted from. Must differ from `accountId`.
+     */
     contraAccountId: number;
+    /**
+     * ID of the cost center to assign, or `null` for none.
+     */
     costCenterId?: number | null;
+    /**
+     * Date printed on the underlying document/receipt.
+     */
     documentDate: string;
+    /**
+     * Document number of the transaction. Only required if the accounting period does not auto-increment document numbers.
+     */
     documentNumber: string;
+    /**
+     * ID of the donating person (for donation accounts).
+     */
     donatorId?: number;
+    /**
+     * ID of the donator's spouse for joint donation receipts.
+     */
     donatorSpouseId?: number;
     /**
      * True, if the transaction has been created through a sync.
      */
     isSynced?: boolean;
+    /**
+     * True, if this transaction is a waiver of reimbursement of expenses ("Aufwandsspende").
+     */
     isWaiverOfReimbursementOfExpenses?: boolean;
+    /**
+     * Free-text note describing the booking.
+     */
     note: string;
     /**
      * If set, a corresponding tax split booking automatically gets created.
@@ -6532,9 +9512,7 @@ export type TransactionStorno = {
 };
 
 export type TransactionSummary =
-    | TransactionSummaryCostCenter
-    | TransactionSummaryCreditDebit
-    | TransactionSummaryDonation;
+    TransactionSummaryCostCenter | TransactionSummaryCreditDebit | TransactionSummaryDonation;
 
 export type TransactionSummaryBase = {
     periods: {
@@ -6619,26 +9597,53 @@ export type TransactionSummaryDonation = TransactionSummaryBase & {
     type: 'donation-sum';
 };
 
+/**
+ * Payload to update an existing transaction. Behaves like `TransactionNew`, but additionally allows finalizing the transaction via `isImmutable`. A transaction that is part of a split transaction cannot be updated through this endpoint. Monetary values are integers in the currency's smallest denomination (e.g. cents).
+ */
 export type TransactionUpdate = {
+    /**
+     * ID of the debit account the amount is posted to.
+     */
     accountId: number;
     /**
-     * Value is in cent.
+     * Booking amount in the currency's smallest denomination (e.g. cents).
      */
     amount: number;
     /**
-     * Value is in cent.
+     * Granted cash discount in the currency's smallest denomination (e.g. cents).
      */
     cashDiscountAmount?: number;
+    /**
+     * ID of the cash discount to apply.
+     */
     cashDiscountId?: number;
+    /**
+     * ID of the credit (contra) account the amount is posted from. Must differ from `accountId`.
+     */
     contraAccountId: number;
-    costCenterId: number;
+    /**
+     * ID of the cost center to assign, or `null` for none.
+     */
+    costCenterId?: number | null;
+    /**
+     * Date printed on the underlying document/receipt.
+     */
     documentDate: string;
+    /**
+     * Document number of the transaction.
+     */
     documentNumber: string;
+    /**
+     * ID of the donating person (for donation accounts).
+     */
     donatorId?: number;
     /**
-     * If `true` this transaction is immutable and cannot be edited or deleted.
+     * If `true` this transaction is immutable and cannot be edited or deleted afterwards.
      */
     isImmutable?: boolean;
+    /**
+     * Free-text note describing the booking.
+     */
     note: string;
     /**
      * If updated, the corresponding tax split booking automatically gets updated.
@@ -6684,11 +9689,14 @@ export type TranslationKey = {
     updated?: string | null;
 };
 
-export type UserRule = {
-    accountIds: Array<number>;
+export type UserRule = UserRuleCreate & {
     accountingPeriodId: number;
+    id: number;
+};
+
+export type UserRuleCreate = {
+    accountIds: Array<number>;
     allAccounts: boolean;
-    id?: number;
     isIncome: boolean;
     operator: 'contains' | 'equals' | 'regex';
     searchString: string;
@@ -6696,6 +9704,14 @@ export type UserRule = {
     sortKey: number;
     suggestionType: 'contraAccountId' | 'costCenterId';
     suggestionValue: string;
+};
+
+export type ValidationError = ErrorObj & {
+    fieldId: string;
+    /**
+     * type unknown
+     */
+    value: unknown;
 };
 
 export enum VerificationStatus {
@@ -6767,7 +9783,7 @@ export type Weekday = {
 /**
  * Container for the widget-system
  */
-export type Widget = WidgetDate | WidgetDetail | WidgetDomainObject | WidgetPost | WidgetCommon;
+export type Widget = WidgetDate | WidgetDetail | WidgetDomainObject | WidgetPost | WidgetCommon | WidgetHidden;
 
 export type WidgetAction =
     | WidgetActionAppointmentsAll
@@ -6776,6 +9792,7 @@ export type WidgetAction =
     | WidgetActionFavoriteGroupsAll
     | WidgetActionGeneralUrl
     | WidgetActionGroupMeetingAll
+    | WidgetActionMyBookingsAll
     | WidgetActionMyGroupsAll
     | WidgetActionMyResourcesAll
     | WidgetActionPostsAll
@@ -6807,6 +9824,11 @@ export type WidgetActionBase = {
 export type WidgetActionDataAppointment = {
     appointmentId: number;
     calendarId: number;
+    startDate: DateString;
+};
+
+export type WidgetActionDataBooking = {
+    bookingId: number;
     startDate: DateString;
 };
 
@@ -6873,6 +9895,11 @@ export type WidgetActionGroupMeetingAll = WidgetActionBase & {
     key?: 'action.groupmeeting.all';
 };
 
+export type WidgetActionMyBookingsAll = WidgetActionBase & {
+    actionData?: {};
+    key?: 'action.my-bookings.all';
+};
+
 export type WidgetActionMyGroupsAll = WidgetActionBase & {
     actionData?: {};
     key?: 'action.my-groups.all';
@@ -6927,8 +9954,12 @@ export type WidgetBase = {
     emptyText?: string;
     filter?: {
         options?: Array<{
-            id?: string;
+            id: string;
             name: string;
+            /**
+             * Total number of groups available for this filter option.
+             */
+            totalCount?: number;
         }>;
     } | null;
     helpLink?: string;
@@ -6937,16 +9968,15 @@ export type WidgetBase = {
     orientation?: 'horizontal' | 'vertical';
     replacement?: string;
     title: string;
-    widgetSettings:
-        | WidgetSettingsCommon
-        | {
-              backgroundColor?: Color;
-          };
+    widgetSettings: {
+        backgroundColor?: Color;
+    };
 };
 
 export type WidgetCommon = WidgetBase & {
     groupings: WidgetGroupings;
     items: Array<WidgetCommonItem>;
+    widgetSettings: WidgetSettingsCommon;
     widgetType: 'common';
 };
 
@@ -7162,18 +10192,13 @@ export enum WidgetEmptyStrategy {
  * Individual grouping option configuration
  */
 export type WidgetGroupingOption = {
+    count: WidgetCount | null;
+    filterKeys: Array<string>;
+    infoList: WidgetInfoList | null;
     /**
-     * Unique key for the grouping option
+     * The title
      */
-    key: string;
-    /**
-     * Display label for the grouping option
-     */
-    label: string;
-    /**
-     * Sort order for the grouping option
-     */
-    sortKey?: number;
+    title: string;
 };
 
 /**
@@ -7181,6 +10206,10 @@ export type WidgetGroupingOption = {
  */
 export type WidgetGroupings = {
     [key: string]: WidgetGroupingOption;
+};
+
+export type WidgetHidden = WidgetBase & {
+    widgetType: 'hidden';
 };
 
 /**
@@ -7191,7 +10220,7 @@ export type WidgetInfoItem = {
     iconBefore: string | null;
     label: string | null;
     subItems: Array<WidgetInfoSubItem>;
-    text: string;
+    text: string | null;
 };
 
 /**
@@ -7227,7 +10256,7 @@ export enum WidgetInfoListSize {
 export type WidgetInfoSubItem = {
     color: CtColor;
     iconBefore: string | null;
-    text: string;
+    text: string | null;
 };
 
 /**
@@ -7235,6 +10264,7 @@ export type WidgetInfoSubItem = {
  */
 export type WidgetItemAction =
     | WidgetItemActionAppointmentDetails
+    | WidgetItemActionBookingDetails
     | WidgetItemActionBirthdayDetails
     | WidgetItemActionEventDetails
     | WidgetItemActionEventfactDetails
@@ -7254,6 +10284,11 @@ export type WidgetItemActionAppointmentDetails = WidgetActionBase & {
 export type WidgetItemActionBirthdayDetails = WidgetActionBase & {
     actionData?: WidgetActionDataPerson;
     key?: 'action.birthday.details';
+};
+
+export type WidgetItemActionBookingDetails = WidgetActionBase & {
+    actionData?: WidgetActionDataBooking;
+    key?: 'action.my-bookings.details';
 };
 
 export type WidgetItemActionEventDetails = WidgetActionBase & {
@@ -7312,11 +10347,7 @@ export type WidgetItemActionSongsToLearnDetails = WidgetActionBase & {
 };
 
 export type WidgetItemType =
-    | WidgetCommonItem
-    | WidgetDateItem
-    | WidgetDetailItem
-    | WidgetDomainObjectItem
-    | WidgetPostItem;
+    WidgetCommonItem | WidgetDateItem | WidgetDetailItem | WidgetDomainObjectItem | WidgetPostItem;
 
 export type WidgetPost = WidgetBase & {
     items: Array<WidgetPostItem>;
@@ -7363,35 +10394,57 @@ export type WidgetTopLine = {
     text: string;
 };
 
-/**
- * WikiCategory
- */
-export type WikiCategory = {
-    campusId: number | null;
-    fileAccessWithoutPermission: boolean;
+export type WikiCategory = WikiCategoryCreate & {
     id: number;
-    inMenu: boolean;
-    name: string;
-    nameTranslated?: string;
-    sortKey: number;
+    nameTranslated: string;
+    permissions: {
+        canDelete?: boolean;
+        canEdit?: boolean;
+    };
 };
 
 /**
- * WikiPage
+ * WikiCategoryCreate
  */
-export type WikiPage = {
-    identifier?: string;
-    isMarkdown: boolean;
-    meta: MetaDataEntityPerson;
-    onStartpage: boolean;
-    permissions?: {
-        canEdit?: boolean;
-    };
-    redirectTo?: string;
+export type WikiCategoryCreate = {
+    campusId?: number | null;
+    fileAccessWithoutPermission: boolean;
+    inMenu: boolean;
+    name: string;
+    sortKey: number;
+};
+
+export type WikiPage = SimpleWikiPage & {
     text: string;
+};
+
+/**
+ * WikiPageCreate
+ */
+export type WikiPageCreate = {
+    isMarkdown?: boolean;
+    onStartpage?: boolean;
+    text?: string | null;
     title: string;
-    version: number;
-    wikiCategory: WikiCategory;
+};
+
+/**
+ * WikiPageUpdate
+ */
+export type WikiPageUpdate = {
+    isMarkdown?: boolean;
+    onStartpage?: boolean;
+    /**
+     * Updating the text creates a new version of the wiki page; updating only other fields modifies the latest version in place.
+     */
+    text?: string | null;
+};
+
+/**
+ * WikiSearchResult
+ */
+export type WikiSearchResult = DomainObjectWikiPage & {
+    preview: string | null;
 };
 
 /**
@@ -7412,6 +10465,11 @@ export type ZuluDateDeprecated = string;
 export type ZuluDateNullable = `${number}-${number}-${number}T${number}:${number}:${number}Z` | null;
 
 /**
+ * ID of account
+ */
+export type AccountId = number;
+
+/**
  * ID of accounting period to get master data for
  */
 export type AccountingPeriodId = number;
@@ -7420,6 +10478,16 @@ export type AccountingPeriodId = number;
  * ID of one accounting period or several accounting periods
  */
 export type AccountingPeriodIdOrArray = Array<number>;
+
+/**
+ * ID of agenda
+ */
+export type AgendaId = number;
+
+/**
+ * ID of agenda item
+ */
+export type AgendaItemId = number;
 
 /**
  * ID of appointment
@@ -7440,6 +10508,21 @@ export type BookingId = number;
  * ID of Calendar
  */
 export type CalendarId = number;
+
+/**
+ * ID of the post comment.
+ */
+export type CommentId = number;
+
+/**
+ * ID of cost center
+ */
+export type CostCenterId = number;
+
+/**
+ * When changing the group status to finished with this flag it can be decided if all routines should be deactivated
+ */
+export type DeactivateRoutinesOnStatusFinished = boolean;
 
 /**
  * If set to true, the deletion is simulated but nothing will be deleted.
@@ -7522,6 +10605,11 @@ export type GroupFilterAllowPosts = boolean;
 export type GroupFilterCampusIds = Array<number>;
 
 /**
+ * Return direct parent groups of this group
+ */
+export type GroupFilterChildId = number;
+
+/**
  * Array of group category ids to filter the groups
  */
 export type GroupFilterGroupCategoryIds = Array<number>;
@@ -7547,6 +10635,11 @@ export type GroupFilterGroupTagIds = Array<number>;
 export type GroupFilterGroupTypeIds = Array<number>;
 
 /**
+ * Filter groups based on whether they have an active chat
+ */
+export type GroupFilterHasActiveChat = boolean;
+
+/**
  * Only show groups with meeting place
  */
 export type GroupFilterHasMeetingPlace = boolean;
@@ -7565,6 +10658,11 @@ export type GroupFilterIsOpenForMembers = boolean;
  * Determines if only groups where I am in should be returned
  */
 export type GroupFilterOnlyMyGroups = boolean;
+
+/**
+ * Return direct child groups of this group
+ */
+export type GroupFilterParentId = number;
 
 export type GroupFilterQuery = string;
 
@@ -7607,7 +10705,14 @@ export type GroupIdOrGuid = number;
  * Include additional information (currently, 'roles' are included by default but this behaviour is now deprecated)
  */
 export type GroupInclude = Array<
-    'hasPermissions' | 'roles' | 'tags' | 'memberStatistics' | 'places' | 'publicPostsStatistic' | 'signupConditions'
+    | 'averageMemberAge'
+    | 'hasPermissions'
+    | 'roles'
+    | 'tags'
+    | 'memberStatistics'
+    | 'places'
+    | 'publicPostsStatistic'
+    | 'signupConditions'
 >;
 
 /**
@@ -7678,7 +10783,7 @@ export type GroupMemberFilterRoleIds = Array<number>;
 /**
  * Include additional information
  */
-export type GroupMemberInclude = Array<'tags' | 'aggregations'>;
+export type GroupMemberInclude = Array<'newsletter' | 'tags' | 'aggregations'>;
 
 /**
  * Status of a group membership
@@ -7730,12 +10835,32 @@ export type NoteId = number;
  */
 export type PageParameter = number;
 
+/**
+ * Numeric permission key from the internal authorization table
+ */
+export type PermissionAuthId = number;
+
+/**
+ * Selection value of a permission. Use `-1` to return one result group for every configured selection value. Omit this parameter for permissions without selection values.
+ */
+export type PermissionDataId = number;
+
+/**
+ * Permission domain type to read or change
+ */
 export enum PermissionDomainType {
     STATUS = 'status',
     GROUP_TYPE_ROLE = 'group_type_role',
     GROUP_ROLE = 'group_role',
     PERSON = 'person',
+    GROUP_TYPE = 'group_type',
+    GROUP = 'group',
 }
+
+/**
+ * Selection value of a global permission. Use `-1` for the unrestricted "all current and future values" selection. Omit this parameter for permissions without selection values.
+ */
+export type PermissionGlobalDataId = number;
 
 /**
  * ID of person
@@ -7751,6 +10876,11 @@ export type PersonInclude = Array<'tags'>;
  * ID of post
  */
 export type PostId = number;
+
+/**
+ * ID of a person's relationship
+ */
+export type RelationshipId = number;
 
 export type ResourceId = number;
 
@@ -7799,8 +10929,9 @@ export enum SubscriptionSubject {
     POST_SUMMARY = 'post_summary',
     GROUP = 'group',
     PUBLIC_CHANNEL = 'public_channel',
-    MEETINGREQUESTS = 'meetingrequests',
-    SERVICEREQUESTS = 'servicerequests',
+    MEETINGREQUEST = 'meetingrequest',
+    SERVICEREQUEST = 'servicerequest',
+    RESOURCE = 'resource',
 }
 
 /**
@@ -7809,6 +10940,7 @@ export enum SubscriptionSubject {
 export enum TagDomainType {
     PERSON = 'person',
     GROUP = 'group',
+    APPOINTMENT = 'appointment',
     SONG = 'song',
 }
 
@@ -7823,23 +10955,39 @@ export type TagId = number;
 export type To = DateString;
 
 /**
+ * Include additional information
+ */
+export type TransactionInclude = Array<'bills'>;
+
+/**
  * ID of WikiCategory
  */
 export type WikiCategoryId = number;
 
 /**
- * Can either be the pages identifier or its title
+ * GUID of the wiki page. Titles are not accepted for this operation.
+ */
+export type WikiPageGuid = string;
+
+/**
+ * GUID of the wiki page. (For backwards compatibility reasons, the page title is accepted too, but no longer recommended for use.)
  */
 export type WikiPageIdentifier = string;
 
 /**
- * If given fields for privacy policy agreements are not mandotory. Can only be used if setting is allowed in admin settings.
+ * Omits the otherwise mandatory privacy policy agreement fields. Only effective when `privacy_policy_fields_mandatory_api` is disabled in the ChurchTools configuration. Clients must verify that configuration before using this parameter and must not use it as a fallback for missing agreement information.
  */
 export type WithoutPrivacyPolicyAgreement = boolean;
 
 export type PostActionsData = {
     body: {
-        domain_type: Array<string>;
+        /**
+         * One or more domain types to filter actions by.
+         */
+        domain_type: Array<'group_membership' | 'person'>;
+        /**
+         * Optional filter criteria to further narrow the returned actions. The structure depends on the domain type.
+         */
         filter?: {
             [key: string]: unknown;
         };
@@ -7858,10 +11006,6 @@ export type PostActionsErrors = {
      * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
-    /**
-     * Resource not found
-     */
-    404: unknown;
 };
 
 export type PostActionsError = PostActionsErrors[keyof PostActionsErrors];
@@ -7882,12 +11026,19 @@ export type GetAddressesSearchData = {
     body?: never;
     path?: never;
     query: {
+        /**
+         * Search term to look up addresses by (e.g. street, city, person name).
+         */
         query: string;
     };
     url: '/addresses/search';
 };
 
 export type GetAddressesSearchErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -7896,10 +11047,6 @@ export type GetAddressesSearchErrors = {
      * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
-    /**
-     * Resource not found
-     */
-    404: unknown;
 };
 
 export type GetAddressesSearchError = GetAddressesSearchErrors[keyof GetAddressesSearchErrors];
@@ -7919,7 +11066,13 @@ export type GetAddressesSearchResponse = GetAddressesSearchResponses[keyof GetAd
 export type GetAddressesDomainTypeDomainIdentifierData = {
     body?: never;
     path: {
-        domainType: string;
+        /**
+         * The domain type to retrieve addresses for. Currently only `group` is supported.
+         */
+        domainType: 'group';
+        /**
+         * The identifier of the domain object (e.g. the group ID).
+         */
         domainIdentifier: string;
     };
     query?: never;
@@ -7928,6 +11081,10 @@ export type GetAddressesDomainTypeDomainIdentifierData = {
 
 export type GetAddressesDomainTypeDomainIdentifierErrors = {
     /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
      * Unauthorized
      */
     401: string;
@@ -7935,10 +11092,6 @@ export type GetAddressesDomainTypeDomainIdentifierErrors = {
      * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
-    /**
-     * Resource not found
-     */
-    404: unknown;
 };
 
 export type GetAddressesDomainTypeDomainIdentifierError =
@@ -7960,7 +11113,13 @@ export type GetAddressesDomainTypeDomainIdentifierResponse =
 export type PostAddressesDomainTypeDomainIdentifierData = {
     body: AddressCreate;
     path: {
-        domainType: string;
+        /**
+         * The domain type to retrieve addresses for. Currently only `group` is supported.
+         */
+        domainType: 'group';
+        /**
+         * The identifier of the domain object (e.g. the group ID).
+         */
         domainIdentifier: string;
     };
     query?: never;
@@ -7968,6 +11127,10 @@ export type PostAddressesDomainTypeDomainIdentifierData = {
 };
 
 export type PostAddressesDomainTypeDomainIdentifierErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -7987,11 +11150,10 @@ export type PostAddressesDomainTypeDomainIdentifierError =
 
 export type PostAddressesDomainTypeDomainIdentifierResponses = {
     /**
-     * OK
+     * Created
      */
-    200: {
-        data?: Address;
-        meta?: MetaCount;
+    201: {
+        data: Address;
     };
 };
 
@@ -8001,8 +11163,17 @@ export type PostAddressesDomainTypeDomainIdentifierResponse =
 export type DeleteAddressesDomainTypeDomainIdentifierAddressIdData = {
     body?: never;
     path: {
-        domainType: unknown;
+        /**
+         * The domain type of the address. Currently only `group` is supported.
+         */
+        domainType: 'group';
+        /**
+         * The identifier of the domain object (e.g. the group ID).
+         */
         domainIdentifier: string;
+        /**
+         * The ID of the address to update or delete.
+         */
         addressId: number;
     };
     query?: never;
@@ -8010,6 +11181,10 @@ export type DeleteAddressesDomainTypeDomainIdentifierAddressIdData = {
 };
 
 export type DeleteAddressesDomainTypeDomainIdentifierAddressIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -8040,8 +11215,17 @@ export type DeleteAddressesDomainTypeDomainIdentifierAddressIdResponse =
 export type PutAddressesDomainTypeDomainIdentifierAddressIdData = {
     body: AddressUpdate;
     path: {
-        domainType: unknown;
+        /**
+         * The domain type of the address. Currently only `group` is supported.
+         */
+        domainType: 'group';
+        /**
+         * The identifier of the domain object (e.g. the group ID).
+         */
         domainIdentifier: string;
+        /**
+         * The ID of the address to update or delete.
+         */
         addressId: number;
     };
     query?: never;
@@ -8049,6 +11233,10 @@ export type PutAddressesDomainTypeDomainIdentifierAddressIdData = {
 };
 
 export type PutAddressesDomainTypeDomainIdentifierAddressIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -8071,8 +11259,7 @@ export type PutAddressesDomainTypeDomainIdentifierAddressIdResponses = {
      * OK
      */
     200: {
-        data?: Address;
-        meta?: MetaCount;
+        data: Address;
     };
 };
 
@@ -8157,22 +11344,127 @@ export type PostAgendasSendResponses = {
 
 export type PostAgendasSendResponse = PostAgendasSendResponses[keyof PostAgendasSendResponses];
 
-export type PostAgendasIdExportData = {
-    body?: {
-        appendArrangement?: boolean;
-        exportSong?: boolean;
-        withCategory?: boolean;
-    };
-    path: {
-        agendaId: string;
-    };
-    query: {
-        target: 'SONG_BEAMER' | 'PRO_PRESENTER_6' | 'PRO_PRESENTER_7';
-    };
-    url: '/agendas/{agendaId}/export';
+export type GetAgendatemplatesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/agendatemplates';
 };
 
-export type PostAgendasIdExportErrors = {
+export type GetAgendatemplatesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetAgendatemplatesError = GetAgendatemplatesErrors[keyof GetAgendatemplatesErrors];
+
+export type GetAgendatemplatesResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<Agenda>;
+        meta: MetaCount;
+    };
+};
+
+export type GetAgendatemplatesResponse = GetAgendatemplatesResponses[keyof GetAgendatemplatesResponses];
+
+export type PostAgendatemplatesData = {
+    body: AgendaTemplateInput;
+    path?: never;
+    query?: never;
+    url: '/agendatemplates';
+};
+
+export type PostAgendatemplatesErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostAgendatemplatesError = PostAgendatemplatesErrors[keyof PostAgendatemplatesErrors];
+
+export type PostAgendatemplatesResponses = {
+    /**
+     * Created
+     */
+    200: {
+        data: Agenda;
+    };
+};
+
+export type PostAgendatemplatesResponse = PostAgendatemplatesResponses[keyof PostAgendatemplatesResponses];
+
+export type DeleteAgendatemplatesAgendaIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of agenda
+         */
+        agendaId: number;
+    };
+    query?: {
+        /**
+         * If true, only checks whether the template can be deleted without actually deleting it.
+         */
+        dryRun?: boolean;
+    };
+    url: '/agendatemplates/{agendaId}';
+};
+
+export type DeleteAgendatemplatesAgendaIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type DeleteAgendatemplatesAgendaIdError =
+    DeleteAgendatemplatesAgendaIdErrors[keyof DeleteAgendatemplatesAgendaIdErrors];
+
+export type DeleteAgendatemplatesAgendaIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeleteAgendatemplatesAgendaIdResponse =
+    DeleteAgendatemplatesAgendaIdResponses[keyof DeleteAgendatemplatesAgendaIdResponses];
+
+export type GetAgendatemplatesAgendaIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of agenda
+         */
+        agendaId: number;
+    };
+    query?: never;
+    url: '/agendatemplates/{agendaId}';
+};
+
+export type GetAgendatemplatesAgendaIdErrors = {
     /**
      * Unauthorized
      */
@@ -8187,21 +11479,399 @@ export type PostAgendasIdExportErrors = {
     404: unknown;
 };
 
-export type PostAgendasIdExportError = PostAgendasIdExportErrors[keyof PostAgendasIdExportErrors];
+export type GetAgendatemplatesAgendaIdError = GetAgendatemplatesAgendaIdErrors[keyof GetAgendatemplatesAgendaIdErrors];
 
-export type PostAgendasIdExportResponses = {
+export type GetAgendatemplatesAgendaIdResponses = {
     /**
      * OK
      */
     200: {
-        data?: {
-            songsWithMultipleFiles?: Array<string>;
-            url?: string;
+        data: Agenda;
+    };
+};
+
+export type GetAgendatemplatesAgendaIdResponse =
+    GetAgendatemplatesAgendaIdResponses[keyof GetAgendatemplatesAgendaIdResponses];
+
+export type PutAgendatemplatesAgendaIdData = {
+    body: AgendaTemplateInput;
+    path: {
+        /**
+         * ID of agenda
+         */
+        agendaId: number;
+    };
+    query?: never;
+    url: '/agendatemplates/{agendaId}';
+};
+
+export type PutAgendatemplatesAgendaIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutAgendatemplatesAgendaIdError = PutAgendatemplatesAgendaIdErrors[keyof PutAgendatemplatesAgendaIdErrors];
+
+export type PutAgendatemplatesAgendaIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Agenda;
+    };
+};
+
+export type PutAgendatemplatesAgendaIdResponse =
+    PutAgendatemplatesAgendaIdResponses[keyof PutAgendatemplatesAgendaIdResponses];
+
+export type PostAgendatemplatesAgendaIdExportData = {
+    body: {
+        /**
+         * Append the arrangement name to exported song titles.
+         */
+        appendArrangement: boolean;
+        /**
+         * Include song files in the presenter archive.
+         */
+        exportSongs: boolean;
+        /**
+         * Include song categories in the exported presenter data.
+         */
+        withCategory: boolean;
+    };
+    path: {
+        /**
+         * ID of agenda
+         */
+        agendaId: number;
+    };
+    query: {
+        /**
+         * Presenter format to export the agenda template for.
+         */
+        format: AgendaExportOutputFormat;
+    };
+    url: '/agendatemplates/{agendaId}/export';
+};
+
+export type PostAgendatemplatesAgendaIdExportErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostAgendatemplatesAgendaIdExportError =
+    PostAgendatemplatesAgendaIdExportErrors[keyof PostAgendatemplatesAgendaIdExportErrors];
+
+export type PostAgendatemplatesAgendaIdExportResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: {
+            /**
+             * Song titles for which multiple files exist and the exporter could not choose one automatically.
+             */
+            songsWithMultipleFiles: Array<string>;
+            /**
+             * Relative download URL for the generated archive.
+             */
+            url: string;
         };
     };
 };
 
-export type PostAgendasIdExportResponse = PostAgendasIdExportResponses[keyof PostAgendasIdExportResponses];
+export type PostAgendatemplatesAgendaIdExportResponse =
+    PostAgendatemplatesAgendaIdExportResponses[keyof PostAgendatemplatesAgendaIdExportResponses];
+
+export type PostAgendatemplatesAgendaIdItemsData = {
+    body: AgendaItemInput;
+    path: {
+        /**
+         * ID of agenda
+         */
+        agendaId: number;
+    };
+    query?: {
+        /**
+         * Insert the new item after the item with this ID. Cannot be used together with `before_id`.
+         */
+        after_id?: number;
+        /**
+         * Insert the new item before the item with this ID. Cannot be used together with `after_id`.
+         */
+        before_id?: number;
+    };
+    url: '/agendatemplates/{agendaId}/items';
+};
+
+export type PostAgendatemplatesAgendaIdItemsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostAgendatemplatesAgendaIdItemsError =
+    PostAgendatemplatesAgendaIdItemsErrors[keyof PostAgendatemplatesAgendaIdItemsErrors];
+
+export type PostAgendatemplatesAgendaIdItemsResponses = {
+    /**
+     * Created
+     */
+    201: {
+        data: AgendaItem;
+    };
+};
+
+export type PostAgendatemplatesAgendaIdItemsResponse =
+    PostAgendatemplatesAgendaIdItemsResponses[keyof PostAgendatemplatesAgendaIdItemsResponses];
+
+export type DeleteAgendatemplatesAgendaIdItemsItemIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of agenda
+         */
+        agendaId: number;
+        /**
+         * ID of agenda item
+         */
+        itemId: number;
+    };
+    query?: never;
+    url: '/agendatemplates/{agendaId}/items/{itemId}';
+};
+
+export type DeleteAgendatemplatesAgendaIdItemsItemIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeleteAgendatemplatesAgendaIdItemsItemIdError =
+    DeleteAgendatemplatesAgendaIdItemsItemIdErrors[keyof DeleteAgendatemplatesAgendaIdItemsItemIdErrors];
+
+export type DeleteAgendatemplatesAgendaIdItemsItemIdResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteAgendatemplatesAgendaIdItemsItemIdResponse =
+    DeleteAgendatemplatesAgendaIdItemsItemIdResponses[keyof DeleteAgendatemplatesAgendaIdItemsItemIdResponses];
+
+export type PutAgendatemplatesAgendaIdItemsItemIdData = {
+    body: AgendaItemInput;
+    path: {
+        /**
+         * ID of agenda
+         */
+        agendaId: number;
+        /**
+         * ID of agenda item
+         */
+        itemId: number;
+    };
+    query?: never;
+    url: '/agendatemplates/{agendaId}/items/{itemId}';
+};
+
+export type PutAgendatemplatesAgendaIdItemsItemIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutAgendatemplatesAgendaIdItemsItemIdError =
+    PutAgendatemplatesAgendaIdItemsItemIdErrors[keyof PutAgendatemplatesAgendaIdItemsItemIdErrors];
+
+export type PutAgendatemplatesAgendaIdItemsItemIdResponses = {
+    /**
+     * Updated
+     */
+    200: {
+        data: AgendaItem;
+    };
+};
+
+export type PutAgendatemplatesAgendaIdItemsItemIdResponse =
+    PutAgendatemplatesAgendaIdItemsItemIdResponses[keyof PutAgendatemplatesAgendaIdItemsItemIdResponses];
+
+export type DeleteAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of agenda
+         */
+        agendaId: number;
+        /**
+         * ID of agenda item
+         */
+        itemId: number;
+        /**
+         * ID of service group
+         */
+        serviceGroupId: number;
+    };
+    query?: never;
+    url: '/agendatemplates/{agendaId}/items/{itemId}/servicegroups/{serviceGroupId}';
+};
+
+export type DeleteAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeleteAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdError =
+    DeleteAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdErrors[keyof DeleteAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdErrors];
+
+export type DeleteAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdResponse =
+    DeleteAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdResponses[keyof DeleteAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdResponses];
+
+export type PutAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdData = {
+    body: {
+        /**
+         * The note text for the service group
+         */
+        note?: string;
+    };
+    path: {
+        /**
+         * ID of agenda
+         */
+        agendaId: number;
+        /**
+         * ID of agenda item
+         */
+        itemId: number;
+        /**
+         * ID of service group
+         */
+        serviceGroupId: number;
+    };
+    query?: never;
+    url: '/agendatemplates/{agendaId}/items/{itemId}/servicegroups/{serviceGroupId}';
+};
+
+export type PutAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdError =
+    PutAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdErrors[keyof PutAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdErrors];
+
+export type PutAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PutAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdResponse =
+    PutAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdResponses[keyof PutAgendatemplatesAgendaIdItemsItemIdServicegroupsServiceGroupIdResponses];
 
 export type GetBookingsData = {
     body?: never;
@@ -8215,7 +11885,7 @@ export type GetBookingsData = {
          */
         person_id?: number;
         /**
-         * The status id can be one or more of the following values: 1 (pending), 2 (approved), 3 (canceled), 99 (deleted) -- default: 1, 2
+         * The status id can be one or more of the following values: 1 (pending), 2 (approved), 3 (canceled) -- default: 1, 2
          */
         'status_ids[]'?: Array<number>;
         /**
@@ -8652,6 +12322,213 @@ export type PostBulkjobsInfosResponses = {
 
 export type PostBulkjobsInfosResponse = PostBulkjobsInfosResponses[keyof PostBulkjobsInfosResponses];
 
+export type GetBulklettersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/bulkletters';
+};
+
+export type GetBulklettersErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetBulklettersError = GetBulklettersErrors[keyof GetBulklettersErrors];
+
+export type GetBulklettersResponses = {
+    /**
+     * OK
+     */
+    200: Array<Bulkletter>;
+};
+
+export type GetBulklettersResponse = GetBulklettersResponses[keyof GetBulklettersResponses];
+
+export type PostBulklettersData = {
+    body: BulkletterCreate;
+    path?: never;
+    query?: never;
+    url: '/bulkletters';
+};
+
+export type PostBulklettersErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostBulklettersError = PostBulklettersErrors[keyof PostBulklettersErrors];
+
+export type PostBulklettersResponses = {
+    /**
+     * OK
+     */
+    200: Bulkletter;
+};
+
+export type PostBulklettersResponse = PostBulklettersResponses[keyof PostBulklettersResponses];
+
+export type PostBulklettersExecuteData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/bulkletters/execute';
+};
+
+export type PostBulklettersExecuteErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostBulklettersExecuteError = PostBulklettersExecuteErrors[keyof PostBulklettersExecuteErrors];
+
+export type PostBulklettersExecuteResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PostBulklettersExecuteResponse = PostBulklettersExecuteResponses[keyof PostBulklettersExecuteResponses];
+
+export type DeleteBulklettersIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the bulkletter
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/bulkletters/{id}';
+};
+
+export type DeleteBulklettersIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeleteBulklettersIdError = DeleteBulklettersIdErrors[keyof DeleteBulklettersIdErrors];
+
+export type DeleteBulklettersIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeleteBulklettersIdResponse = DeleteBulklettersIdResponses[keyof DeleteBulklettersIdResponses];
+
+export type GetBulklettersIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the bulkletter
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/bulkletters/{id}';
+};
+
+export type GetBulklettersIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetBulklettersIdError = GetBulklettersIdErrors[keyof GetBulklettersIdErrors];
+
+export type GetBulklettersIdResponses = {
+    /**
+     * OK
+     */
+    200: Bulkletter;
+};
+
+export type GetBulklettersIdResponse = GetBulklettersIdResponses[keyof GetBulklettersIdResponses];
+
+export type GetBulklettersIdPersonsData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the bulkletter
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/bulkletters/{id}/persons';
+};
+
+export type GetBulklettersIdPersonsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetBulklettersIdPersonsError = GetBulklettersIdPersonsErrors[keyof GetBulklettersIdPersonsErrors];
+
+export type GetBulklettersIdPersonsResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<BulkletterReceiver>;
+    };
+};
+
+export type GetBulklettersIdPersonsResponse = GetBulklettersIdPersonsResponses[keyof GetBulklettersIdPersonsResponses];
+
 export type GetCalendarsData = {
     body?: never;
     path?: never;
@@ -8791,6 +12668,7 @@ export type GetCalendarsAppointmentsTemplatesResponses = {
      */
     200: {
         data: Array<AppointmentTemplateGet>;
+        meta: MetaCount;
     };
 };
 
@@ -8825,8 +12703,8 @@ export type PostCalendarsAppointmentsTemplatesResponses = {
     /**
      * new appointment template
      */
-    200: {
-        data: Array<AppointmentTemplateGet>;
+    201: {
+        data: AppointmentTemplateGet;
     };
 };
 
@@ -8967,9 +12845,14 @@ export type GetCalendarsAppointmentsAppointmentIdStartDateData = {
          * ID of appointment
          */
         appointmentId: number;
-        startDate: string;
+        startDate: DateString;
     };
-    query?: never;
+    query?: {
+        /**
+         * Additional appointment information to include in the response.
+         */
+        'include[]'?: Array<'titleSuffix' | 'event' | 'group' | 'meetingRequests' | 'bookings' | 'tags'>;
+    };
     url: '/calendars/appointments/{appointmentId}/{startDate}';
 };
 
@@ -8996,13 +12879,7 @@ export type GetCalendarsAppointmentsAppointmentIdStartDateResponses = {
      * OK
      */
     200: {
-        data: {
-            appointment: AppointmentCalculated;
-            bookings: Array<AppointmentCalculated>;
-            event: DomainObjectEvent;
-            group: DomainObjectGroup;
-            meetingRequests: Array<MeetingRequest>;
-        };
+        data: AppointmentCalculatedWithIncludes;
     };
 };
 
@@ -9174,7 +13051,8 @@ export type GetCalendarsCalendarIdAppointmentsResponses = {
      * OK
      */
     200: {
-        data: Array<AppointmentCalculated>;
+        data: Array<AppointmentCalculatedWithIncludes>;
+        meta: MetaCount;
     };
 };
 
@@ -9209,10 +13087,15 @@ export type PostCalendarsCalendarIdAppointmentsError =
 
 export type PostCalendarsCalendarIdAppointmentsResponses = {
     /**
-     * OK
+     * Created
      */
-    201: unknown;
+    201: {
+        data: AppointmentBase;
+    };
 };
+
+export type PostCalendarsCalendarIdAppointmentsResponse =
+    PostCalendarsCalendarIdAppointmentsResponses[keyof PostCalendarsCalendarIdAppointmentsResponses];
 
 export type DeleteCalendarsCalendarIdAppointmentsAppointmentIdData = {
     body?: never;
@@ -9297,12 +13180,62 @@ export type GetCalendarsCalendarIdAppointmentsAppointmentIdResponses = {
      * OK
      */
     200: {
-        data: Array<AppointmentCalculated>;
+        data: AppointmentCalculated;
     };
 };
 
 export type GetCalendarsCalendarIdAppointmentsAppointmentIdResponse =
     GetCalendarsCalendarIdAppointmentsAppointmentIdResponses[keyof GetCalendarsCalendarIdAppointmentsAppointmentIdResponses];
+
+export type PostCalendarsCalendarIdAppointmentsAppointmentIdData = {
+    body: AppointmentCreate & {
+        appointmentId: number;
+        splitDate: DateString;
+        splitUntilEnd: boolean;
+    };
+    path: {
+        /**
+         * ID of Calendar
+         */
+        calendarId: number;
+        /**
+         * ID of appointment
+         */
+        appointmentId: number;
+    };
+    query?: never;
+    url: '/calendars/{calendarId}/appointments/{appointmentId}';
+};
+
+export type PostCalendarsCalendarIdAppointmentsAppointmentIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostCalendarsCalendarIdAppointmentsAppointmentIdError =
+    PostCalendarsCalendarIdAppointmentsAppointmentIdErrors[keyof PostCalendarsCalendarIdAppointmentsAppointmentIdErrors];
+
+export type PostCalendarsCalendarIdAppointmentsAppointmentIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: AppointmentBase;
+    };
+};
+
+export type PostCalendarsCalendarIdAppointmentsAppointmentIdResponse =
+    PostCalendarsCalendarIdAppointmentsAppointmentIdResponses[keyof PostCalendarsCalendarIdAppointmentsAppointmentIdResponses];
 
 export type PutCalendarsCalendarIdAppointmentsAppointmentIdData = {
     body: AppointmentCreate & {
@@ -9345,7 +13278,7 @@ export type PutCalendarsCalendarIdAppointmentsAppointmentIdResponses = {
      * OK
      */
     200: {
-        data: AppointmentCalculated;
+        data: AppointmentBase;
     };
 };
 
@@ -9414,6 +13347,50 @@ export type PostCalendarsIdAppointmentsIdChangeimpactResponses = {
 export type PostCalendarsIdAppointmentsIdChangeimpactResponse =
     PostCalendarsIdAppointmentsIdChangeimpactResponses[keyof PostCalendarsIdAppointmentsIdChangeimpactResponses];
 
+export type GetCalendarsCalendarIdAppointmentsAppointmentIdIcalData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Calendar
+         */
+        calendarId: number;
+        /**
+         * ID of appointment
+         */
+        appointmentId: number;
+    };
+    query?: never;
+    url: '/calendars/{calendarId}/appointments/{appointmentId}/ical';
+};
+
+export type GetCalendarsCalendarIdAppointmentsAppointmentIdIcalErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetCalendarsCalendarIdAppointmentsAppointmentIdIcalError =
+    GetCalendarsCalendarIdAppointmentsAppointmentIdIcalErrors[keyof GetCalendarsCalendarIdAppointmentsAppointmentIdIcalErrors];
+
+export type GetCalendarsCalendarIdAppointmentsAppointmentIdIcalResponses = {
+    /**
+     * iCal file for the appointment
+     */
+    200: string;
+};
+
+export type GetCalendarsCalendarIdAppointmentsAppointmentIdIcalResponse =
+    GetCalendarsCalendarIdAppointmentsAppointmentIdIcalResponses[keyof GetCalendarsCalendarIdAppointmentsAppointmentIdIcalResponses];
+
 export type GetCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsData = {
     body?: never;
     path: {
@@ -9453,7 +13430,7 @@ export type GetCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsRespon
      * OK
      */
     200: {
-        data: MeetingRequest;
+        data: Array<MeetingRequest>;
         meta: MetaCount;
     };
 };
@@ -9462,7 +13439,15 @@ export type GetCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsRespon
     GetCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsResponses[keyof GetCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsResponses];
 
 export type PostCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsData = {
-    body?: never;
+    /**
+     * Meeting request creation payload
+     */
+    body: {
+        /**
+         * ID of the person to invite to the appointment
+         */
+        inviteeId: number;
+    };
     path: {
         /**
          * ID of Calendar
@@ -9473,9 +13458,7 @@ export type PostCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsData 
          */
         appointmentId: number;
     };
-    query: {
-        personId: number;
-    };
+    query?: never;
     url: '/calendars/{calendarId}/appointments/{appointmentId}/meetingrequests';
 };
 
@@ -9556,7 +13539,15 @@ export type DeleteCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMee
     DeleteCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdResponses[keyof DeleteCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdResponses];
 
 export type PutCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdData = {
-    body?: never;
+    /**
+     * Meeting request answer payload
+     */
+    body: {
+        /**
+         * The answer to the meeting request
+         */
+        answer: 'accept' | 'decline' | 'maybe' | 'reset' | 'tentative';
+    };
     path: {
         /**
          * ID of Calendar
@@ -9595,13 +13586,65 @@ export type PutCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetin
 
 export type PutCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdResponses = {
     /**
-     * OK
+     * No Content
      */
-    200: MeetingRequest;
+    204: void;
 };
 
 export type PutCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdResponse =
     PutCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdResponses[keyof PutCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdResponses];
+
+export type PostCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdAnswerData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Calendar
+         */
+        calendarId: number;
+        /**
+         * ID of appointment
+         */
+        appointmentId: number;
+        /**
+         * ID of meeting request
+         */
+        meetingRequestId: number;
+        /**
+         * Answer to the meeting request
+         */
+        answer: 'accept' | 'decline' | 'reset' | 'tentative';
+    };
+    query?: never;
+    url: '/calendars/{calendarId}/appointments/{appointmentId}/meetingrequests/{meetingRequestId}/{answer}';
+};
+
+export type PostCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdAnswerErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdAnswerError =
+    PostCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdAnswerErrors[keyof PostCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdAnswerErrors];
+
+export type PostCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdAnswerResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PostCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdAnswerResponse =
+    PostCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdAnswerResponses[keyof PostCalendarsCalendarIdAppointmentsAppointmentIdMeetingrequestsMeetingRequestIdAnswerResponses];
 
 export type GetCalendarsCalendarIdAppointmentsAppointmentIdStartDateData = {
     body?: never;
@@ -9614,9 +13657,14 @@ export type GetCalendarsCalendarIdAppointmentsAppointmentIdStartDateData = {
          * ID of appointment
          */
         appointmentId: number;
-        startDate: string;
+        startDate: DateString;
     };
-    query?: never;
+    query?: {
+        /**
+         * Additional appointment information to include in the response.
+         */
+        'include[]'?: Array<'titleSuffix' | 'event' | 'group' | 'meetingRequests' | 'bookings' | 'tags'>;
+    };
     url: '/calendars/{calendarId}/appointments/{appointmentId}/{startDate}';
 };
 
@@ -9643,13 +13691,7 @@ export type GetCalendarsCalendarIdAppointmentsAppointmentIdStartDateResponses = 
      * OK
      */
     200: {
-        data: {
-            appointment: AppointmentCalculated;
-            bookings: Array<AppointmentCalculated>;
-            event: DomainObjectEvent;
-            group: DomainObjectGroup;
-            meetingRequests: Array<MeetingRequest>;
-        };
+        data: AppointmentCalculatedWithIncludes;
     };
 };
 
@@ -9664,7 +13706,12 @@ export type GetCalendarsCalendarIdMeetingrequestpersonsData = {
          */
         calendarId: number;
     };
-    query?: never;
+    query?: {
+        /**
+         * Include persons already invited to this appointment
+         */
+        appointmentId?: number;
+    };
     url: '/calendars/{calendarId}/meetingrequestpersons';
 };
 
@@ -9737,11 +13784,7 @@ export type GetCampusesResponses = {
 export type GetCampusesResponse = GetCampusesResponses[keyof GetCampusesResponses];
 
 export type PostCampusesData = {
-    body: {
-        name: string;
-        shorty: string;
-        sortKey?: number;
-    };
+    body: CampusCreate;
     path?: never;
     query?: never;
     url: '/campuses';
@@ -9774,7 +13817,6 @@ export type PostCampusesResponses = {
      */
     201: {
         data: Campus;
-        meta: MetaCount;
     };
 };
 
@@ -9862,7 +13904,7 @@ export type PutCampusesIdData = {
     /**
      * New values for campus
      */
-    body: ProfileUpdate;
+    body: CampusUpdate;
     path: {
         /**
          * ID of Entity
@@ -9930,10 +13972,16 @@ export type GetCaptchaResponses = {
      * Captcha Challenge
      */
     200: {
-        algorithm: string;
-        challenge: string;
-        maxnumber: number;
-        salt: string;
+        parameters: {
+            algorithm: string;
+            cost: number;
+            expiresAt?: number;
+            keyLength: number;
+            keyPrefix: string;
+            keySignature?: string;
+            nonce: string;
+            salt: string;
+        };
         signature: string;
     };
 };
@@ -10326,7 +14374,16 @@ export type PostChurchqueryDebugExportError = PostChurchqueryDebugExportErrors[k
 export type GetChurchqueryMetadataData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Root entity prefix for which metadata should be generated.
+         */
+        entity_to_search_for?: string;
+        /**
+         * Excludes db-field intern codes from metadata field lists (e.g. `multiselect`).
+         */
+        'exclude_field_types[]'?: Array<string>;
+    };
     url: '/churchquery/metadata';
 };
 
@@ -10380,19 +14437,23 @@ export type GetConfigResponses = {
     /**
      * OK
      */
-    200: Config;
+    200: GetConfigResponse;
 };
 
-export type GetConfigResponse = GetConfigResponses[keyof GetConfigResponses];
+export type GetConfigResponse2 = GetConfigResponses[keyof GetConfigResponses];
 
 export type PutConfigData = {
-    body?: never;
+    body: PutConfigRequest;
     path?: never;
     query?: never;
     url: '/config';
 };
 
 export type PutConfigErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -10411,9 +14472,9 @@ export type PutConfigError = PutConfigErrors[keyof PutConfigErrors];
 
 export type PutConfigResponses = {
     /**
-     * OK
+     * No Content
      */
-    200: Config;
+    204: void;
 };
 
 export type PutConfigResponse = PutConfigResponses[keyof PutConfigResponses];
@@ -10455,20 +14516,7 @@ export type GetContactlabelsResponses = {
 export type GetContactlabelsResponse = GetContactlabelsResponses[keyof GetContactlabelsResponses];
 
 export type PostContactlabelsData = {
-    body: {
-        /**
-         * Indicator if label is new default.
-         */
-        isDefault: true | false;
-        /**
-         * Name of Contact Label
-         */
-        name: string;
-        /**
-         * SortKey
-         */
-        sortKey: number;
-    };
+    body: ContactLabelCreate;
     path?: never;
     query?: never;
     url: '/contactlabels';
@@ -10493,7 +14541,6 @@ export type PostContactlabelsResponses = {
      */
     201: {
         data: ContactLabel;
-        meta: MetaCount;
     };
 };
 
@@ -10507,7 +14554,12 @@ export type DeleteContactlabelsIdData = {
          */
         id: number;
     };
-    query?: never;
+    query?: {
+        /**
+         * If set to true, the deletion is simulated but nothing will be deleted.
+         */
+        dry_run?: boolean;
+    };
     url: '/contactlabels/{id}';
 };
 
@@ -10528,6 +14580,38 @@ export type DeleteContactlabelsIdErrors = {
      * Resource not found
      */
     404: unknown;
+    /**
+     * Conflict during deletion attempt
+     */
+    409: {
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
+    };
 };
 
 export type DeleteContactlabelsIdError = DeleteContactlabelsIdErrors[keyof DeleteContactlabelsIdErrors];
@@ -10582,20 +14666,7 @@ export type GetContactlabelsIdResponses = {
 export type GetContactlabelsIdResponse = GetContactlabelsIdResponses[keyof GetContactlabelsIdResponses];
 
 export type PutContactlabelsIdData = {
-    body: {
-        /**
-         * Indicator if label is new default.
-         */
-        isDefault: boolean;
-        /**
-         * Name of Contact Label
-         */
-        name: string;
-        /**
-         * SortKey
-         */
-        sortKey: number;
-    };
+    body: ContactLabelUpdate;
     path: {
         /**
          * ID of Entity
@@ -10674,6 +14745,10 @@ export type GetDbfieldsData = {
     path?: never;
     query?: {
         /**
+         * Filters the result to the given field category intern codes
+         */
+        'categories[]'?: Array<FieldCategoryCode>;
+        /**
          * Includes additional data in the response
          */
         'include[]'?: Array<'options'>;
@@ -10734,10 +14809,10 @@ export type PostDbfieldsError = PostDbfieldsErrors[keyof PostDbfieldsErrors];
 
 export type PostDbfieldsResponses = {
     /**
-     * OK
+     * Created
      */
     201: {
-        data?: DbField;
+        data: DbField;
     };
 };
 
@@ -10858,7 +14933,7 @@ export type PutDbfieldsFieldIdResponses = {
      * OK
      */
     200: {
-        data?: DbField;
+        data: DbField;
     };
 };
 
@@ -10939,10 +15014,10 @@ export type PostDbfieldsIdOptionsError = PostDbfieldsIdOptionsErrors[keyof PostD
 
 export type PostDbfieldsIdOptionsResponses = {
     /**
-     * OK
+     * Created
      */
-    200: {
-        data?: DbFieldOption;
+    201: {
+        data: DbFieldOption;
     };
 };
 
@@ -10985,10 +15060,12 @@ export type GetDbfieldsFieldIdOptionsMetadataResponses = {
      */
     200: {
         data: Array<{
-            isAutoIncrement?: boolean;
-            length?: number | null;
-            name?: string;
-            type?: string;
+            isAutoIncrement: boolean;
+            isNullable: boolean;
+            length: number | null;
+            name: string;
+            nameTranslated: string;
+            type: string;
         }>;
         meta: MetaCount;
     };
@@ -11003,7 +15080,12 @@ export type DeleteDbfieldsFieldIdOptionsOptionIdData = {
         fieldId: string;
         optionId: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * If true, the deletion is only simulated and the option is not deleted. The response describes whether the option can be deleted.
+         */
+        dryRun?: boolean;
+    };
     url: '/dbfields/{fieldId}/options/{optionId}';
 };
 
@@ -11024,6 +15106,26 @@ export type DeleteDbfieldsFieldIdOptionsOptionIdErrors = {
      * Resource not found
      */
     404: unknown;
+    /**
+     * Returned when the option cannot be deleted, or for every `dryRun` request (the dry run always returns the deletion preview with this status).
+     */
+    409: {
+        /**
+         * Whether the option can be deleted (no blocking references or blockers).
+         */
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message?: string;
+        }>;
+        message?: string;
+        references: Array<{
+            blocksDeletion?: boolean;
+            columnName?: string;
+            count?: number;
+            tableName?: string;
+            type?: string;
+        }>;
+    };
 };
 
 export type DeleteDbfieldsFieldIdOptionsOptionIdError =
@@ -11113,10 +15215,10 @@ export type GetDbfieldtypesResponses = {
      */
     200: {
         data: Array<{
-            id?: number;
-            internCode?: string;
-            name?: string;
-            sortKey?: number;
+            id: number;
+            internCode: FieldTypeCode;
+            name: string;
+            sortKey: number;
         }>;
         meta: MetaCount;
     };
@@ -11195,6 +15297,7 @@ export type GetDomainobjectsResponses = {
      */
     200: {
         data: Array<DomainObjectAny>;
+        meta: MetaCount;
     };
 };
 
@@ -11230,6 +15333,7 @@ export type PostDomainobjectsResponses = {
      */
     200: {
         data: Array<DomainObjectAny>;
+        meta: MetaCount;
     };
 };
 
@@ -11296,6 +15400,7 @@ export type PostDynamicgroupsResponses = {
             created?: number;
             deleted?: number;
             groupId?: number;
+            unprocessed?: number;
             updated?: number;
         }>;
         meta: MetaCount;
@@ -11343,6 +15448,7 @@ export type PostDynamicgroupsIdRefreshResponses = {
             created?: number;
             deleted?: number;
             groupId?: number;
+            unprocessed?: number;
             updated?: number;
         }>;
         meta: MetaCount;
@@ -11572,6 +15678,202 @@ export type PutDynamicgroupsIdStatusResponses = {
 export type PutDynamicgroupsIdStatusResponse =
     PutDynamicgroupsIdStatusResponses[keyof PutDynamicgroupsIdStatusResponses];
 
+export type PostEmailsPlaceholderstatisticsData = {
+    body: {
+        /**
+         * Optional automatic email context ID
+         */
+        automaticEmailId?: number;
+        /**
+         * Email content fragments to inspect for placeholders
+         */
+        content: Array<string>;
+        /**
+         * Optional HTML template ID. When provided, the email content is inserted into the template before statistics are calculated.
+         */
+        emailTemplateId?: number;
+        /**
+         * Optional group context ID for group placeholders
+         */
+        groupId?: number;
+        /**
+         * IDs of the persons for which statistics are calculated
+         */
+        personIds: Array<number>;
+    };
+    path?: never;
+    query?: never;
+    url: '/emails/placeholderstatistics';
+};
+
+export type PostEmailsPlaceholderstatisticsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostEmailsPlaceholderstatisticsError =
+    PostEmailsPlaceholderstatisticsErrors[keyof PostEmailsPlaceholderstatisticsErrors];
+
+export type PostEmailsPlaceholderstatisticsResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<{
+            /**
+             * Placeholders in the order they appear in the content
+             */
+            order: Array<string>;
+            /**
+             * ID of the person these statistics belong to
+             */
+            personId: number;
+            /**
+             * Placeholder names mapped to status values: `0` means available, `1` means empty, and `2` means not accessible.
+             */
+            stats: {
+                [key: string]: 0 | 1 | 2;
+            };
+        }>;
+        meta: MetaCount;
+    };
+};
+
+export type PostEmailsPlaceholderstatisticsResponse =
+    PostEmailsPlaceholderstatisticsResponses[keyof PostEmailsPlaceholderstatisticsResponses];
+
+export type PostEmailsPreviewData = {
+    body: {
+        /**
+         * Email content fragments to render as HTML preview
+         */
+        content: Array<string>;
+        /**
+         * Optional HTML template ID. When provided, the rendered content is inserted into the template body.
+         */
+        emailTemplateId?: number;
+        /**
+         * Optional group context ID for group placeholders
+         */
+        groupId?: number;
+        /**
+         * ID of the person used to render person placeholders
+         */
+        personId: number;
+        /**
+         * Optional email subject to render with placeholders
+         */
+        subject?: string;
+        /**
+         * Optional user context ID used for placeholder rendering
+         */
+        userId?: number;
+    };
+    path?: never;
+    query?: never;
+    url: '/emails/preview';
+};
+
+export type PostEmailsPreviewErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostEmailsPreviewError = PostEmailsPreviewErrors[keyof PostEmailsPreviewErrors];
+
+export type PostEmailsPreviewResponses = {
+    /**
+     * OK
+     */
+    200: {
+        /**
+         * Rendered email preview HTML
+         */
+        html: string;
+        /**
+         * Rendered subject, only present when a subject was provided
+         */
+        subject?: string;
+    };
+};
+
+export type PostEmailsPreviewResponse = PostEmailsPreviewResponses[keyof PostEmailsPreviewResponses];
+
+export type GetEmailsTestTemplateData = {
+    body?: never;
+    path: {
+        /**
+         * Name of the email template test data file without extension
+         */
+        template: string;
+    };
+    query?: {
+        /**
+         * Language used for translated labels in the rendered template
+         */
+        language?: string;
+        /**
+         * Optional module used to render legacy module templates
+         */
+        module?: string;
+    };
+    url: '/emails/test/{template}';
+};
+
+export type GetEmailsTestTemplateErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetEmailsTestTemplateError = GetEmailsTestTemplateErrors[keyof GetEmailsTestTemplateErrors];
+
+export type GetEmailsTestTemplateResponses = {
+    /**
+     * OK
+     */
+    200: string;
+};
+
+export type GetEmailsTestTemplateResponse = GetEmailsTestTemplateResponses[keyof GetEmailsTestTemplateResponses];
+
 export type DeleteEvangelischetermineData = {
     body?: never;
     path?: never;
@@ -11751,6 +16053,110 @@ export type GetEventsResponses = {
 
 export type GetEventsResponse = GetEventsResponses[keyof GetEventsResponses];
 
+export type GetEventsFactsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Filter by start date (inclusive). Format YYYY-MM-DD.
+         */
+        from?: string;
+        /**
+         * Filter by end date (exclusive). Format YYYY-MM-DD.
+         */
+        to?: string;
+        /**
+         * Filter by event IDs.
+         */
+        'event_id[]'?: Array<number>;
+        /**
+         * Filter by fact IDs.
+         */
+        'fact_id[]'?: Array<number>;
+        /**
+         * Page number to show page in pagination. If empty, start at first page.
+         */
+        page?: number;
+        /**
+         * Number of results per page.
+         */
+        limit?: number;
+    };
+    url: '/events/facts';
+};
+
+export type GetEventsFactsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetEventsFactsError = GetEventsFactsErrors[keyof GetEventsFactsErrors];
+
+export type GetEventsFactsResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<EventFact>;
+        meta: MetaPagination;
+    };
+};
+
+export type GetEventsFactsResponse = GetEventsFactsResponses[keyof GetEventsFactsResponses];
+
+export type PostEventsFactsExportData = {
+    body: {
+        /**
+         * Calendar ids to filter events by.
+         */
+        calendar_ids: Array<number>;
+        /**
+         * Include events with start date >= from.
+         */
+        from?: DateString;
+        /**
+         * Include events with start date < to.
+         */
+        to?: DateString;
+    };
+    path?: never;
+    query?: {
+        /**
+         * Format of export file
+         */
+        format?: ExportOutputFormat;
+    };
+    url: '/events/facts/export';
+};
+
+export type PostEventsFactsExportErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostEventsFactsExportError = PostEventsFactsExportErrors[keyof PostEventsFactsExportErrors];
+
+export type PostEventsFactsExportResponses = {
+    /**
+     * OK
+     */
+    200: string;
+};
+
+export type PostEventsFactsExportResponse = PostEventsFactsExportResponses[keyof PostEventsFactsExportResponses];
+
 export type GetEventsIcalData = {
     body?: never;
     path?: never;
@@ -11794,7 +16200,12 @@ export type GetEventsIcalResponse = GetEventsIcalResponses[keyof GetEventsIcalRe
 export type PostEventsIcalData = {
     body?: never;
     path?: never;
-    query?: never;
+    query: {
+        /**
+         * Person ID to create a new iCal roster link for.
+         */
+        personId: number;
+    };
     url: '/events/ical';
 };
 
@@ -11914,17 +16325,23 @@ export type PostEventsSendResponses = {
 export type PostEventsSendResponse = PostEventsSendResponses[keyof PostEventsSendResponses];
 
 export type DeleteEventsIdData = {
-    body: {
-        dryRun?: boolean;
-        sendMail?: boolean;
-    };
+    body?: never;
     path: {
         /**
          * ID of Event
          */
         eventId: number;
     };
-    query?: never;
+    query?: {
+        /**
+         * If true, only checks whether the event can be deleted without actually deleting it.
+         */
+        dryRun?: boolean;
+        /**
+         * If true, sends an email notification to affected persons when deleting the event.
+         */
+        sendMail?: boolean;
+    };
     url: '/events/{eventId}';
 };
 
@@ -11989,9 +16406,8 @@ export type GetEventsIdResponse = GetEventsIdResponses[keyof GetEventsIdResponse
 export type PutEventsIdData = {
     body: {
         adminIds?: Array<number>;
-        eventId: number;
         isCanceled?: boolean;
-        note?: string;
+        note?: string | null;
     };
     path: {
         /**
@@ -12021,11 +16437,49 @@ export type PutEventsIdResponses = {
      * Successful request
      */
     200: {
-        data: Event;
+        data: EventUpdate;
     };
 };
 
 export type PutEventsIdResponse = PutEventsIdResponses[keyof PutEventsIdResponses];
+
+export type DeleteEventsIdAgendaData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+    };
+    query?: never;
+    url: '/events/{eventId}/agenda';
+};
+
+export type DeleteEventsIdAgendaErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeleteEventsIdAgendaError = DeleteEventsIdAgendaErrors[keyof DeleteEventsIdAgendaErrors];
+
+export type DeleteEventsIdAgendaResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteEventsIdAgendaResponse = DeleteEventsIdAgendaResponses[keyof DeleteEventsIdAgendaResponses];
 
 export type GetEventsIdAgendaData = {
     body?: never;
@@ -12067,6 +16521,558 @@ export type GetEventsIdAgendaResponses = {
 
 export type GetEventsIdAgendaResponse = GetEventsIdAgendaResponses[keyof GetEventsIdAgendaResponses];
 
+export type PutEventsIdAgendaData = {
+    body: {
+        /**
+         * The calendar ID for this agenda
+         */
+        calendarId: number;
+        /**
+         * Sort key position where the event starts
+         */
+        eventStartPosition?: number;
+        /**
+         * Agenda items to create or update. Cannot be used together with 'template_id' or 'event_id'.
+         */
+        items?: Array<AgendaItemInput>;
+        /**
+         * Optional series name for the agenda
+         */
+        series?: string;
+    };
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+    };
+    query?: {
+        /**
+         * ID of an agenda template to copy items from. If provided, the new agenda will be populated with items from the specified template. Cannot be used together with 'event_id', or 'items'.
+         */
+        template_id?: number;
+        /**
+         * ID of an existing event whose agenda should be copied. If provided, the new agenda will be populated with items from that event's agenda. Cannot be used together with 'template_id', or 'items'.
+         */
+        event_id?: number;
+    };
+    url: '/events/{eventId}/agenda';
+};
+
+export type PutEventsIdAgendaErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutEventsIdAgendaError = PutEventsIdAgendaErrors[keyof PutEventsIdAgendaErrors];
+
+export type PutEventsIdAgendaResponses = {
+    /**
+     * Successful request
+     */
+    200: {
+        data: Agenda;
+    };
+};
+
+export type PutEventsIdAgendaResponse = PutEventsIdAgendaResponses[keyof PutEventsIdAgendaResponses];
+
+export type PostEventsIdAgendaExportData = {
+    body: {
+        appendArrangement: boolean;
+        exportSongs: boolean;
+        withCategory: boolean;
+    };
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+    };
+    query: {
+        /**
+         * Presenter format to export the event agenda for
+         */
+        format: AgendaExportOutputFormat;
+    };
+    url: '/events/{eventId}/agenda/export';
+};
+
+export type PostEventsIdAgendaExportErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostEventsIdAgendaExportError = PostEventsIdAgendaExportErrors[keyof PostEventsIdAgendaExportErrors];
+
+export type PostEventsIdAgendaExportResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: {
+            songsWithMultipleFiles: Array<string>;
+            url: string;
+        };
+    };
+};
+
+export type PostEventsIdAgendaExportResponse =
+    PostEventsIdAgendaExportResponses[keyof PostEventsIdAgendaExportResponses];
+
+export type PostEventsIdAgendaIntegrateData = {
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+    };
+    query: {
+        /**
+         * ID of the source event whose agenda should be integrated
+         */
+        event_id: number;
+    };
+    url: '/events/{eventId}/agenda/integrate';
+};
+
+export type PostEventsIdAgendaIntegrateErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+    /**
+     * Unprocessable Content. Target event already has an agenda.
+     */
+    422: unknown;
+};
+
+export type PostEventsIdAgendaIntegrateError =
+    PostEventsIdAgendaIntegrateErrors[keyof PostEventsIdAgendaIntegrateErrors];
+
+export type PostEventsIdAgendaIntegrateResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Agenda;
+    };
+};
+
+export type PostEventsIdAgendaIntegrateResponse =
+    PostEventsIdAgendaIntegrateResponses[keyof PostEventsIdAgendaIntegrateResponses];
+
+export type PostEventsIdAgendaItemsData = {
+    body: AgendaItemInput;
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+    };
+    query?: {
+        /**
+         * Insert the new item after the item with this ID. Cannot be used together with `before_id`.
+         */
+        after_id?: number;
+        /**
+         * Insert the new item before the item with this ID. Cannot be used together with `after_id`.
+         */
+        before_id?: number;
+    };
+    url: '/events/{eventId}/agenda/items';
+};
+
+export type PostEventsIdAgendaItemsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostEventsIdAgendaItemsError = PostEventsIdAgendaItemsErrors[keyof PostEventsIdAgendaItemsErrors];
+
+export type PostEventsIdAgendaItemsResponses = {
+    /**
+     * Successful request
+     */
+    201: {
+        data: AgendaItem;
+    };
+};
+
+export type PostEventsIdAgendaItemsResponse = PostEventsIdAgendaItemsResponses[keyof PostEventsIdAgendaItemsResponses];
+
+export type DeleteEventsIdAgendaItemsIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+        /**
+         * ID of agenda item
+         */
+        itemId: number;
+    };
+    query?: never;
+    url: '/events/{eventId}/agenda/items/{itemId}';
+};
+
+export type DeleteEventsIdAgendaItemsIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeleteEventsIdAgendaItemsIdError =
+    DeleteEventsIdAgendaItemsIdErrors[keyof DeleteEventsIdAgendaItemsIdErrors];
+
+export type DeleteEventsIdAgendaItemsIdResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteEventsIdAgendaItemsIdResponse =
+    DeleteEventsIdAgendaItemsIdResponses[keyof DeleteEventsIdAgendaItemsIdResponses];
+
+export type PutEventsIdAgendaItemsIdData = {
+    body: AgendaItemInput;
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+        /**
+         * ID of agenda item
+         */
+        itemId: number;
+    };
+    query?: {
+        /**
+         * Insert the new item after the item with this ID. Cannot be used together with `before_id`.
+         */
+        after_id?: number;
+        /**
+         * Insert the new item before the item with this ID. Cannot be used together with `after_id`.
+         */
+        before_id?: number;
+    };
+    url: '/events/{eventId}/agenda/items/{itemId}';
+};
+
+export type PutEventsIdAgendaItemsIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutEventsIdAgendaItemsIdError = PutEventsIdAgendaItemsIdErrors[keyof PutEventsIdAgendaItemsIdErrors];
+
+export type PutEventsIdAgendaItemsIdResponses = {
+    /**
+     * Successful request
+     */
+    200: {
+        data: AgendaItem;
+    };
+};
+
+export type PutEventsIdAgendaItemsIdResponse =
+    PutEventsIdAgendaItemsIdResponses[keyof PutEventsIdAgendaItemsIdResponses];
+
+export type PostEventsIdAgendaItemsIdHideData = {
+    body?: {
+        [key: string]: unknown;
+    };
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+        /**
+         * ID of agenda item
+         */
+        itemId: number;
+    };
+    query?: never;
+    url: '/events/{eventId}/agenda/items/{itemId}/hide';
+};
+
+export type PostEventsIdAgendaItemsIdHideErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostEventsIdAgendaItemsIdHideError =
+    PostEventsIdAgendaItemsIdHideErrors[keyof PostEventsIdAgendaItemsIdHideErrors];
+
+export type PostEventsIdAgendaItemsIdHideResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PostEventsIdAgendaItemsIdHideResponse =
+    PostEventsIdAgendaItemsIdHideResponses[keyof PostEventsIdAgendaItemsIdHideResponses];
+
+export type DeleteEventsIdAgendaItemsIdServicegroupsIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+        /**
+         * ID of agenda item
+         */
+        itemId: number;
+        /**
+         * ID of the service group
+         */
+        serviceGroupId: number;
+    };
+    query?: never;
+    url: '/events/{eventId}/agenda/items/{itemId}/servicegroups/{serviceGroupId}';
+};
+
+export type DeleteEventsIdAgendaItemsIdServicegroupsIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeleteEventsIdAgendaItemsIdServicegroupsIdError =
+    DeleteEventsIdAgendaItemsIdServicegroupsIdErrors[keyof DeleteEventsIdAgendaItemsIdServicegroupsIdErrors];
+
+export type DeleteEventsIdAgendaItemsIdServicegroupsIdResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteEventsIdAgendaItemsIdServicegroupsIdResponse =
+    DeleteEventsIdAgendaItemsIdServicegroupsIdResponses[keyof DeleteEventsIdAgendaItemsIdServicegroupsIdResponses];
+
+export type PutEventsIdAgendaItemsIdServicegroupsIdData = {
+    body: {
+        /**
+         * The note text for the service group
+         */
+        note: string;
+    };
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+        /**
+         * ID of agenda item
+         */
+        itemId: number;
+        /**
+         * ID of the service group
+         */
+        serviceGroupId: number;
+    };
+    query?: never;
+    url: '/events/{eventId}/agenda/items/{itemId}/servicegroups/{serviceGroupId}';
+};
+
+export type PutEventsIdAgendaItemsIdServicegroupsIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutEventsIdAgendaItemsIdServicegroupsIdError =
+    PutEventsIdAgendaItemsIdServicegroupsIdErrors[keyof PutEventsIdAgendaItemsIdServicegroupsIdErrors];
+
+export type PutEventsIdAgendaItemsIdServicegroupsIdResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PutEventsIdAgendaItemsIdServicegroupsIdResponse =
+    PutEventsIdAgendaItemsIdServicegroupsIdResponses[keyof PutEventsIdAgendaItemsIdServicegroupsIdResponses];
+
+export type PostEventsIdAgendaItemsIdUnhideData = {
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+        /**
+         * ID of agenda item
+         */
+        itemId: number;
+    };
+    query?: never;
+    url: '/events/{eventId}/agenda/items/{itemId}/unhide';
+};
+
+export type PostEventsIdAgendaItemsIdUnhideErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostEventsIdAgendaItemsIdUnhideError =
+    PostEventsIdAgendaItemsIdUnhideErrors[keyof PostEventsIdAgendaItemsIdUnhideErrors];
+
+export type PostEventsIdAgendaItemsIdUnhideResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PostEventsIdAgendaItemsIdUnhideResponse =
+    PostEventsIdAgendaItemsIdUnhideResponses[keyof PostEventsIdAgendaItemsIdUnhideResponses];
+
+export type PostEventsIdAgendaLockData = {
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+    };
+    query?: never;
+    url: '/events/{eventId}/agenda/lock';
+};
+
+export type PostEventsIdAgendaLockErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostEventsIdAgendaLockError = PostEventsIdAgendaLockErrors[keyof PostEventsIdAgendaLockErrors];
+
+export type PostEventsIdAgendaLockResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PostEventsIdAgendaLockResponse = PostEventsIdAgendaLockResponses[keyof PostEventsIdAgendaLockResponses];
+
 export type GetEventsIdAgendaSongsData = {
     body?: never;
     path: {
@@ -12106,10 +17112,52 @@ export type GetEventsIdAgendaSongsResponses = {
      */
     200: {
         data: Array<Song>;
+        meta: MetaCount;
     };
 };
 
 export type GetEventsIdAgendaSongsResponse = GetEventsIdAgendaSongsResponses[keyof GetEventsIdAgendaSongsResponses];
+
+export type PostEventsIdAgendaUnlockData = {
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        /**
+         * ID of Event
+         */
+        eventId: number;
+    };
+    query?: never;
+    url: '/events/{eventId}/agenda/unlock';
+};
+
+export type PostEventsIdAgendaUnlockErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostEventsIdAgendaUnlockError = PostEventsIdAgendaUnlockErrors[keyof PostEventsIdAgendaUnlockErrors];
+
+export type PostEventsIdAgendaUnlockResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PostEventsIdAgendaUnlockResponse =
+    PostEventsIdAgendaUnlockResponses[keyof PostEventsIdAgendaUnlockResponses];
 
 export type PostEventsIdChatData = {
     body: StartStopChat;
@@ -12478,7 +17526,7 @@ export type PutEventsEventIdFactsFactIdResponses = {
 export type PutEventsEventIdFactsFactIdResponse =
     PutEventsEventIdFactsFactIdResponses[keyof PutEventsEventIdFactsFactIdResponses];
 
-export type PutEventsServicerequestsData = {
+export type PutEventsEventIdServicerequestsData = {
     body: {
         eventId: number;
         services: Array<{
@@ -12496,7 +17544,7 @@ export type PutEventsServicerequestsData = {
     url: '/events/{eventId}/servicerequests';
 };
 
-export type PutEventsServicerequestsErrors = {
+export type PutEventsEventIdServicerequestsErrors = {
     /**
      * Validation errors. See response for details
      */
@@ -12511,28 +17559,38 @@ export type PutEventsServicerequestsErrors = {
     403: unknown;
 };
 
-export type PutEventsServicerequestsError = PutEventsServicerequestsErrors[keyof PutEventsServicerequestsErrors];
+export type PutEventsEventIdServicerequestsError =
+    PutEventsEventIdServicerequestsErrors[keyof PutEventsEventIdServicerequestsErrors];
 
-export type PutEventsServicerequestsResponses = {
+export type PutEventsEventIdServicerequestsResponses = {
     /**
      * No Content
      */
     204: void;
 };
 
-export type PutEventsServicerequestsResponse =
-    PutEventsServicerequestsResponses[keyof PutEventsServicerequestsResponses];
+export type PutEventsEventIdServicerequestsResponse =
+    PutEventsEventIdServicerequestsResponses[keyof PutEventsEventIdServicerequestsResponses];
 
 export type PutEventsEventIdServicerequestsRequestIdData = {
-    body: {
+    body: (
+        | {
+              name: string;
+              personId?: null;
+          }
+        | {
+              name?: null;
+              personId: number;
+          }
+    ) & {
         comment?: string | null;
         isAccepted: boolean;
         /**
-         * Either `name` or `personId` need to be supplied.
+         * Name of an external assignee. Supply exactly one non-null value: `name` or `personId`.
          */
-        name: string | null;
+        name?: string | null;
         /**
-         * Either `personId` or `name` need to be supplied.
+         * ID of an existing person. Supply exactly one non-null value: `personId` or `name`.
          */
         personId?: number | null;
     };
@@ -12570,9 +17628,11 @@ export type PutEventsEventIdServicerequestsRequestIdError =
 
 export type PutEventsEventIdServicerequestsRequestIdResponses = {
     /**
-     * No Content
+     * Successful request
      */
-    204: void;
+    200: {
+        data: EventService;
+    };
 };
 
 export type PutEventsEventIdServicerequestsRequestIdResponse =
@@ -12616,9 +17676,11 @@ export type PostEventsIdServicerequestsIdAcceptError =
 
 export type PostEventsIdServicerequestsIdAcceptResponses = {
     /**
-     * No Content
+     * Successful request
      */
-    204: void;
+    200: {
+        data: EventService;
+    };
 };
 
 export type PostEventsIdServicerequestsIdAcceptResponse =
@@ -12662,9 +17724,11 @@ export type PostEventsIdServicerequestsIdDeclineError =
 
 export type PostEventsIdServicerequestsIdDeclineResponses = {
     /**
-     * No Content
+     * Successful request
      */
-    204: void;
+    200: {
+        data: EventService;
+    };
 };
 
 export type PostEventsIdServicerequestsIdDeclineResponse =
@@ -12708,9 +17772,11 @@ export type PostEventsIdServicerequestsIdUndoError =
 
 export type PostEventsIdServicerequestsIdUndoResponses = {
     /**
-     * No Content
+     * Successful request
      */
-    204: void;
+    200: {
+        data: EventService;
+    };
 };
 
 export type PostEventsIdServicerequestsIdUndoResponse =
@@ -12799,6 +17865,38 @@ export type GetEventsIdPossiblepersonsforserviceResponses = {
 export type GetEventsIdPossiblepersonsforserviceResponse =
     GetEventsIdPossiblepersonsforserviceResponses[keyof GetEventsIdPossiblepersonsforserviceResponses];
 
+export type GetEventtemplatesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/eventtemplates';
+};
+
+export type GetEventtemplatesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetEventtemplatesError = GetEventtemplatesErrors[keyof GetEventtemplatesErrors];
+
+export type GetEventtemplatesResponses = {
+    /**
+     * Successful request
+     */
+    200: {
+        data: Array<EventTemplate>;
+        meta: MetaCount;
+    };
+};
+
+export type GetEventtemplatesResponse = GetEventtemplatesResponses[keyof GetEventtemplatesResponses];
+
 export type GetExternalloginsData = {
     body?: never;
     path?: never;
@@ -12860,11 +17958,121 @@ export type PostExternalloginsResponses = {
      * OK
      */
     201: {
-        data: Resource;
+        data: ExternalLogin;
     };
 };
 
 export type PostExternalloginsResponse = PostExternalloginsResponses[keyof PostExternalloginsResponses];
+
+export type GetExternalloginsOidcCallbackData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Opaque state created by the matching OIDC start request.
+         */
+        state: string;
+        /**
+         * Authorization code returned by the OIDC provider.
+         */
+        code?: string;
+        /**
+         * OIDC authorization error returned instead of a code.
+         */
+        error?: string;
+    };
+    url: '/externallogins/oidc/callback';
+};
+
+export type GetExternalloginsOidcCallbackErrors = {
+    /**
+     * Login failed with a correlation-safe diagnostic ID
+     */
+    401: string;
+};
+
+export type GetExternalloginsOidcCallbackError =
+    GetExternalloginsOidcCallbackErrors[keyof GetExternalloginsOidcCallbackErrors];
+
+export type GetExternalloginsOidcCallbackResponses = {
+    /**
+     * Side-effect-free administrator test completed
+     */
+    200: string;
+};
+
+export type GetExternalloginsOidcCallbackResponse =
+    GetExternalloginsOidcCallbackResponses[keyof GetExternalloginsOidcCallbackResponses];
+
+export type PostExternalloginsSamlAcsData = {
+    body: {
+        RelayState: string;
+        SAMLResponse: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/externallogins/saml/acs';
+};
+
+export type PostExternalloginsSamlAcsErrors = {
+    /**
+     * Missing state or invalid SAML response
+     */
+    401: string;
+};
+
+export type PostExternalloginsSamlAcsError = PostExternalloginsSamlAcsErrors[keyof PostExternalloginsSamlAcsErrors];
+
+export type PostExternalloginsSamlAcsResponses = {
+    /**
+     * Side-effect-free administrator test completed
+     */
+    200: string;
+};
+
+export type PostExternalloginsSamlAcsResponse =
+    PostExternalloginsSamlAcsResponses[keyof PostExternalloginsSamlAcsResponses];
+
+export type PostExternalloginsSamlMetadataParseData = {
+    body: {
+        xml: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/externallogins/saml/metadata/parse';
+};
+
+export type PostExternalloginsSamlMetadataParseErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Invalid SAML IdP metadata XML
+     */
+    422: unknown;
+};
+
+export type PostExternalloginsSamlMetadataParseError =
+    PostExternalloginsSamlMetadataParseErrors[keyof PostExternalloginsSamlMetadataParseErrors];
+
+export type PostExternalloginsSamlMetadataParseResponses = {
+    /**
+     * Parsed IdP metadata candidates
+     */
+    200: {
+        data: {
+            descriptors: Array<SamlIdpMetadataDescriptor>;
+        };
+    };
+};
+
+export type PostExternalloginsSamlMetadataParseResponse =
+    PostExternalloginsSamlMetadataParseResponses[keyof PostExternalloginsSamlMetadataParseResponses];
 
 export type DeleteExternalloginsExternalloginidData = {
     body?: never;
@@ -12892,31 +18100,33 @@ export type DeleteExternalloginsExternalloginidErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -13006,6 +18216,335 @@ export type PutExternalloginsIdResponses = {
 };
 
 export type PutExternalloginsIdResponse = PutExternalloginsIdResponses[keyof PutExternalloginsIdResponses];
+
+export type PostExternalloginsIdLinkData = {
+    body: {
+        linkToken: string;
+        password: string;
+        username: string;
+    };
+    path: {
+        externalLoginId: number;
+    };
+    query?: never;
+    url: '/externallogins/{externalLoginId}/link';
+};
+
+export type PostExternalloginsIdLinkErrors = {
+    /**
+     * Linking failed with a correlation-safe diagnostic ID
+     */
+    401: {
+        message: string;
+    };
+    /**
+     * Too Many Requests
+     */
+    429: unknown;
+};
+
+export type PostExternalloginsIdLinkError = PostExternalloginsIdLinkErrors[keyof PostExternalloginsIdLinkErrors];
+
+export type PostExternalloginsIdLinkResponses = {
+    /**
+     * Identity linked and login completed, or two-factor verification required at location
+     */
+    200: {
+        data: {
+            location: string;
+        };
+    };
+};
+
+export type PostExternalloginsIdLinkResponse =
+    PostExternalloginsIdLinkResponses[keyof PostExternalloginsIdLinkResponses];
+
+export type PostExternalloginsIdLinkCreatePersonData = {
+    body: {
+        linkToken: string;
+    };
+    path: {
+        externalLoginId: number;
+    };
+    query?: never;
+    url: '/externallogins/{externalLoginId}/link/create-person';
+};
+
+export type PostExternalloginsIdLinkCreatePersonErrors = {
+    /**
+     * Person creation failed with a correlation-safe diagnostic ID
+     */
+    401: {
+        message: string;
+    };
+    /**
+     * Too Many Requests
+     */
+    429: unknown;
+};
+
+export type PostExternalloginsIdLinkCreatePersonError =
+    PostExternalloginsIdLinkCreatePersonErrors[keyof PostExternalloginsIdLinkCreatePersonErrors];
+
+export type PostExternalloginsIdLinkCreatePersonResponses = {
+    /**
+     * Person created and login completed
+     */
+    200: {
+        data: {
+            location: string;
+        };
+    };
+};
+
+export type PostExternalloginsIdLinkCreatePersonResponse =
+    PostExternalloginsIdLinkCreatePersonResponses[keyof PostExternalloginsIdLinkCreatePersonResponses];
+
+export type GetExternalloginsIdOidcCallbackData = {
+    body?: never;
+    path: {
+        externalLoginId: number;
+    };
+    query: {
+        /**
+         * Opaque state created by the matching OIDC start request.
+         */
+        state: string;
+        /**
+         * Authorization code returned by the OIDC provider.
+         */
+        code?: string;
+        /**
+         * OIDC authorization error returned instead of a code.
+         */
+        error?: string;
+    };
+    url: '/externallogins/{externalLoginId}/oidc/callback';
+};
+
+export type GetExternalloginsIdOidcCallbackErrors = {
+    /**
+     * Login failed with a correlation-safe diagnostic ID
+     */
+    401: string;
+};
+
+export type GetExternalloginsIdOidcCallbackError =
+    GetExternalloginsIdOidcCallbackErrors[keyof GetExternalloginsIdOidcCallbackErrors];
+
+export type GetExternalloginsIdOidcCallbackResponses = {
+    /**
+     * Side-effect-free administrator test completed
+     */
+    200: string;
+};
+
+export type GetExternalloginsIdOidcCallbackResponse =
+    GetExternalloginsIdOidcCallbackResponses[keyof GetExternalloginsIdOidcCallbackResponses];
+
+export type GetExternalloginsIdOidcStartData = {
+    body?: never;
+    path: {
+        externalLoginId: number;
+    };
+    query?: {
+        /**
+         * Same-origin ChurchTools URL to open after a successful login.
+         */
+        redirect?: string;
+    };
+    url: '/externallogins/{externalLoginId}/oidc/start';
+};
+
+export type GetExternalloginsIdOidcStartErrors = {
+    /**
+     * Provider unavailable with a correlation-safe diagnostic ID
+     */
+    404: string;
+};
+
+export type GetExternalloginsIdOidcStartError =
+    GetExternalloginsIdOidcStartErrors[keyof GetExternalloginsIdOidcStartErrors];
+
+export type GetExternalloginsIdOidcStartResponses = {
+    /**
+     * Authorization URL for API clients requesting JSON
+     */
+    200: {
+        data: ExternalLoginOidcTestStart;
+    };
+};
+
+export type GetExternalloginsIdOidcStartResponse =
+    GetExternalloginsIdOidcStartResponses[keyof GetExternalloginsIdOidcStartResponses];
+
+export type PostExternalloginsIdOidcTestData = {
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        externalLoginId: number;
+    };
+    query?: never;
+    url: '/externallogins/{externalLoginId}/oidc/test';
+};
+
+export type PostExternalloginsIdOidcTestErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostExternalloginsIdOidcTestError =
+    PostExternalloginsIdOidcTestErrors[keyof PostExternalloginsIdOidcTestErrors];
+
+export type PostExternalloginsIdOidcTestResponses = {
+    /**
+     * Test started
+     */
+    200: {
+        data: ExternalLoginOidcTestStart | ExternalLoginOidcTestResult;
+    };
+};
+
+export type PostExternalloginsIdOidcTestResponse =
+    PostExternalloginsIdOidcTestResponses[keyof PostExternalloginsIdOidcTestResponses];
+
+export type GetExternalloginsIdOidcTestStateData = {
+    body?: never;
+    path: {
+        externalLoginId: number;
+        /**
+         * Opaque state returned when the OIDC login test was started.
+         */
+        state: string;
+    };
+    query?: never;
+    url: '/externallogins/{externalLoginId}/oidc/test/{state}';
+};
+
+export type GetExternalloginsIdOidcTestStateErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetExternalloginsIdOidcTestStateError =
+    GetExternalloginsIdOidcTestStateErrors[keyof GetExternalloginsIdOidcTestStateErrors];
+
+export type GetExternalloginsIdOidcTestStateResponses = {
+    /**
+     * Sanitized test status or result
+     */
+    200: {
+        data: ExternalLoginOidcTestResult;
+    };
+};
+
+export type GetExternalloginsIdOidcTestStateResponse =
+    GetExternalloginsIdOidcTestStateResponses[keyof GetExternalloginsIdOidcTestStateResponses];
+
+export type PostExternalloginsIdSamlTestData = {
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        externalLoginId: number;
+    };
+    query?: never;
+    url: '/externallogins/{externalLoginId}/saml/test';
+};
+
+export type PostExternalloginsIdSamlTestErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostExternalloginsIdSamlTestError =
+    PostExternalloginsIdSamlTestErrors[keyof PostExternalloginsIdSamlTestErrors];
+
+export type PostExternalloginsIdSamlTestResponses = {
+    /**
+     * Test started
+     */
+    200: {
+        data: ExternalLoginSamlTestStart;
+    };
+};
+
+export type PostExternalloginsIdSamlTestResponse =
+    PostExternalloginsIdSamlTestResponses[keyof PostExternalloginsIdSamlTestResponses];
+
+export type GetExternalloginsIdSamlTestStateData = {
+    body?: never;
+    path: {
+        externalLoginId: number;
+        /**
+         * Opaque state returned when the SAML login test was started.
+         */
+        state: string;
+    };
+    query?: never;
+    url: '/externallogins/{externalLoginId}/saml/test/{state}';
+};
+
+export type GetExternalloginsIdSamlTestStateErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetExternalloginsIdSamlTestStateError =
+    GetExternalloginsIdSamlTestStateErrors[keyof GetExternalloginsIdSamlTestStateErrors];
+
+export type GetExternalloginsIdSamlTestStateResponses = {
+    /**
+     * Sanitized test status or result
+     */
+    200: {
+        data: ExternalLoginSamlTestResult;
+    };
+};
+
+export type GetExternalloginsIdSamlTestStateResponse =
+    GetExternalloginsIdSamlTestStateResponses[keyof GetExternalloginsIdSamlTestStateResponses];
 
 export type GetExternalpostsData = {
     body?: never;
@@ -13133,12 +18672,14 @@ export type GetFactsErrors = {
     /**
      * Unauthorized
      */
-    401: unknown;
+    401: string;
     /**
-     * Forbidden
+     * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
 };
+
+export type GetFactsError = GetFactsErrors[keyof GetFactsErrors];
 
 export type GetFactsResponses = {
     /**
@@ -13153,15 +18694,7 @@ export type GetFactsResponses = {
 export type GetFactsResponse = GetFactsResponses[keyof GetFactsResponses];
 
 export type PostFactsData = {
-    body: {
-        fieldType?: 'number' | 'select';
-        name?: string;
-        /**
-         * Will not be saved if fieldType = number
-         */
-        options?: Array<unknown>;
-        sortKey?: number;
-    };
+    body: FactInput;
     path?: never;
     query?: never;
     url: '/facts';
@@ -13175,12 +18708,14 @@ export type PostFactsErrors = {
     /**
      * Unauthorized
      */
-    401: unknown;
+    401: string;
     /**
-     * Forbidden
+     * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
 };
+
+export type PostFactsError = PostFactsErrors[keyof PostFactsErrors];
 
 export type PostFactsResponses = {
     /**
@@ -13196,22 +18731,44 @@ export type PostFactsResponse = PostFactsResponses[keyof PostFactsResponses];
 export type DeleteFactsIdData = {
     body?: never;
     path: {
-        id: string;
+        /**
+         * ID of the fact master data entry.
+         */
+        id: number;
     };
-    query?: never;
+    query?: {
+        /**
+         * If true, only checks whether the fact can be deleted without actually deleting it.
+         */
+        dry_run?: boolean;
+    };
     url: '/facts/{id}';
 };
 
 export type DeleteFactsIdErrors = {
     /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
      * Unauthorized
      */
-    401: unknown;
+    401: string;
     /**
-     * Forbidden
+     * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+    /**
+     * A conflict occurred between the request and the current state of the resource.
+     */
+    409: unknown;
 };
+
+export type DeleteFactsIdError = DeleteFactsIdErrors[keyof DeleteFactsIdErrors];
 
 export type DeleteFactsIdResponses = {
     /**
@@ -13225,7 +18782,10 @@ export type DeleteFactsIdResponse = DeleteFactsIdResponses[keyof DeleteFactsIdRe
 export type GetFactsIdData = {
     body?: never;
     path: {
-        id: string;
+        /**
+         * ID of the fact master data entry.
+         */
+        id: number;
     };
     query?: never;
     url: '/facts/{id}';
@@ -13235,16 +18795,18 @@ export type GetFactsIdErrors = {
     /**
      * Unauthorized
      */
-    401: unknown;
+    401: string;
     /**
-     * Forbidden
+     * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
     /**
-     * Not Found
+     * Resource not found
      */
     404: unknown;
 };
+
+export type GetFactsIdError = GetFactsIdErrors[keyof GetFactsIdErrors];
 
 export type GetFactsIdResponses = {
     /**
@@ -13258,14 +18820,12 @@ export type GetFactsIdResponses = {
 export type GetFactsIdResponse = GetFactsIdResponses[keyof GetFactsIdResponses];
 
 export type PutFactsIdData = {
-    body: {
-        fieldType?: 'select' | 'number';
-        name?: string;
-        options?: Array<string>;
-        sortKey?: number;
-    };
+    body: FactInput;
     path: {
-        id: string;
+        /**
+         * ID of the fact master data entry.
+         */
+        id: number;
     };
     query?: never;
     url: '/facts/{id}';
@@ -13279,12 +18839,18 @@ export type PutFactsIdErrors = {
     /**
      * Unauthorized
      */
-    401: unknown;
+    401: string;
     /**
-     * Forbidden
+     * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
 };
+
+export type PutFactsIdError = PutFactsIdErrors[keyof PutFactsIdErrors];
 
 export type PutFactsIdResponses = {
     /**
@@ -13362,6 +18928,46 @@ export type GetFieldsResponses = {
 
 export type GetFieldsResponse = GetFieldsResponses[keyof GetFieldsResponses];
 
+export type GetFilesDomainTypeData = {
+    body?: never;
+    path: {
+        /**
+         * The domain type. Currently supported are 'avatar', 'groupimage', 'appointment_image', 'logo', 'attachments', 'bulkletter_template', 'service', 'song_arrangement', 'importtable', 'person', 'familyavatar', 'post', 'wiki_.?'.
+         */
+        domainType: string;
+    };
+    query?: never;
+    url: '/files/{domainType}';
+};
+
+export type GetFilesDomainTypeErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetFilesDomainTypeError = GetFilesDomainTypeErrors[keyof GetFilesDomainTypeErrors];
+
+export type GetFilesDomainTypeResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<CtFile>;
+    };
+};
+
+export type GetFilesDomainTypeResponse = GetFilesDomainTypeResponses[keyof GetFilesDomainTypeResponses];
+
 export type DeleteFilesDomainTypeDomainIdentifierData = {
     body?: never;
     path: {
@@ -13380,6 +18986,10 @@ export type DeleteFilesDomainTypeDomainIdentifierData = {
 
 export type DeleteFilesDomainTypeDomainIdentifierErrors = {
     /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
      * Unauthorized
      */
     401: string;
@@ -13387,6 +18997,10 @@ export type DeleteFilesDomainTypeDomainIdentifierErrors = {
      * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
 };
 
 export type DeleteFilesDomainTypeDomainIdentifierError =
@@ -13420,6 +19034,10 @@ export type GetFilesDomainTypeDomainIdentifierData = {
 
 export type GetFilesDomainTypeDomainIdentifierErrors = {
     /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
      * Unauthorized
      */
     401: string;
@@ -13449,7 +19067,16 @@ export type GetFilesDomainTypeDomainIdentifierResponse =
     GetFilesDomainTypeDomainIdentifierResponses[keyof GetFilesDomainTypeDomainIdentifierResponses];
 
 export type PatchFilesDomainTypeDomainIdentifierData = {
-    body?: never;
+    body: {
+        /**
+         * New display name for all files of this domain object
+         */
+        name?: string;
+        /**
+         * New sort key for all files of this domain object
+         */
+        sortKey?: number;
+    };
     path: {
         /**
          * The domain type. Currently supported are 'avatar', 'groupimage', 'appointment_image', 'logo', 'attachments', 'bulkletter_template', 'service', 'song_arrangement', 'importtable', 'person', 'familyavatar', 'post', 'wiki_.?'.
@@ -13465,6 +19092,10 @@ export type PatchFilesDomainTypeDomainIdentifierData = {
 };
 
 export type PatchFilesDomainTypeDomainIdentifierErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -13494,11 +19125,23 @@ export type PatchFilesDomainTypeDomainIdentifierResponse =
 
 export type PostFilesDomainTypeDomainIdentifierData = {
     body: {
+        /**
+         * Files to upload
+         */
         'files[]'?: Array<Blob | File>;
+        /**
+         * Optional image crop and focus settings
+         */
         image_options?: {
             [key: string]: unknown;
         };
+        /**
+         * Maximum image height in pixels
+         */
         max_height?: string;
+        /**
+         * Maximum image width in pixels
+         */
         max_width?: string;
     };
     path: {
@@ -13516,6 +19159,10 @@ export type PostFilesDomainTypeDomainIdentifierData = {
 };
 
 export type PostFilesDomainTypeDomainIdentifierErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -13548,12 +19195,21 @@ export type PostFilesDomainTypeDomainIdentifierResponse =
 
 export type PostFilesDomainTypeDomainIdentifierLinkData = {
     /**
-     * Accounting period data
+     * Link data
      */
     body: {
-        name: string | null;
+        /**
+         * Optional display name for the link
+         */
+        name?: string | null;
+        /**
+         * Optional security level for the link
+         */
         securityLevelId?: number | null;
-        url?: string;
+        /**
+         * URL to store as link
+         */
+        url: string;
     };
     path: {
         /**
@@ -13571,43 +19227,9 @@ export type PostFilesDomainTypeDomainIdentifierLinkData = {
 
 export type PostFilesDomainTypeDomainIdentifierLinkErrors = {
     /**
-     * Unauthorized
+     * Bad Request
      */
-    401: string;
-    /**
-     * Forbidden to see, create, update, or delete resource
-     */
-    403: unknown;
-};
-
-export type PostFilesDomainTypeDomainIdentifierLinkError =
-    PostFilesDomainTypeDomainIdentifierLinkErrors[keyof PostFilesDomainTypeDomainIdentifierLinkErrors];
-
-export type PostFilesDomainTypeDomainIdentifierLinkResponses = {
-    /**
-     * The newly created link
-     */
-    201: {
-        data: FileOrLink;
-    };
-};
-
-export type PostFilesDomainTypeDomainIdentifierLinkResponse =
-    PostFilesDomainTypeDomainIdentifierLinkResponses[keyof PostFilesDomainTypeDomainIdentifierLinkResponses];
-
-export type GetFilesIdData = {
-    body?: never;
-    path: {
-        /**
-         * ID of Entity
-         */
-        fileId: number;
-    };
-    query?: never;
-    url: '/files/{fileId}/meta';
-};
-
-export type GetFilesIdErrors = {
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -13622,18 +19244,20 @@ export type GetFilesIdErrors = {
     404: unknown;
 };
 
-export type GetFilesIdError = GetFilesIdErrors[keyof GetFilesIdErrors];
+export type PostFilesDomainTypeDomainIdentifierLinkError =
+    PostFilesDomainTypeDomainIdentifierLinkErrors[keyof PostFilesDomainTypeDomainIdentifierLinkErrors];
 
-export type GetFilesIdResponses = {
+export type PostFilesDomainTypeDomainIdentifierLinkResponses = {
     /**
-     * OK
+     * The newly created link
      */
-    200: {
+    201: {
         data: CtFile;
     };
 };
 
-export type GetFilesIdResponse = GetFilesIdResponses[keyof GetFilesIdResponses];
+export type PostFilesDomainTypeDomainIdentifierLinkResponse =
+    PostFilesDomainTypeDomainIdentifierLinkResponses[keyof PostFilesDomainTypeDomainIdentifierLinkResponses];
 
 export type GetFilesIdMetadataData = {
     body?: never;
@@ -13696,6 +19320,23 @@ export type DeleteFilesIdData = {
     url: '/files/{id}';
 };
 
+export type DeleteFilesIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeleteFilesIdError = DeleteFilesIdErrors[keyof DeleteFilesIdErrors];
+
 export type DeleteFilesIdResponses = {
     /**
      * Successfully deleted
@@ -13706,7 +19347,29 @@ export type DeleteFilesIdResponses = {
 export type DeleteFilesIdResponse = DeleteFilesIdResponses[keyof DeleteFilesIdResponses];
 
 export type PatchFilesIdData = {
-    body?: never;
+    body: {
+        /**
+         * Optional target domain object to copy this file to
+         */
+        copyTo?: {
+            /**
+             * Target domain identifier
+             */
+            domainId: string;
+            /**
+             * Target domain type
+             */
+            domainType: string;
+        };
+        /**
+         * New display name for the file
+         */
+        name?: string;
+        /**
+         * New sort key for the file
+         */
+        sortKey?: number;
+    };
     path: {
         /**
          * ID of Entity
@@ -13718,6 +19381,10 @@ export type PatchFilesIdData = {
 };
 
 export type PatchFilesIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -13738,12 +19405,50 @@ export type PatchFilesIdResponses = {
     /**
      * No Content
      */
-    204: {
-        name: string;
-    };
+    204: void;
 };
 
 export type PatchFilesIdResponse = PatchFilesIdResponses[keyof PatchFilesIdResponses];
+
+export type GetFilesIdMetaData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/files/{id}/meta';
+};
+
+export type GetFilesIdMetaErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetFilesIdMetaError = GetFilesIdMetaErrors[keyof GetFilesIdMetaErrors];
+
+export type GetFilesIdMetaResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: CtFile;
+    };
+};
+
+export type GetFilesIdMetaResponse = GetFilesIdMetaResponses[keyof GetFilesIdMetaResponses];
 
 export type GetFinanceAccountclassesData = {
     body?: never;
@@ -13758,19 +19463,20 @@ export type GetFinanceAccountclassesErrors = {
      */
     401: string;
     /**
-     * Resource not found
+     * Forbidden to see, create, update, or delete resource
      */
-    404: unknown;
+    403: unknown;
 };
 
 export type GetFinanceAccountclassesError = GetFinanceAccountclassesErrors[keyof GetFinanceAccountclassesErrors];
 
 export type GetFinanceAccountclassesResponses = {
     /**
-     * get available account classes ordered by id
+     * OK
      */
     200: {
         data: Array<AccountClass>;
+        meta: MetaCount;
     };
 };
 
@@ -13779,9 +19485,9 @@ export type GetFinanceAccountclassesResponse =
 
 export type PostFinanceAccountclassesData = {
     /**
-     * Account classes sorted by sort key.
+     * Account class data.
      */
-    body: AccountClassNew;
+    body: AccountClassCreate;
     path?: never;
     query?: never;
     url: '/finance/accountclasses';
@@ -13789,23 +19495,27 @@ export type PostFinanceAccountclassesData = {
 
 export type PostFinanceAccountclassesErrors = {
     /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
      * Unauthorized
      */
     401: string;
     /**
-     * Resource not found
+     * Forbidden to see, create, update, or delete resource
      */
-    404: unknown;
+    403: unknown;
 };
 
 export type PostFinanceAccountclassesError = PostFinanceAccountclassesErrors[keyof PostFinanceAccountclassesErrors];
 
 export type PostFinanceAccountclassesResponses = {
     /**
-     * new account class
+     * Created account class
      */
     200: {
-        data: Array<AccountClass>;
+        data: AccountClass;
     };
 };
 
@@ -13820,7 +19530,12 @@ export type DeleteFinanceAccountclassesIdData = {
          */
         id: number;
     };
-    query?: never;
+    query?: {
+        /**
+         * If true, only checks for delete conflicts but does not delete the account class.
+         */
+        dry_run?: boolean;
+    };
     url: '/finance/accountclasses/{id}';
 };
 
@@ -13841,31 +19556,33 @@ export type DeleteFinanceAccountclassesIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -13913,7 +19630,7 @@ export type GetFinanceAccountclassesIdError = GetFinanceAccountclassesIdErrors[k
 
 export type GetFinanceAccountclassesIdResponses = {
     /**
-     * get account class
+     * OK
      */
     200: {
         data: AccountClass;
@@ -13925,9 +19642,9 @@ export type GetFinanceAccountclassesIdResponse =
 
 export type PutFinanceAccountclassesIdData = {
     /**
-     * Account Class data
+     * Account class data.
      */
-    body: AccountClassNew;
+    body: AccountClassCreate;
     path: {
         /**
          * ID of Entity
@@ -13939,6 +19656,10 @@ export type PutFinanceAccountclassesIdData = {
 };
 
 export type PutFinanceAccountclassesIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -13957,7 +19678,7 @@ export type PutFinanceAccountclassesIdError = PutFinanceAccountclassesIdErrors[k
 
 export type PutFinanceAccountclassesIdResponses = {
     /**
-     * Updated Account Class
+     * Updated account class
      */
     200: {
         data: AccountClass;
@@ -13993,6 +19714,7 @@ export type GetFinanceAccountgroupsResponses = {
      */
     200: {
         data: Array<AccountGroup>;
+        meta: MetaCount;
     };
 };
 
@@ -14026,7 +19748,7 @@ export type PostFinanceAccountgroupsResponses = {
      * new account group
      */
     200: {
-        data: Array<AccountGroup>;
+        data: AccountGroup;
     };
 };
 
@@ -14062,31 +19784,33 @@ export type DeleteFinanceAccountgroupsIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -14215,6 +19939,7 @@ export type GetFinanceAccountingperiodsResponses = {
      */
     200: {
         data: Array<AccountingPeriod>;
+        meta: MetaCount;
     };
 };
 
@@ -14291,31 +20016,33 @@ export type DeleteFinanceAccountingperiodsIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -14379,6 +20106,10 @@ export type PutFinanceAccountingperiodsIdData = {
      * Accounting period data
      */
     body: {
+        balances?: {
+            from?: Array<number>;
+            openingBalanceAccount?: number;
+        };
         clientId: number;
         endDate: string;
         isClosed: boolean;
@@ -14515,9 +20246,18 @@ export type GetFinanceAccountingperiodsIdAccountsStatementsResponses = {
     200: {
         data: Array<{
             accountId: number;
-            booked: number;
-            ignored: number;
-            open: number;
+            /**
+             * Number of movements that have been booked.
+             */
+            booked?: number;
+            /**
+             * Number of movements that have been ignored.
+             */
+            ignored?: number;
+            /**
+             * Number of movements that are still open.
+             */
+            open?: number;
         }>;
     };
 };
@@ -14532,7 +20272,10 @@ export type GetFinanceAccountingperiodsIdAccountsIdMovementsData = {
          * ID of Entity
          */
         id: number;
-        accountId: string;
+        /**
+         * ID of the account
+         */
+        accountId: number;
     };
     query?: {
         /**
@@ -14543,12 +20286,15 @@ export type GetFinanceAccountingperiodsIdAccountsIdMovementsData = {
          * Number of results per page.
          */
         limit?: number;
-        state?: 'open' | 'booked' | 'ignored';
-        query?: string;
         /**
-         * If set, the response will include the specified data.
+         * Include additional information
          */
-        include?: Array<'bills'>;
+        'include[]'?: Array<'bills'>;
+        state?: 'open' | 'booked' | 'ignored';
+        /**
+         * Search movements by description or transaction number.
+         */
+        query?: string;
     };
     url: '/finance/accountingperiods/{id}/accounts/{accountId}/movements';
 };
@@ -14636,24 +20382,35 @@ export type GetFinanceAccountingperiodsIdAccountsIdStatementsIdMovementsData = {
          */
         id: number;
         /**
-         * The account ID.
+         * ID of the account the statement belongs to.
          */
-        accountId: string;
+        accountId: number;
         /**
-         * The statement ID.
+         * ID of the statement whose movements are returned.
          */
-        statementId: string;
+        statementId: number;
     };
     query?: {
+        /**
+         * Page number to show page in pagination. If empty, start at first page.
+         */
+        page?: number;
         /**
          * Number of results per page.
          */
         limit?: number;
+        /**
+         * Filter movements by their booking state.
+         */
         state?: 'open' | 'booked' | 'ignored';
         /**
-         * If set, the response will include the specified data.
+         * Search movements by purpose, identifier or person name.
          */
-        include?: Array<'bills'>;
+        query?: string;
+        /**
+         * Include additional information
+         */
+        'include[]'?: Array<'bills'>;
     };
     url: '/finance/accountingperiods/{id}/accounts/{accountId}/statements/{statementId}/movements';
 };
@@ -14691,19 +20448,28 @@ export type GetFinanceAccountingperiodsIdAccountsIdStatementsIdMovementsResponse
 
 export type PostFinanceAccountingperiodsIdAccountsIdStatementsIdMovementsIdData = {
     /**
-     * Account statement movement data
+     * The new booking state of the movement.
      */
     body: {
-        state: 'open' | 'booked' | 'ignored';
+        state: MovementState;
     };
     path: {
         /**
          * ID of Entity
          */
         id: number;
-        accountId: string;
-        statementId: string;
-        movementId: string;
+        /**
+         * ID of the account the statement belongs to.
+         */
+        accountId: number;
+        /**
+         * ID of the statement the movement belongs to.
+         */
+        statementId: number;
+        /**
+         * ID of the movement to update.
+         */
+        movementId: number;
     };
     query?: never;
     url: '/finance/accountingperiods/{id}/accounts/{accountId}/statements/{statementId}/movements/{movementId}';
@@ -14732,9 +20498,10 @@ export type PostFinanceAccountingperiodsIdAccountsIdStatementsIdMovementsIdRespo
      * OK
      */
     200: {
-        data: Array<{
-            [key: string]: unknown;
-        }>;
+        /**
+         * The transaction created when booking the movement, or an empty array when no transaction was created.
+         */
+        data: Transaction | Array<unknown>;
     };
 };
 
@@ -14818,7 +20585,9 @@ export type GetFinanceAccountingperiodsIdBillsResponse =
     GetFinanceAccountingperiodsIdBillsResponses[keyof GetFinanceAccountingperiodsIdBillsResponses];
 
 export type PostFinanceAccountingperiodsIdStatementsData = {
-    body?: never;
+    body: {
+        'files[]': Array<Blob | File>;
+    };
     path: {
         /**
          * ID of Entity
@@ -14830,6 +20599,10 @@ export type PostFinanceAccountingperiodsIdStatementsData = {
 };
 
 export type PostFinanceAccountingperiodsIdStatementsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -14853,18 +20626,27 @@ export type PostFinanceAccountingperiodsIdStatementsResponses = {
      */
     200: {
         data: {
+            /**
+             * Number of movements that already exist and would be skipped on import.
+             */
             duplicates: number;
             /**
-             * end amount in cents
+             * End balance in cents.
              */
             endAmount: number;
             endDate: DateString;
             fileName: string;
             fileType: string;
+            /**
+             * Account identifier (e.g. IBAN) detected in the file.
+             */
             identifier: string;
+            /**
+             * Number of new movements that would be imported.
+             */
             movements: number;
             /**
-             * start amount in cents
+             * Start balance in cents.
              */
             startAmount: number;
             startDate: DateString;
@@ -14882,7 +20664,10 @@ export type DeleteFinanceAccountingperiodsIdStatementsIdData = {
          * ID of Entity
          */
         id: number;
-        statementId: string;
+        /**
+         * ID of the statement
+         */
+        statementId: number;
     };
     query?: never;
     url: '/finance/accountingperiods/{id}/statements/{statementId}';
@@ -14929,7 +20714,10 @@ export type PutFinanceAccountingperiodsIdStatementsIdData = {
          * ID of Entity
          */
         id: number;
-        statementId: string;
+        /**
+         * ID of the statement
+         */
+        statementId: number;
     };
     query?: never;
     url: '/finance/accountingperiods/{id}/statements/{statementId}';
@@ -14953,6 +20741,16 @@ export type PutFinanceAccountingperiodsIdStatementsIdErrors = {
 export type PutFinanceAccountingperiodsIdStatementsIdError =
     PutFinanceAccountingperiodsIdStatementsIdErrors[keyof PutFinanceAccountingperiodsIdStatementsIdErrors];
 
+export type PutFinanceAccountingperiodsIdStatementsIdResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PutFinanceAccountingperiodsIdStatementsIdResponse =
+    PutFinanceAccountingperiodsIdStatementsIdResponses[keyof PutFinanceAccountingperiodsIdStatementsIdResponses];
+
 export type PostFinanceAccountingperiodsIdStatementsIdSuggestionsData = {
     body?: never;
     path: {
@@ -14960,21 +20758,92 @@ export type PostFinanceAccountingperiodsIdStatementsIdSuggestionsData = {
          * ID of Entity
          */
         id: number;
-        statementId: string;
+        /**
+         * ID of the statement to generate suggestions for.
+         */
+        statementId: number;
     };
     query?: never;
     url: '/finance/accountingperiods/{id}/statements/{statementId}/suggestions';
 };
 
+export type PostFinanceAccountingperiodsIdStatementsIdSuggestionsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceAccountingperiodsIdStatementsIdSuggestionsError =
+    PostFinanceAccountingperiodsIdStatementsIdSuggestionsErrors[keyof PostFinanceAccountingperiodsIdStatementsIdSuggestionsErrors];
+
 export type PostFinanceAccountingperiodsIdStatementsIdSuggestionsResponses = {
     /**
-     * Successful generated
+     * Suggestions were generated.
      */
     204: void;
 };
 
 export type PostFinanceAccountingperiodsIdStatementsIdSuggestionsResponse =
     PostFinanceAccountingperiodsIdStatementsIdSuggestionsResponses[keyof PostFinanceAccountingperiodsIdStatementsIdSuggestionsResponses];
+
+export type DeleteFinanceAccountingperiodsIdTaxratesData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/accountingperiods/{id}/taxrates';
+};
+
+export type DeleteFinanceAccountingperiodsIdTaxratesErrors = {
+    /**
+     * Bad Request
+     */
+    400: {
+        args?: Array<string>;
+        errors?: Array<string>;
+        message?: string;
+        messageKey?: string;
+        translatedMessage?: string;
+    };
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeleteFinanceAccountingperiodsIdTaxratesError =
+    DeleteFinanceAccountingperiodsIdTaxratesErrors[keyof DeleteFinanceAccountingperiodsIdTaxratesErrors];
+
+export type DeleteFinanceAccountingperiodsIdTaxratesResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeleteFinanceAccountingperiodsIdTaxratesResponse =
+    DeleteFinanceAccountingperiodsIdTaxratesResponses[keyof DeleteFinanceAccountingperiodsIdTaxratesResponses];
 
 export type GetFinanceAccountingperiodsIdUserrulesData = {
     body?: never;
@@ -15020,7 +20889,13 @@ export type GetFinanceAccountingperiodsIdUserrulesResponse =
     GetFinanceAccountingperiodsIdUserrulesResponses[keyof GetFinanceAccountingperiodsIdUserrulesResponses];
 
 export type PutFinanceAccountingperiodsIdUserrulesData = {
-    body?: never;
+    /**
+     * User rules data
+     */
+    body: {
+        id?: number;
+        rules: Array<UserRuleCreate>;
+    };
     path: {
         /**
          * ID of Entity
@@ -15048,6 +20923,19 @@ export type PutFinanceAccountingperiodsIdUserrulesErrors = {
 
 export type PutFinanceAccountingperiodsIdUserrulesError =
     PutFinanceAccountingperiodsIdUserrulesErrors[keyof PutFinanceAccountingperiodsIdUserrulesErrors];
+
+export type PutFinanceAccountingperiodsIdUserrulesResponses = {
+    /**
+     * Updated user rules
+     */
+    200: {
+        data: Array<UserRule>;
+        meta: MetaCount;
+    };
+};
+
+export type PutFinanceAccountingperiodsIdUserrulesResponse =
+    PutFinanceAccountingperiodsIdUserrulesResponses[keyof PutFinanceAccountingperiodsIdUserrulesResponses];
 
 export type GetFinanceAccountsData = {
     body?: never;
@@ -15084,6 +20972,7 @@ export type GetFinanceAccountsResponses = {
      */
     200: {
         data: Array<Account>;
+        meta: MetaCount;
     };
 };
 
@@ -15117,7 +21006,7 @@ export type PostFinanceAccountsResponses = {
      * new account
      */
     200: {
-        data: Array<Account>;
+        data: Account;
     };
 };
 
@@ -15148,6 +21037,19 @@ export type PostFinanceAccountsBulkcreateErrors = {
 export type PostFinanceAccountsBulkcreateError =
     PostFinanceAccountsBulkcreateErrors[keyof PostFinanceAccountsBulkcreateErrors];
 
+export type PostFinanceAccountsBulkcreateResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<Account>;
+        meta: MetaCount;
+    };
+};
+
+export type PostFinanceAccountsBulkcreateResponse =
+    PostFinanceAccountsBulkcreateResponses[keyof PostFinanceAccountsBulkcreateResponses];
+
 export type GetFinanceAccountsCsvData = {
     body?: never;
     path?: never;
@@ -15160,9 +21062,26 @@ export type GetFinanceAccountsCsvData = {
     url: '/finance/accounts/csv';
 };
 
+export type GetFinanceAccountsCsvErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetFinanceAccountsCsvError = GetFinanceAccountsCsvErrors[keyof GetFinanceAccountsCsvErrors];
+
 export type GetFinanceAccountsCsvResponses = {
     /**
-     * OK
+     * returns a raw csv string as response
      */
     200: unknown;
 };
@@ -15170,7 +21089,16 @@ export type GetFinanceAccountsCsvResponses = {
 export type GetFinanceAccountsExportData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * The accounting period to get the result set from
+         */
+        accounting_period_id?: number;
+        /**
+         * Format of the export
+         */
+        format?: 'csv' | 'xlsx' | 'pdf';
+    };
     url: '/finance/accounts/export';
 };
 
@@ -15190,6 +21118,13 @@ export type GetFinanceAccountsExportErrors = {
 };
 
 export type GetFinanceAccountsExportError = GetFinanceAccountsExportErrors[keyof GetFinanceAccountsExportErrors];
+
+export type GetFinanceAccountsExportResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
 
 export type PostFinanceAccountsExporttemplateData = {
     body: {
@@ -15223,6 +21158,13 @@ export type PostFinanceAccountsExporttemplateErrors = {
 
 export type PostFinanceAccountsExporttemplateError =
     PostFinanceAccountsExporttemplateErrors[keyof PostFinanceAccountsExporttemplateErrors];
+
+export type PostFinanceAccountsExporttemplateResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
 
 export type DeleteFinanceAccountsIdData = {
     body?: never;
@@ -15258,31 +21200,33 @@ export type DeleteFinanceAccountsIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -15406,6 +21350,7 @@ export type GetFinanceAccounttypesResponses = {
      */
     200: {
         data: Array<AccountType>;
+        meta: MetaCount;
     };
 };
 
@@ -15439,7 +21384,7 @@ export type PostFinanceAccounttypesResponses = {
      * new account type
      */
     200: {
-        data: Array<AccountType>;
+        data: AccountType;
     };
 };
 
@@ -15479,31 +21424,33 @@ export type DeleteFinanceAccounttypesIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -15609,7 +21556,7 @@ export type PostFinanceBillsData = {
     /**
      * Bill data
      */
-    body: BillNew;
+    body: BillCreate;
     path?: never;
     query?: never;
     url: '/finance/bills';
@@ -15673,31 +21620,33 @@ export type DeleteFinanceBillsIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -15821,6 +21770,7 @@ export type GetFinanceCashdiscountsResponses = {
      */
     200: {
         data: Array<CashDiscount>;
+        meta: MetaCount;
     };
 };
 
@@ -15895,31 +21845,33 @@ export type DeleteFinanceCashdiscountsIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -16047,6 +21999,7 @@ export type GetFinanceClientsResponses = {
      */
     200: {
         data: Array<Client>;
+        meta: MetaCount;
     };
 };
 
@@ -16067,7 +22020,7 @@ export type PostFinanceClientsResponses = {
      * get available clients
      */
     201: {
-        data: Array<Client>;
+        data: Client;
     };
 };
 
@@ -16107,31 +22060,33 @@ export type DeleteFinanceClientsIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -16260,6 +22215,7 @@ export type GetFinanceCostcentersResponses = {
      */
     200: {
         data: Array<CostCenter>;
+        meta: MetaCount;
     };
 };
 
@@ -16269,16 +22225,7 @@ export type PostFinanceCostcentersData = {
     /**
      * cost center data
      */
-    body: {
-        accountingPeriodId: number;
-        /**
-         * Provide budget in cent.
-         */
-        budget?: number;
-        groupId?: number;
-        name: string;
-        number: string;
-    };
+    body: CostCenterCreate;
     path?: never;
     query?: never;
     url: '/finance/costcenters';
@@ -16409,31 +22356,33 @@ export type DeleteFinanceCostcentersIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -16493,16 +22442,7 @@ export type PutFinanceCostcentersIdData = {
     /**
      * cost center data
      */
-    body: {
-        accountingPeriodId: number;
-        /**
-         * Provide budget in cent.
-         */
-        budget?: number;
-        groupId?: number;
-        name: string;
-        number: string;
-    };
+    body: CostCenterCreate;
     path: {
         /**
          * ID of Entity
@@ -16592,7 +22532,7 @@ export type GetFinanceDonatorsResponses = {
      */
     200: {
         data: Array<Donator>;
-        meta: MetaPagination;
+        meta: DonatorMeta;
     };
 };
 
@@ -16663,11 +22603,13 @@ export type GetFinanceDonatorsReceiptsError = GetFinanceDonatorsReceiptsErrors[k
 
 export type GetFinanceDonatorsReceiptsResponses = {
     /**
-     * get available donators
+     * URLs of the combined donation receipt PDFs
      */
     200: {
-        data: Array<Donator>;
-        meta: MetaPagination;
+        data: {
+            attachments: string | null;
+            coverLetters: string | null;
+        };
     };
 };
 
@@ -16675,14 +22617,13 @@ export type GetFinanceDonatorsReceiptsResponse =
     GetFinanceDonatorsReceiptsResponses[keyof GetFinanceDonatorsReceiptsResponses];
 
 export type PostFinanceDonatorsReceiptsData = {
-    body?: never;
-    path?: never;
-    query: {
-        /**
-         * ID of accounting period to get master data for
-         */
+    body: {
         accounting_period_id: number;
+        donation_receipt_attachment_template_id: string;
+        donation_receipt_letter_template_id: string;
     };
+    path?: never;
+    query?: never;
     url: '/finance/donators/receipts';
 };
 
@@ -16695,10 +22636,21 @@ export type PostFinanceDonatorsReceiptsErrors = {
 
 export type PostFinanceDonatorsReceiptsResponses = {
     /**
+     * No donation receipts needed to be queued.
+     */
+    200: {
+        data: DonationReceiptJobResult;
+    };
+    /**
      * The donation receipts will now be created.
      */
-    202: unknown;
+    202: {
+        data: DonationReceiptJobResult;
+    };
 };
+
+export type PostFinanceDonatorsReceiptsResponse =
+    PostFinanceDonatorsReceiptsResponses[keyof PostFinanceDonatorsReceiptsResponses];
 
 export type DeleteFinanceDonatorsDonatorCoupleIdData = {
     body?: never;
@@ -16740,6 +22692,10 @@ export type GetFinanceDonatorsDonatorCoupleIdData = {
          * ID of accounting period to get master data for
          */
         accounting_period_id: number;
+        /**
+         * Type of donation receipt to download.
+         */
+        type?: 'DRAFT' | 'DUPLICATE' | 'ORIGINAL';
     };
     url: '/finance/donators/{donatorCoupleId}/receipts';
 };
@@ -16753,6 +22709,10 @@ export type GetFinanceDonatorsDonatorCoupleIdErrors = {
      * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
+    /**
+     * Donation receipt not found
+     */
+    404: unknown;
 };
 
 export type GetFinanceDonatorsDonatorCoupleIdError =
@@ -16760,24 +22720,752 @@ export type GetFinanceDonatorsDonatorCoupleIdError =
 
 export type GetFinanceDonatorsDonatorCoupleIdResponses = {
     /**
-     * URLs of the generated PDFs
+     * URLs of the existing donation receipt PDFs
      */
     200: {
-        data: {
-            /**
-             * URL to the attachment of the donation receipt
-             */
-            attachments?: string;
-            /**
-             * URL to the cover letter of the donation receipt
-             */
-            coverLetters?: string;
-        };
+        data: DonationReceipt;
     };
 };
 
 export type GetFinanceDonatorsDonatorCoupleIdResponse =
     GetFinanceDonatorsDonatorCoupleIdResponses[keyof GetFinanceDonatorsDonatorCoupleIdResponses];
+
+export type PostFinanceDonatorsDonatorCoupleIdData = {
+    body: {
+        /**
+         * ID of accounting period to create the donation receipt for.
+         */
+        accounting_period_id: number;
+        /**
+         * Type of donation receipt to create.
+         */
+        type?: 'DRAFT' | 'DUPLICATE' | 'ORIGINAL';
+    };
+    path: {
+        /**
+         * ID of Donator or Couple
+         */
+        donatorCoupleId: string;
+    };
+    query?: never;
+    url: '/finance/donators/{donatorCoupleId}/receipts';
+};
+
+export type PostFinanceDonatorsDonatorCoupleIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostFinanceDonatorsDonatorCoupleIdError =
+    PostFinanceDonatorsDonatorCoupleIdErrors[keyof PostFinanceDonatorsDonatorCoupleIdErrors];
+
+export type PostFinanceDonatorsDonatorCoupleIdResponses = {
+    /**
+     * An existing donation receipt and its PDF URLs are returned.
+     */
+    200: {
+        data: DonationReceipt;
+    };
+    /**
+     * A donation receipt was generated and its PDF URLs are returned.
+     */
+    201: {
+        data: DonationReceipt;
+    };
+};
+
+export type PostFinanceDonatorsDonatorCoupleIdResponse =
+    PostFinanceDonatorsDonatorCoupleIdResponses[keyof PostFinanceDonatorsDonatorCoupleIdResponses];
+
+export type GetFinanceEubpHealthData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/finance/eubp/health';
+};
+
+export type GetFinanceEubpHealthErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetFinanceEubpHealthError = GetFinanceEubpHealthErrors[keyof GetFinanceEubpHealthErrors];
+
+export type GetFinanceEubpHealthResponses = {
+    /**
+     * Service health information
+     */
+    200: {
+        data: EubpHealthInfo;
+    };
+};
+
+export type GetFinanceEubpHealthResponse = GetFinanceEubpHealthResponses[keyof GetFinanceEubpHealthResponses];
+
+export type GetFinanceEubpSubmissionsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Filter by client ID
+         */
+        client_id?: number;
+    };
+    url: '/finance/eubp/submissions';
+};
+
+export type GetFinanceEubpSubmissionsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetFinanceEubpSubmissionsError = GetFinanceEubpSubmissionsErrors[keyof GetFinanceEubpSubmissionsErrors];
+
+export type GetFinanceEubpSubmissionsResponses = {
+    /**
+     * List of euBP submissions
+     */
+    200: {
+        data: Array<EubpSubmission>;
+    };
+};
+
+export type GetFinanceEubpSubmissionsResponse =
+    GetFinanceEubpSubmissionsResponses[keyof GetFinanceEubpSubmissionsResponses];
+
+export type PostFinanceEubpSubmissionsData = {
+    /**
+     * Submission data
+     */
+    body: EubpSubmissionCreate;
+    path?: never;
+    query?: never;
+    url: '/finance/eubp/submissions';
+};
+
+export type PostFinanceEubpSubmissionsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostFinanceEubpSubmissionsError = PostFinanceEubpSubmissionsErrors[keyof PostFinanceEubpSubmissionsErrors];
+
+export type PostFinanceEubpSubmissionsResponses = {
+    /**
+     * Created submission
+     */
+    201: {
+        data: EubpSubmission;
+    };
+};
+
+export type PostFinanceEubpSubmissionsResponse =
+    PostFinanceEubpSubmissionsResponses[keyof PostFinanceEubpSubmissionsResponses];
+
+export type DeleteFinanceEubpSubmissionsIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/eubp/submissions/{id}';
+};
+
+export type DeleteFinanceEubpSubmissionsIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeleteFinanceEubpSubmissionsIdError =
+    DeleteFinanceEubpSubmissionsIdErrors[keyof DeleteFinanceEubpSubmissionsIdErrors];
+
+export type DeleteFinanceEubpSubmissionsIdResponses = {
+    /**
+     * Submission deleted
+     */
+    204: void;
+};
+
+export type DeleteFinanceEubpSubmissionsIdResponse =
+    DeleteFinanceEubpSubmissionsIdResponses[keyof DeleteFinanceEubpSubmissionsIdResponses];
+
+export type GetFinanceEubpSubmissionsIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/eubp/submissions/{id}';
+};
+
+export type GetFinanceEubpSubmissionsIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetFinanceEubpSubmissionsIdError =
+    GetFinanceEubpSubmissionsIdErrors[keyof GetFinanceEubpSubmissionsIdErrors];
+
+export type GetFinanceEubpSubmissionsIdResponses = {
+    /**
+     * Submission details
+     */
+    200: {
+        data: EubpSubmission;
+    };
+};
+
+export type GetFinanceEubpSubmissionsIdResponse =
+    GetFinanceEubpSubmissionsIdResponses[keyof GetFinanceEubpSubmissionsIdResponses];
+
+export type GetFinanceEubpSubmissionsIdAccountsData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: {
+        /**
+         * Optional finance client ID to return accounts only for this client.
+         */
+        client_id?: number;
+    };
+    url: '/finance/eubp/submissions/{id}/accounts';
+};
+
+export type GetFinanceEubpSubmissionsIdAccountsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetFinanceEubpSubmissionsIdAccountsError =
+    GetFinanceEubpSubmissionsIdAccountsErrors[keyof GetFinanceEubpSubmissionsIdAccountsErrors];
+
+export type GetFinanceEubpSubmissionsIdAccountsResponses = {
+    /**
+     * Unified account list
+     */
+    200: {
+        data: Array<EubpUnifiedAccount>;
+    };
+};
+
+export type GetFinanceEubpSubmissionsIdAccountsResponse =
+    GetFinanceEubpSubmissionsIdAccountsResponses[keyof GetFinanceEubpSubmissionsIdAccountsResponses];
+
+export type PutFinanceEubpSubmissionsIdAccountsData = {
+    body: {
+        /**
+         * Account keys in format "number|name"
+         */
+        accountKeys: Array<string>;
+        /**
+         * Optional finance client ID to update accounts only for this client.
+         */
+        clientId?: number;
+    };
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/eubp/submissions/{id}/accounts';
+};
+
+export type PutFinanceEubpSubmissionsIdAccountsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutFinanceEubpSubmissionsIdAccountsError =
+    PutFinanceEubpSubmissionsIdAccountsErrors[keyof PutFinanceEubpSubmissionsIdAccountsErrors];
+
+export type PutFinanceEubpSubmissionsIdAccountsResponses = {
+    /**
+     * Updated unified account list
+     */
+    200: {
+        data: Array<EubpUnifiedAccount>;
+    };
+};
+
+export type PutFinanceEubpSubmissionsIdAccountsResponse =
+    PutFinanceEubpSubmissionsIdAccountsResponses[keyof PutFinanceEubpSubmissionsIdAccountsResponses];
+
+export type PostFinanceEubpSubmissionsIdCancelData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/eubp/submissions/{id}/cancel';
+};
+
+export type PostFinanceEubpSubmissionsIdCancelErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceEubpSubmissionsIdCancelError =
+    PostFinanceEubpSubmissionsIdCancelErrors[keyof PostFinanceEubpSubmissionsIdCancelErrors];
+
+export type PostFinanceEubpSubmissionsIdCancelResponses = {
+    /**
+     * Cancelled submission
+     */
+    200: {
+        data: EubpSubmission;
+    };
+};
+
+export type PostFinanceEubpSubmissionsIdCancelResponse =
+    PostFinanceEubpSubmissionsIdCancelResponses[keyof PostFinanceEubpSubmissionsIdCancelResponses];
+
+export type PostFinanceEubpSubmissionsIdFetchStatusData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/eubp/submissions/{id}/fetch-status';
+};
+
+export type PostFinanceEubpSubmissionsIdFetchStatusErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceEubpSubmissionsIdFetchStatusError =
+    PostFinanceEubpSubmissionsIdFetchStatusErrors[keyof PostFinanceEubpSubmissionsIdFetchStatusErrors];
+
+export type PostFinanceEubpSubmissionsIdFetchStatusResponses = {
+    /**
+     * Submission with updated status
+     */
+    200: {
+        data: EubpSubmission;
+    };
+};
+
+export type PostFinanceEubpSubmissionsIdFetchStatusResponse =
+    PostFinanceEubpSubmissionsIdFetchStatusResponses[keyof PostFinanceEubpSubmissionsIdFetchStatusResponses];
+
+export type PostFinanceEubpSubmissionsIdFinishData = {
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/eubp/submissions/{id}/finish';
+};
+
+export type PostFinanceEubpSubmissionsIdFinishErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceEubpSubmissionsIdFinishError =
+    PostFinanceEubpSubmissionsIdFinishErrors[keyof PostFinanceEubpSubmissionsIdFinishErrors];
+
+export type PostFinanceEubpSubmissionsIdFinishResponses = {
+    /**
+     * Finished submission
+     */
+    200: {
+        data: EubpSubmission;
+    };
+};
+
+export type PostFinanceEubpSubmissionsIdFinishResponse =
+    PostFinanceEubpSubmissionsIdFinishResponses[keyof PostFinanceEubpSubmissionsIdFinishResponses];
+
+export type PostFinanceEubpSubmissionsIdGenerateData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/eubp/submissions/{id}/generate';
+};
+
+export type PostFinanceEubpSubmissionsIdGenerateErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceEubpSubmissionsIdGenerateError =
+    PostFinanceEubpSubmissionsIdGenerateErrors[keyof PostFinanceEubpSubmissionsIdGenerateErrors];
+
+export type PostFinanceEubpSubmissionsIdGenerateResponses = {
+    /**
+     * Generated export file with download URL
+     */
+    200: {
+        data: {
+            /**
+             * URL to download the generated ZIP file
+             */
+            downloadUrl: string;
+        };
+    };
+};
+
+export type PostFinanceEubpSubmissionsIdGenerateResponse =
+    PostFinanceEubpSubmissionsIdGenerateResponses[keyof PostFinanceEubpSubmissionsIdGenerateResponses];
+
+export type PutFinanceEubpSubmissionsIdPeriodsPeriodIdAccountsData = {
+    /**
+     * Account IDs to set
+     */
+    body: {
+        /**
+         * List of account IDs to add as additional accounts
+         */
+        accountIds: Array<number>;
+    };
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+        /**
+         * ID of the submission period
+         */
+        periodId: number;
+    };
+    query?: never;
+    url: '/finance/eubp/submissions/{id}/periods/{periodId}/accounts';
+};
+
+export type PutFinanceEubpSubmissionsIdPeriodsPeriodIdAccountsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutFinanceEubpSubmissionsIdPeriodsPeriodIdAccountsError =
+    PutFinanceEubpSubmissionsIdPeriodsPeriodIdAccountsErrors[keyof PutFinanceEubpSubmissionsIdPeriodsPeriodIdAccountsErrors];
+
+export type PutFinanceEubpSubmissionsIdPeriodsPeriodIdAccountsResponses = {
+    /**
+     * Updated period
+     */
+    200: {
+        data: EubpSubmissionPeriod;
+    };
+};
+
+export type PutFinanceEubpSubmissionsIdPeriodsPeriodIdAccountsResponse =
+    PutFinanceEubpSubmissionsIdPeriodsPeriodIdAccountsResponses[keyof PutFinanceEubpSubmissionsIdPeriodsPeriodIdAccountsResponses];
+
+export type GetFinanceEubpSubmissionsIdPreviewData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/eubp/submissions/{id}/preview';
+};
+
+export type GetFinanceEubpSubmissionsIdPreviewErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetFinanceEubpSubmissionsIdPreviewError =
+    GetFinanceEubpSubmissionsIdPreviewErrors[keyof GetFinanceEubpSubmissionsIdPreviewErrors];
+
+export type GetFinanceEubpSubmissionsIdPreviewResponses = {
+    /**
+     * Submission preview data
+     */
+    200: {
+        data: EubpSubmissionPreview;
+    };
+};
+
+export type GetFinanceEubpSubmissionsIdPreviewResponse =
+    GetFinanceEubpSubmissionsIdPreviewResponses[keyof GetFinanceEubpSubmissionsIdPreviewResponses];
+
+export type PostFinanceEubpSubmissionsIdReopenData = {
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/eubp/submissions/{id}/reopen';
+};
+
+export type PostFinanceEubpSubmissionsIdReopenErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceEubpSubmissionsIdReopenError =
+    PostFinanceEubpSubmissionsIdReopenErrors[keyof PostFinanceEubpSubmissionsIdReopenErrors];
+
+export type PostFinanceEubpSubmissionsIdReopenResponses = {
+    /**
+     * Reopened submission
+     */
+    200: {
+        data: EubpSubmission;
+    };
+};
+
+export type PostFinanceEubpSubmissionsIdReopenResponse =
+    PostFinanceEubpSubmissionsIdReopenResponses[keyof PostFinanceEubpSubmissionsIdReopenResponses];
+
+export type PostFinanceEubpSubmissionsIdSendData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/eubp/submissions/{id}/send';
+};
+
+export type PostFinanceEubpSubmissionsIdSendErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceEubpSubmissionsIdSendError =
+    PostFinanceEubpSubmissionsIdSendErrors[keyof PostFinanceEubpSubmissionsIdSendErrors];
+
+export type PostFinanceEubpSubmissionsIdSendResponses = {
+    /**
+     * Sent submission
+     */
+    200: {
+        data: EubpSubmission;
+    };
+};
+
+export type PostFinanceEubpSubmissionsIdSendResponse =
+    PostFinanceEubpSubmissionsIdSendResponses[keyof PostFinanceEubpSubmissionsIdSendResponses];
 
 export type GetFinanceMasterdataData = {
     body?: never;
@@ -16834,12 +23522,338 @@ export type GetFinanceMasterdataResponses = {
 
 export type GetFinanceMasterdataResponse = GetFinanceMasterdataResponses[keyof GetFinanceMasterdataResponses];
 
+export type PostFinanceReportsBalanceData = {
+    body: {
+        /**
+         * Optional account type IDs to include
+         */
+        accountTypes?: Array<number>;
+        /**
+         * ID of the accounting period to report on
+         */
+        accountingPeriodId: number;
+        /**
+         * End date of the report range
+         */
+        endDate: string;
+        format?: ReportOutputFormat;
+        /**
+         * Group accounts by account group in the report
+         */
+        showAccountGroups?: boolean;
+        /**
+         * Include accounts without transactions
+         */
+        showEmptyAccounts?: boolean;
+        /**
+         * Start date of the report range
+         */
+        startDate: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/finance/reports/balance';
+};
+
+export type PostFinanceReportsBalanceErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceReportsBalanceError = PostFinanceReportsBalanceErrors[keyof PostFinanceReportsBalanceErrors];
+
+export type PostFinanceReportsBalanceResponses = {
+    /**
+     * Created report
+     */
+    201: {
+        data: {
+            /**
+             * URI of generated PDF file
+             */
+            url: string;
+        };
+    };
+};
+
+export type PostFinanceReportsBalanceResponse =
+    PostFinanceReportsBalanceResponses[keyof PostFinanceReportsBalanceResponses];
+
+export type PostFinanceReportsProfitLossData = {
+    body: {
+        /**
+         * Optional account type IDs to include
+         */
+        accountTypes?: Array<number>;
+        /**
+         * ID of the accounting period to report on
+         */
+        accountingPeriodId: number;
+        /**
+         * End date of the report range
+         */
+        endDate: string;
+        format?: ReportOutputFormat;
+        /**
+         * Group accounts by account group in the report
+         */
+        showAccountGroups?: boolean;
+        /**
+         * Include accounts without transactions
+         */
+        showEmptyAccounts?: boolean;
+        /**
+         * Start date of the report range
+         */
+        startDate: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/finance/reports/profit-loss';
+};
+
+export type PostFinanceReportsProfitLossErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceReportsProfitLossError =
+    PostFinanceReportsProfitLossErrors[keyof PostFinanceReportsProfitLossErrors];
+
+export type PostFinanceReportsProfitLossResponses = {
+    /**
+     * Created report
+     */
+    201: {
+        data: {
+            /**
+             * URI of generated PDF file
+             */
+            url: string;
+        };
+    };
+};
+
+export type PostFinanceReportsProfitLossResponse =
+    PostFinanceReportsProfitLossResponses[keyof PostFinanceReportsProfitLossResponses];
+
+export type PostFinanceReportsStatementAccountsAccountIdData = {
+    body: {
+        format?: ReportOutputFormat;
+    };
+    path: {
+        /**
+         * ID of account
+         */
+        accountId: number;
+    };
+    query?: never;
+    url: '/finance/reports/statement/accounts/{accountId}';
+};
+
+export type PostFinanceReportsStatementAccountsAccountIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceReportsStatementAccountsAccountIdError =
+    PostFinanceReportsStatementAccountsAccountIdErrors[keyof PostFinanceReportsStatementAccountsAccountIdErrors];
+
+export type PostFinanceReportsStatementAccountsAccountIdResponses = {
+    /**
+     * Created report
+     */
+    201: {
+        data: {
+            /**
+             * URI of generated PDF file
+             */
+            url: string;
+        };
+    };
+};
+
+export type PostFinanceReportsStatementAccountsAccountIdResponse =
+    PostFinanceReportsStatementAccountsAccountIdResponses[keyof PostFinanceReportsStatementAccountsAccountIdResponses];
+
+export type PostFinanceReportsStatementCostcentersCostCenterIdData = {
+    body: {
+        format?: ReportOutputFormat;
+        /**
+         * Include rebooking transactions in the statement
+         */
+        includeRebookings?: boolean;
+        /**
+         * Deprecated alias for `format`
+         */
+        type?: ReportOutputFormat;
+    };
+    path: {
+        /**
+         * ID of cost center
+         */
+        costCenterId: number;
+    };
+    query?: never;
+    url: '/finance/reports/statement/costcenters/{costCenterId}';
+};
+
+export type PostFinanceReportsStatementCostcentersCostCenterIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceReportsStatementCostcentersCostCenterIdError =
+    PostFinanceReportsStatementCostcentersCostCenterIdErrors[keyof PostFinanceReportsStatementCostcentersCostCenterIdErrors];
+
+export type PostFinanceReportsStatementCostcentersCostCenterIdResponses = {
+    /**
+     * Created report
+     */
+    201: {
+        data: {
+            /**
+             * URI of generated PDF file
+             */
+            url: string;
+        };
+    };
+};
+
+export type PostFinanceReportsStatementCostcentersCostCenterIdResponse =
+    PostFinanceReportsStatementCostcentersCostCenterIdResponses[keyof PostFinanceReportsStatementCostcentersCostCenterIdResponses];
+
+export type PostFinanceReportsSumBalanceData = {
+    body: {
+        /**
+         * Optional account type IDs to include
+         */
+        accountTypes?: Array<number>;
+        /**
+         * ID of the accounting period to report on
+         */
+        accountingPeriodId: number;
+        format?: ReportOutputFormat;
+        /**
+         * Month number for the summed balance report
+         */
+        month: number;
+        /**
+         * Group accounts by account group in the report
+         */
+        showAccountGroups?: boolean;
+        /**
+         * Include accounts without transactions
+         */
+        showEmptyAccounts?: boolean;
+    };
+    path?: never;
+    query?: never;
+    url: '/finance/reports/sum-balance';
+};
+
+export type PostFinanceReportsSumBalanceErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceReportsSumBalanceError =
+    PostFinanceReportsSumBalanceErrors[keyof PostFinanceReportsSumBalanceErrors];
+
+export type PostFinanceReportsSumBalanceResponses = {
+    /**
+     * Created report
+     */
+    201: {
+        data: {
+            /**
+             * URI of generated PDF file
+             */
+            url: string;
+        };
+    };
+};
+
+export type PostFinanceReportsSumBalanceResponse =
+    PostFinanceReportsSumBalanceResponses[keyof PostFinanceReportsSumBalanceResponses];
+
 export type PostFinanceReportsTurnoverData = {
     body: {
         /**
          * ID of Accounting Period
          */
         accountingPeriodId: number;
+        format?: ReportOutputFormat;
         /**
          * Select monthly oder quarterly report
          */
@@ -16854,15 +23868,38 @@ export type PostFinanceReportsTurnoverData = {
     url: '/finance/reports/turnover';
 };
 
+export type PostFinanceReportsTurnoverErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceReportsTurnoverError = PostFinanceReportsTurnoverErrors[keyof PostFinanceReportsTurnoverErrors];
+
 export type PostFinanceReportsTurnoverResponses = {
     /**
-     * OK
+     * Created report
      */
-    200: {
-        /**
-         * URI of PDF
-         */
-        url: string;
+    201: {
+        data: {
+            /**
+             * URI of generated PDF file
+             */
+            url: string;
+        };
     };
 };
 
@@ -16871,20 +23908,43 @@ export type PostFinanceReportsTurnoverResponse =
 
 export type PostFinanceSplittransactionsData = {
     /**
-     * Transaction data
+     * Split transaction data
      */
-    body: SplitTransaction;
+    body: SplitTransactionNew;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * If `true`, skip the donation constraint that normally requires a donator for donation accounts.
+         */
+        ignoreDonationConstraint?: boolean;
+    };
     url: '/finance/splittransactions';
 };
 
+export type PostFinanceSplittransactionsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostFinanceSplittransactionsError =
+    PostFinanceSplittransactionsErrors[keyof PostFinanceSplittransactionsErrors];
+
 export type PostFinanceSplittransactionsResponses = {
     /**
-     * created transaction with id
+     * The created split transaction.
      */
     201: {
-        data: Array<SplitTransaction>;
+        data: SplitTransaction;
     };
     /**
      * No Content
@@ -16905,9 +23965,9 @@ export type DeleteFinanceSplittransactionsIdData = {
     };
     query?: {
         /**
-         * If set, the response will include the specified data.
+         * Include additional information
          */
-        include?: Array<'bills'>;
+        'include[]'?: Array<'bills'>;
         /**
          * If set to true, the deletion is simulated but nothing will be deleted.
          */
@@ -16954,9 +24014,9 @@ export type GetFinanceSplittransactionsIdData = {
     };
     query?: {
         /**
-         * If set, the response will include the specified data.
+         * Include additional information
          */
-        include?: Array<'bills'>;
+        'include[]'?: Array<'bills'>;
     };
     url: '/finance/splittransactions/{id}';
 };
@@ -16981,10 +24041,10 @@ export type GetFinanceSplittransactionsIdError =
 
 export type GetFinanceSplittransactionsIdResponses = {
     /**
-     * get transaction
+     * The requested split transaction.
      */
     200: {
-        data: Array<SplitTransaction>;
+        data: SplitTransaction;
     };
 };
 
@@ -16995,7 +24055,7 @@ export type PutFinanceSplittransactionsIdData = {
     /**
      * Split transaction data
      */
-    body: SplitTransaction;
+    body: SplitTransactionUpdate;
     path: {
         /**
          * ID of Entity
@@ -17004,14 +24064,18 @@ export type PutFinanceSplittransactionsIdData = {
     };
     query?: {
         /**
-         * If set, the response will include the specified data.
+         * Include additional information
          */
-        include?: Array<'bills'>;
+        'include[]'?: Array<'bills'>;
     };
     url: '/finance/splittransactions/{id}';
 };
 
 export type PutFinanceSplittransactionsIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -17031,10 +24095,10 @@ export type PutFinanceSplittransactionsIdError =
 
 export type PutFinanceSplittransactionsIdResponses = {
     /**
-     * Updated split transaction
+     * The updated split transaction.
      */
     200: {
-        data: Array<SplitTransaction>;
+        data: SplitTransaction;
     };
     /**
      * Successfully deleted
@@ -17044,6 +24108,50 @@ export type PutFinanceSplittransactionsIdResponses = {
 
 export type PutFinanceSplittransactionsIdResponse =
     PutFinanceSplittransactionsIdResponses[keyof PutFinanceSplittransactionsIdResponses];
+
+export type PostFinanceSplittransactionsIdDuplicateData = {
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/splittransactions/{id}/duplicate';
+};
+
+export type PostFinanceSplittransactionsIdDuplicateErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceSplittransactionsIdDuplicateError =
+    PostFinanceSplittransactionsIdDuplicateErrors[keyof PostFinanceSplittransactionsIdDuplicateErrors];
+
+export type PostFinanceSplittransactionsIdDuplicateResponses = {
+    /**
+     * Duplicated split transaction
+     */
+    201: {
+        data: SplitTransaction;
+    };
+};
+
+export type PostFinanceSplittransactionsIdDuplicateResponse =
+    PostFinanceSplittransactionsIdDuplicateResponses[keyof PostFinanceSplittransactionsIdDuplicateResponses];
 
 export type PutFinanceSplittransactionsIdStornoData = {
     /**
@@ -17121,6 +24229,7 @@ export type GetFinanceTaxratesResponses = {
      */
     200: {
         data: Array<TaxRate>;
+        meta: MetaCount;
     };
 };
 
@@ -17194,31 +24303,33 @@ export type DeleteFinanceTaxratesIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -17342,6 +24453,7 @@ export type GetFinanceTaxtypesResponses = {
      */
     200: {
         data: Array<TaxType>;
+        meta: MetaCount;
     };
 };
 
@@ -17351,7 +24463,7 @@ export type PostFinanceTaxtypesData = {
     /**
      * tax type data
      */
-    body: TaxTypeNew;
+    body: TaxTypeCreate;
     path?: never;
     query?: never;
     url: '/finance/taxtypes';
@@ -17415,31 +24527,33 @@ export type DeleteFinanceTaxtypesIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -17498,7 +24612,7 @@ export type PutFinanceTaxtypesIdData = {
     /**
      * tax type data
      */
-    body: TaxTypeNew;
+    body: TaxTypeCreate;
     path: {
         /**
          * ID of Entity
@@ -17679,6 +24793,7 @@ export type GetFinanceTransactionpurposesResponses = {
      */
     200: {
         data: Array<TransactionPurpose>;
+        meta: MetaCount;
     };
 };
 
@@ -17700,7 +24815,7 @@ export type PostFinanceTransactionpurposesResponses = {
      * get created transaction purpose with id
      */
     201: {
-        data: Array<TransactionPurpose>;
+        data: TransactionPurpose;
     };
 };
 
@@ -17741,31 +24856,33 @@ export type DeleteFinanceTransactionpurposesIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -17922,6 +25039,14 @@ export type GetFinanceTransactionsData = {
          */
         is_immutable?: boolean;
         /**
+         * Exclude storno transactions.
+         */
+        exclude_stornos?: boolean;
+        /**
+         * Exclude donation paybacks.
+         */
+        exclude_paybacks?: boolean;
+        /**
          * Default is `date`. Order transactions either by document date, amount, or modified date. For `date` and `amount` a second sorting happens by modified. The order direction for modified date is the same as for date and amount.
          */
         order_by?: 'date' | 'amount' | 'modified';
@@ -17938,14 +25063,18 @@ export type GetFinanceTransactionsData = {
          */
         limit?: number;
         /**
-         * If set, the response will include the specified data.
+         * Include additional information
          */
-        include?: Array<'bills'>;
+        'include[]'?: Array<'bills'>;
     };
     url: '/finance/transactions';
 };
 
 export type GetFinanceTransactionsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -17960,7 +25089,7 @@ export type GetFinanceTransactionsError = GetFinanceTransactionsErrors[keyof Get
 
 export type GetFinanceTransactionsResponses = {
     /**
-     * get available transactions
+     * A paginated list of transactions matching the given filters.
      */
     200: {
         data: Array<Transaction>;
@@ -17976,9 +25105,13 @@ export type PatchFinanceTransactionsData = {
      */
     body: {
         /**
-         * Fields to change.
+         * The change to apply. Provide exactly one trigger: either `isImmutable` to finalize the matched transactions, or `delete` to delete them (including immutable ones).
          */
         changeset: {
+            /**
+             * If `true`, delete all matched transactions (explicit or via filters). This also deletes immutable transactions, so use with care.
+             */
+            delete?: boolean;
             /**
              * Make All Provided Transactions (explicit or via filters) Immutable.
              */
@@ -18068,9 +25201,26 @@ export type PatchFinanceTransactionsData = {
     url: '/finance/transactions';
 };
 
+export type PatchFinanceTransactionsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PatchFinanceTransactionsError = PatchFinanceTransactionsErrors[keyof PatchFinanceTransactionsErrors];
+
 export type PatchFinanceTransactionsResponses = {
     /**
-     * OK
+     * Result of the batch operation with the number of affected and changed rows.
      */
     200: {
         data: {
@@ -18095,16 +25245,38 @@ export type PostFinanceTransactionsData = {
      */
     body: TransactionNew;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * If `true`, skip the donation constraint that normally requires a donator for donation accounts.
+         */
+        ignoreDonationConstraint?: boolean;
+    };
     url: '/finance/transactions';
 };
 
+export type PostFinanceTransactionsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostFinanceTransactionsError = PostFinanceTransactionsErrors[keyof PostFinanceTransactionsErrors];
+
 export type PostFinanceTransactionsResponses = {
     /**
-     * created transaction with id
+     * The created transaction.
      */
-    200: {
-        data: Array<Transaction>;
+    201: {
+        data: Transaction;
     };
 };
 
@@ -18138,37 +25310,191 @@ export type PostFinanceTransactionsBulkcreateError =
 export type GetFinanceTransactionsCsvData = {
     body?: never;
     path?: never;
-    query?: {
+    query: {
         /**
-         * Number of results per page.
+         * ID of accounting period to get master data for
          */
-        limit?: number;
-        order_by?: string;
-        direction?: string;
-        accounting_period_id?: string;
+        accounting_period_id: number;
         /**
-         * select special Columns for particular target
+         * Filter by person ID. Get all transactions the person has created. But only show those the user can see.
+         */
+        created_pid?: number;
+        /**
+         * Filter by cost centers.
+         */
+        cost_center_ids?: Array<number>;
+        /**
+         * Filter by donator or donator spouse. Provide an array of person ids.
+         */
+        donator_ids?: Array<number>;
+        /**
+         * Filter by account/contra account. All transactions match, where either account or contra account is in the list.
+         */
+        account_ids?: Array<number>;
+        /**
+         * Filter by ids to include.
+         */
+        include_ids?: Array<number>;
+        /**
+         * Filter by ids to exclude.
+         */
+        exclude_ids?: Array<number>;
+        /**
+         * Filter by donations. `true` = Only donations, `false` = Other than donation.
+         */
+        is_donation?: boolean;
+        /**
+         * Filter by waiver of reimbursement of expenses (Aufwandsspende).
+         */
+        is_waiver_of_reimbursement_of_expenses?: boolean;
+        /**
+         * Filter transactions by income or outcome transactions. An account group has a flag `cash asset account` to indicate accounts for income/outcome.
+         */
+        is_income?: boolean;
+        /**
+         * Show transactions after this date.
+         */
+        start_date?: string;
+        /**
+         * Show transactions before this date.
+         */
+        end_date?: string;
+        /**
+         * Filter transactions, whether transaction is immutable.
+         */
+        is_immutable?: boolean;
+        /**
+         * Full text search query.
+         */
+        query?: string;
+        /**
+         * Default is `date`. Column the transactions are ordered by.
+         */
+        order_by?:
+            | 'date'
+            | 'amount'
+            | 'modified'
+            | 'number'
+            | 'note'
+            | 'account'
+            | 'contra_account'
+            | 'cost_center'
+            | 'donator'
+            | 'bills';
+        /**
+         * Way of direction: ascending or descending. Default is `DESC`.
+         */
+        order_direction?: 'ASC' | 'DESC';
+        /**
+         * Select special columns for a particular target.
          */
         target?: 'default' | 'sage100';
-        /**
-         * Page number to show page in pagination. If empty, start at first page.
-         */
-        page?: number;
     };
     url: '/finance/transactions/csv';
 };
 
+export type GetFinanceTransactionsCsvErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetFinanceTransactionsCsvError = GetFinanceTransactionsCsvErrors[keyof GetFinanceTransactionsCsvErrors];
+
 export type GetFinanceTransactionsCsvResponses = {
     /**
-     * OK
+     * Returns the transactions as a raw CSV string.
      */
-    200: unknown;
+    200: string;
 };
+
+export type GetFinanceTransactionsCsvResponse =
+    GetFinanceTransactionsCsvResponses[keyof GetFinanceTransactionsCsvResponses];
 
 export type GetFinanceTransactionsDatevexportData = {
     body?: never;
     path?: never;
-    query?: never;
+    query: {
+        /**
+         * ID of accounting period to get master data for
+         */
+        accounting_period_id: number;
+        /**
+         * Filter by person ID. Get all transactions the person has created. But only show those the user can see.
+         */
+        created_pid?: number;
+        /**
+         * Filter by cost centers.
+         */
+        cost_center_ids?: Array<number>;
+        /**
+         * Filter by donator or donator spouse. Provide an array of person ids.
+         */
+        donator_ids?: Array<number>;
+        /**
+         * Filter by account/contra account. All transactions match, where either account or contra account is in the list.
+         */
+        account_ids?: Array<number>;
+        /**
+         * Filter by ids to include.
+         */
+        include_ids?: Array<number>;
+        /**
+         * Filter by ids to exclude.
+         */
+        exclude_ids?: Array<number>;
+        /**
+         * Filter by donations. `true` = Only donations, `false` = Other than donation.
+         */
+        is_donation?: boolean;
+        /**
+         * Filter by waiver of reimbursement of expenses (Aufwandsspende).
+         */
+        is_waiver_of_reimbursement_of_expenses?: boolean;
+        /**
+         * Filter transactions by income or outcome transactions. An account group has a flag `cash asset account` to indicate accounts for income/outcome.
+         */
+        is_income?: boolean;
+        /**
+         * Show transactions after this date.
+         */
+        start_date?: string;
+        /**
+         * Show transactions before this date.
+         */
+        end_date?: string;
+        /**
+         * Filter transactions, whether transaction is immutable.
+         */
+        is_immutable?: boolean;
+        /**
+         * Full text search query.
+         */
+        query?: string;
+        /**
+         * Default is `date`. Column the transactions are ordered by.
+         */
+        order_by?:
+            | 'date'
+            | 'amount'
+            | 'modified'
+            | 'number'
+            | 'note'
+            | 'account'
+            | 'contra_account'
+            | 'cost_center'
+            | 'donator'
+            | 'bills';
+        /**
+         * Way of direction: ascending or descending. Default is `DESC`.
+         */
+        order_direction?: 'ASC' | 'DESC';
+    };
     url: '/finance/transactions/datevexport';
 };
 
@@ -18181,34 +25507,148 @@ export type GetFinanceTransactionsDatevexportErrors = {
      * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
-    /**
-     * Resource not found
-     */
-    404: unknown;
 };
 
 export type GetFinanceTransactionsDatevexportError =
     GetFinanceTransactionsDatevexportErrors[keyof GetFinanceTransactionsDatevexportErrors];
 
+export type GetFinanceTransactionsDatevexportResponses = {
+    /**
+     * Returns the transactions as a DATEV-formatted CSV string.
+     */
+    200: string;
+};
+
+export type GetFinanceTransactionsDatevexportResponse =
+    GetFinanceTransactionsDatevexportResponses[keyof GetFinanceTransactionsDatevexportResponses];
+
+export type GetFinanceTransactionsDocumentnumberavailableData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * ID of accounting period to get master data for
+         */
+        accounting_period_id: number;
+        /**
+         * Document number to check for availability.
+         */
+        document_number: string;
+    };
+    url: '/finance/transactions/documentnumberavailable';
+};
+
+export type GetFinanceTransactionsDocumentnumberavailableErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * A conflict occurred between the request and the current state of the resource.
+     */
+    409: unknown;
+};
+
+export type GetFinanceTransactionsDocumentnumberavailableError =
+    GetFinanceTransactionsDocumentnumberavailableErrors[keyof GetFinanceTransactionsDocumentnumberavailableErrors];
+
+export type GetFinanceTransactionsDocumentnumberavailableResponses = {
+    /**
+     * The document number is available.
+     */
+    200: unknown;
+};
+
 export type GetFinanceTransactionsExportData = {
     body?: never;
     path?: never;
-    query?: {
+    query: {
         /**
-         * Number of results per page.
+         * ID of accounting period to get master data for
          */
-        limit?: number;
-        order_by?: string;
-        direction?: string;
-        accounting_period_id?: string;
+        accounting_period_id: number;
         /**
-         * select special Columns for particular target
+         * Output file format. Default is `csv`.
+         */
+        format?: 'csv' | 'xlsx';
+        /**
+         * Filter by person ID. Get all transactions the person has created. But only show those the user can see.
+         */
+        created_pid?: number;
+        /**
+         * Filter by cost centers.
+         */
+        cost_center_ids?: Array<number>;
+        /**
+         * Filter by donator or donator spouse. Provide an array of person ids.
+         */
+        donator_ids?: Array<number>;
+        /**
+         * Filter by account/contra account. All transactions match, where either account or contra account is in the list.
+         */
+        account_ids?: Array<number>;
+        /**
+         * Filter by ids to include.
+         */
+        include_ids?: Array<number>;
+        /**
+         * Filter by ids to exclude.
+         */
+        exclude_ids?: Array<number>;
+        /**
+         * Filter by donations. `true` = Only donations, `false` = Other than donation.
+         */
+        is_donation?: boolean;
+        /**
+         * Filter by waiver of reimbursement of expenses (Aufwandsspende).
+         */
+        is_waiver_of_reimbursement_of_expenses?: boolean;
+        /**
+         * Filter transactions by income or outcome transactions. An account group has a flag `cash asset account` to indicate accounts for income/outcome.
+         */
+        is_income?: boolean;
+        /**
+         * Show transactions after this date.
+         */
+        start_date?: string;
+        /**
+         * Show transactions before this date.
+         */
+        end_date?: string;
+        /**
+         * Filter transactions, whether transaction is immutable.
+         */
+        is_immutable?: boolean;
+        /**
+         * Full text search query.
+         */
+        query?: string;
+        /**
+         * Default is `date`. Column the transactions are ordered by.
+         */
+        order_by?:
+            | 'date'
+            | 'amount'
+            | 'modified'
+            | 'number'
+            | 'note'
+            | 'account'
+            | 'contra_account'
+            | 'cost_center'
+            | 'donator'
+            | 'bills';
+        /**
+         * Way of direction: ascending or descending. Default is `DESC`.
+         */
+        order_direction?: 'ASC' | 'DESC';
+        /**
+         * Select special columns for a particular target.
          */
         target?: 'default' | 'sage100';
-        /**
-         * Page number to show page in pagination. If empty, start at first page.
-         */
-        page?: number;
     };
     url: '/finance/transactions/export';
 };
@@ -18222,20 +25662,70 @@ export type GetFinanceTransactionsExportErrors = {
      * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
-    /**
-     * Resource not found
-     */
-    404: unknown;
 };
 
 export type GetFinanceTransactionsExportError =
     GetFinanceTransactionsExportErrors[keyof GetFinanceTransactionsExportErrors];
 
-export type GetFinanceTransactionsNextdocumentnumberData = {
+export type GetFinanceTransactionsExportResponses = {
+    /**
+     * Returns the transactions as a CSV string (`format=csv`) or as an Excel file (`format=xlsx`).
+     */
+    200: Blob | File;
+};
+
+export type GetFinanceTransactionsExportResponse =
+    GetFinanceTransactionsExportResponses[keyof GetFinanceTransactionsExportResponses];
+
+export type GetFinanceTransactionsIdsData = {
     body?: never;
     path?: never;
     query?: {
-        accounting_period_id?: string;
+        /**
+         * Optional ID of an accounting period. When provided, only the transaction IDs of that period are returned as a flat array.
+         */
+        accounting_period_id?: number;
+    };
+    url: '/finance/transactions/ids';
+};
+
+export type GetFinanceTransactionsIdsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetFinanceTransactionsIdsError = GetFinanceTransactionsIdsErrors[keyof GetFinanceTransactionsIdsErrors];
+
+export type GetFinanceTransactionsIdsResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data:
+            | Array<string>
+            | {
+                  [key: string]: Array<string>;
+              };
+    };
+};
+
+export type GetFinanceTransactionsIdsResponse =
+    GetFinanceTransactionsIdsResponses[keyof GetFinanceTransactionsIdsResponses];
+
+export type GetFinanceTransactionsNextdocumentnumberData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * ID of accounting period to get master data for
+         */
+        accounting_period_id: number;
     };
     url: '/finance/transactions/nextdocumentnumber';
 };
@@ -18249,19 +25739,76 @@ export type GetFinanceTransactionsNextdocumentnumberErrors = {
      * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
-    /**
-     * Resource not found
-     */
-    404: unknown;
 };
 
 export type GetFinanceTransactionsNextdocumentnumberError =
     GetFinanceTransactionsNextdocumentnumberErrors[keyof GetFinanceTransactionsNextdocumentnumberErrors];
 
+export type GetFinanceTransactionsNextdocumentnumberResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: string;
+    };
+};
+
+export type GetFinanceTransactionsNextdocumentnumberResponse =
+    GetFinanceTransactionsNextdocumentnumberResponses[keyof GetFinanceTransactionsNextdocumentnumberResponses];
+
 export type GetFinanceTransactionsSummaryData = {
     body?: never;
     path?: never;
-    query?: never;
+    query: {
+        /**
+         * ID of accounting period to get master data for
+         */
+        accounting_period_id: number;
+        /**
+         * Filter by person ID. Get all transactions the person has created. But only show those the user can see.
+         */
+        created_pid?: number;
+        /**
+         * Filter by cost centers.
+         */
+        cost_center_ids?: Array<number>;
+        /**
+         * Filter by donator or donator spouse. Provide an array of person ids.
+         */
+        donator_ids?: Array<number>;
+        /**
+         * Filter by ids to include.
+         */
+        include_ids?: Array<number>;
+        /**
+         * Filter by ids to exclude.
+         */
+        exclude_ids?: Array<number>;
+        /**
+         * Filter by account/contra account. All transactions match, where either account or contra account is in the list.
+         */
+        account_ids?: Array<number>;
+        /**
+         * Filter by donations. `true` = Only donations, `false` = Other than donation.
+         */
+        is_donation?: boolean;
+        /**
+         * Filter transactions by income or outcome transactions. An account group has a flag `cash asset account` to indicate accounts for income/outcome.
+         */
+        is_income?: boolean;
+        /**
+         * Show transactions after this date.
+         */
+        start_date?: string;
+        /**
+         * Show transactions before this date.
+         */
+        end_date?: string;
+        /**
+         * Filter transactions, whether transaction is immutable.
+         */
+        is_immutable?: boolean;
+    };
     url: '/finance/transactions/summary';
 };
 
@@ -18305,9 +25852,9 @@ export type DeleteFinanceTransactionsIdData = {
     };
     query?: {
         /**
-         * If set, the response will include the specified data.
+         * Include additional information
          */
-        include?: Array<'bills'>;
+        'include[]'?: Array<'bills'>;
         /**
          * If set to true, the deletion is simulated but nothing will be deleted.
          */
@@ -18354,9 +25901,9 @@ export type GetFinanceTransactionsIdData = {
     };
     query?: {
         /**
-         * If set, the response will include the specified data.
+         * Include additional information
          */
-        include?: Array<'bills'>;
+        'include[]'?: Array<'bills'>;
     };
     url: '/finance/transactions/{id}';
 };
@@ -18380,10 +25927,10 @@ export type GetFinanceTransactionsIdError = GetFinanceTransactionsIdErrors[keyof
 
 export type GetFinanceTransactionsIdResponses = {
     /**
-     * get transaction
+     * The requested transaction.
      */
     200: {
-        data: Array<Transaction>;
+        data: Transaction;
     };
 };
 
@@ -18403,14 +25950,18 @@ export type PutFinanceTransactionsIdData = {
     };
     query?: {
         /**
-         * If set, the response will include the specified data.
+         * Include additional information
          */
-        include?: Array<'bills'>;
+        'include[]'?: Array<'bills'>;
     };
     url: '/finance/transactions/{id}';
 };
 
 export type PutFinanceTransactionsIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -18429,15 +25980,59 @@ export type PutFinanceTransactionsIdError = PutFinanceTransactionsIdErrors[keyof
 
 export type PutFinanceTransactionsIdResponses = {
     /**
-     * Updated transaction
+     * The updated transaction.
      */
     200: {
-        data: Array<Transaction>;
+        data: Transaction;
     };
 };
 
 export type PutFinanceTransactionsIdResponse =
     PutFinanceTransactionsIdResponses[keyof PutFinanceTransactionsIdResponses];
+
+export type PostFinanceTransactionsIdDuplicateData = {
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/finance/transactions/{id}/duplicate';
+};
+
+export type PostFinanceTransactionsIdDuplicateErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostFinanceTransactionsIdDuplicateError =
+    PostFinanceTransactionsIdDuplicateErrors[keyof PostFinanceTransactionsIdDuplicateErrors];
+
+export type PostFinanceTransactionsIdDuplicateResponses = {
+    /**
+     * Duplicated transaction
+     */
+    201: {
+        data: Transaction;
+    };
+};
+
+export type PostFinanceTransactionsIdDuplicateResponse =
+    PostFinanceTransactionsIdDuplicateResponses[keyof PostFinanceTransactionsIdDuplicateResponses];
 
 export type PutFinanceTransactionsIdStornoData = {
     /**
@@ -18622,6 +26217,10 @@ export type PutFollowupsFollowUpIdData = {
 
 export type PutFollowupsFollowUpIdErrors = {
     /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
      * Unauthorized
      */
     401: string;
@@ -18649,7 +26248,7 @@ export type PutFollowupsFollowUpIdResponses = {
 export type PutFollowupsFollowUpIdResponse = PutFollowupsFollowUpIdResponses[keyof PutFollowupsFollowUpIdResponses];
 
 export type PostFollowupsFollowUpIdCompleteData = {
-    body?: {
+    body: {
         successGroupId?: number | null;
     };
     path: {
@@ -18663,6 +26262,10 @@ export type PostFollowupsFollowUpIdCompleteData = {
 };
 
 export type PostFollowupsFollowUpIdCompleteErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -18705,6 +26308,10 @@ export type PostFollowupsFollowUpIdDismissData = {
 };
 
 export type PostFollowupsFollowUpIdDismissErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -18753,6 +26360,10 @@ export type PostFollowupsFollowUpIdNotesData = {
 
 export type PostFollowupsFollowUpIdNotesErrors = {
     /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
      * Unauthorized
      */
     401: string;
@@ -18771,7 +26382,7 @@ export type PostFollowupsFollowUpIdNotesError =
 
 export type PostFollowupsFollowUpIdNotesResponses = {
     /**
-     * OK
+     * No Content
      */
     204: void;
 };
@@ -18794,6 +26405,10 @@ export type PostFollowupsFollowUpIdPostponeData = {
 };
 
 export type PostFollowupsFollowUpIdPostponeErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -18824,7 +26439,7 @@ export type PostFollowupsFollowUpIdPostponeResponse =
     PostFollowupsFollowUpIdPostponeResponses[keyof PostFollowupsFollowUpIdPostponeResponses];
 
 export type PostFollowupsFollowUpIdResetData = {
-    body: {
+    body?: {
         dueDate?: DateString;
     };
     path: {
@@ -18838,6 +26453,10 @@ export type PostFollowupsFollowUpIdResetData = {
 };
 
 export type PostFollowupsFollowUpIdResetErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -18956,31 +26575,33 @@ export type DeleteFurtherlinksFurtherLinkIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -19132,7 +26753,7 @@ export type PostGroupAgegroupsResponses = {
      * OK
      */
     201: {
-        data: GroupCategory;
+        data: AgeGroup;
     };
 };
 
@@ -19166,31 +26787,33 @@ export type DeleteGroupAgegroupsAgeGroupIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -19375,31 +26998,33 @@ export type DeleteGroupGroupcategoriesGroupCategoryIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -19484,9 +27109,11 @@ export type PutGroupGroupcategoriesGroupCategoryIdError =
 
 export type PutGroupGroupcategoriesGroupCategoryIdResponses = {
     /**
-     * No Content
+     * OK
      */
-    204: void;
+    200: {
+        data: GroupCategory;
+    };
 };
 
 export type PutGroupGroupcategoriesGroupCategoryIdResponse =
@@ -19583,31 +27210,33 @@ export type DeleteGroupGrouptypesGroupTypeIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -19795,31 +27424,33 @@ export type DeleteGroupMeetingtemplatesMeetingTemplateIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -19936,12 +27567,13 @@ export type GetGroupMemberstatusResponses = {
     /**
      * OK
      */
-    200: {
-        data: Array<{
-            id?: MemberStatus;
-            name?: string;
-        }>;
-    };
+    200: Array<{
+        id: MemberStatus;
+        /**
+         * Translated name of the member status.
+         */
+        name: string;
+    }>;
 };
 
 export type GetGroupMemberstatusResponse = GetGroupMemberstatusResponses[keyof GetGroupMemberstatusResponses];
@@ -20042,31 +27674,33 @@ export type DeleteGroupRolesRoleIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -20146,9 +27780,11 @@ export type PutGroupRolesRoleIdError = PutGroupRolesRoleIdErrors[keyof PutGroupR
 
 export type PutGroupRolesRoleIdResponses = {
     /**
-     * No Content
+     * OK
      */
-    204: void;
+    200: {
+        data: Role;
+    };
 };
 
 export type PutGroupRolesRoleIdResponse = PutGroupRolesRoleIdResponses[keyof PutGroupRolesRoleIdResponses];
@@ -20244,31 +27880,33 @@ export type DeleteGroupTargetgroupsTargetGroupIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -20384,21 +28022,30 @@ export type GetGrouphomepagesHashData = {
     body?: never;
     path: {
         /**
-         * Random hash for public groups
+         * Random hash of the group homepage.
          */
         hash: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * Optional hierarchy depth to load below the group homepage's parent group. If omitted, the stored depth setting of the group homepage is used.
+         */
+        depth?: number;
+    };
     url: '/grouphomepages/{hash}';
 };
 
 export type GetGrouphomepagesHashErrors = {
     /**
-     * Forbidden
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
     /**
-     * Not Found
+     * Resource not found
      */
     404: unknown;
 };
@@ -20430,6 +28077,14 @@ export type GetGroupsData = {
          * Array of group ids
          */
         'ids[]'?: Array<number>;
+        /**
+         * Return direct child groups of this group
+         */
+        parent_id?: number;
+        /**
+         * Return direct parent groups of this group
+         */
+        child_id?: number;
         /**
          * Array of campus ids to filter the groups
          */
@@ -20486,6 +28141,10 @@ export type GetGroupsData = {
          * Only show groups which has posts
          */
         has_posts?: boolean;
+        /**
+         * Filter groups based on whether they have an active chat
+         */
+        has_active_chat?: boolean;
         query?: string;
         /**
          * Group visibility
@@ -20503,6 +28162,7 @@ export type GetGroupsData = {
          * Include additional information (currently, 'roles' are included by default but this behaviour is now deprecated)
          */
         'include[]'?: Array<
+            | 'averageMemberAge'
             | 'hasPermissions'
             | 'roles'
             | 'tags'
@@ -20555,7 +28215,7 @@ export type PostGroupsData = {
          */
         groupCategoryId?: number;
         /**
-         * ID of group status
+         * ID of the group status. Values are fixed: 1 is active, 2 is pending (draft), 3 is archived, and 4 is finished. ChurchTools clients normally use active for a new group.
          */
         groupStatusId: number;
         /**
@@ -20610,17 +28270,36 @@ export type PostGroupsResponses = {
 export type PostGroupsResponse = PostGroupsResponses[keyof PostGroupsResponses];
 
 export type PostGroupsExportData = {
-    body: Array<{
+    /**
+     * Selected group IDs to export
+     */
+    body: {
+        /**
+         * IDs of the groups to include in the export
+         */
         ids: Array<number>;
-    }>;
+    };
     path?: never;
     query?: {
-        type?: 'csv' | 'xlsx';
+        /**
+         * Export file format. Defaults to `csv` when omitted. The response content type depends on the selected format.
+         */
+        format?: ExportOutputFormat;
+        /**
+         * Use `format`
+         *
+         * @deprecated
+         */
+        type?: ExportOutputFormat;
     };
     url: '/groups/export';
 };
 
 export type PostGroupsExportErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -20637,7 +28316,7 @@ export type PostGroupsExportResponses = {
     /**
      * OK
      */
-    200: string;
+    200: Blob | File;
 };
 
 export type PostGroupsExportResponse = PostGroupsExportResponses[keyof PostGroupsExportResponses];
@@ -20645,8 +28324,11 @@ export type PostGroupsExportResponse = PostGroupsExportResponses[keyof PostGroup
 export type GetGroupsGroupedData = {
     body?: never;
     path?: never;
-    query?: {
-        group_by?:
+    query: {
+        /**
+         * Group attribute used to build the response buckets
+         */
+        group_by:
             | 'campus'
             | 'ageGroup'
             | 'groupStatus'
@@ -20664,6 +28346,10 @@ export type GetGroupsGroupedData = {
 };
 
 export type GetGroupsGroupedErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -20759,6 +28445,10 @@ export type GetGroupsHierarchiesData = {
          * Only show groups which has posts
          */
         has_posts?: boolean;
+        /**
+         * Filter groups based on whether they have an active chat
+         */
+        has_active_chat?: boolean;
         query?: string;
         /**
          * Group visibility
@@ -20769,6 +28459,10 @@ export type GetGroupsHierarchiesData = {
 };
 
 export type GetGroupsHierarchiesErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -20787,6 +28481,7 @@ export type GetGroupsHierarchiesResponses = {
      */
     200: {
         data: Array<GroupHierarchy>;
+        meta: MetaCount;
     };
 };
 
@@ -20808,6 +28503,14 @@ export type GetGroupsIdsData = {
          * Array of group ids
          */
         'ids[]'?: Array<number>;
+        /**
+         * Return direct child groups of this group
+         */
+        parent_id?: number;
+        /**
+         * Return direct parent groups of this group
+         */
+        child_id?: number;
         /**
          * Array of campus ids to filter the groups
          */
@@ -20864,6 +28567,10 @@ export type GetGroupsIdsData = {
          * Only show groups which has posts
          */
         has_posts?: boolean;
+        /**
+         * Filter groups based on whether they have an active chat
+         */
+        has_active_chat?: boolean;
         query?: string;
         /**
          * Group visibility
@@ -20874,6 +28581,10 @@ export type GetGroupsIdsData = {
 };
 
 export type GetGroupsIdsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -20915,6 +28626,10 @@ export type GetGroupsMembersData = {
 
 export type GetGroupsMembersErrors = {
     /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
      * Unauthorized
      */
     401: string;
@@ -20932,6 +28647,7 @@ export type GetGroupsMembersResponses = {
      */
     200: {
         data: Array<GroupMemberShort>;
+        meta: MetaCount;
     };
 };
 
@@ -20971,31 +28687,33 @@ export type DeleteGroupsGroupIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -21023,6 +28741,7 @@ export type GetGroupsGroupIdData = {
          * Include additional information (currently, 'roles' are included by default but this behaviour is now deprecated)
          */
         'include[]'?: Array<
+            | 'averageMemberAge'
             | 'hasPermissions'
             | 'roles'
             | 'tags'
@@ -21078,6 +28797,10 @@ export type PatchGroupsIdData = {
          * Decides in case of changing the visibility of posts in the group whether the current users posts should be skipped. Default: false
          */
         skip_my_posts_reducing_visibility?: boolean;
+        /**
+         * When changing the group status to finished with this flag it can be decided if all routines should be deactivated
+         */
+        deactivate_routines_on_status_finished?: boolean;
     };
     url: '/groups/{groupId}';
 };
@@ -21324,6 +29047,10 @@ export type GetGroupsGroupIdChildrenData = {
          * Only show groups which has posts
          */
         has_posts?: boolean;
+        /**
+         * Filter groups based on whether they have an active chat
+         */
+        has_active_chat?: boolean;
         query?: string;
         /**
          * Group visibility
@@ -21371,20 +29098,20 @@ export type GetGroupsGroupIdChildrenResponses = {
 export type GetGroupsGroupIdChildrenResponse =
     GetGroupsGroupIdChildrenResponses[keyof GetGroupsGroupIdChildrenResponses];
 
-export type GetGroupsGroupIdDocumentsDocumentIdData = {
+export type GetGroupsGroupIdDocumentsHtmlTemplateIdData = {
     body?: never;
     path: {
         /**
          * ID of group
          */
         groupId: number;
-        documentId: string;
+        htmlTemplateId: string;
     };
     query?: never;
-    url: '/groups/{groupId}/documents/{documentId}';
+    url: '/groups/{groupId}/documents/{htmlTemplateId}';
 };
 
-export type GetGroupsGroupIdDocumentsDocumentIdErrors = {
+export type GetGroupsGroupIdDocumentsHtmlTemplateIdErrors = {
     /**
      * Unauthorized
      */
@@ -21399,8 +29126,8 @@ export type GetGroupsGroupIdDocumentsDocumentIdErrors = {
     404: unknown;
 };
 
-export type GetGroupsGroupIdDocumentsDocumentIdError =
-    GetGroupsGroupIdDocumentsDocumentIdErrors[keyof GetGroupsGroupIdDocumentsDocumentIdErrors];
+export type GetGroupsGroupIdDocumentsHtmlTemplateIdError =
+    GetGroupsGroupIdDocumentsHtmlTemplateIdErrors[keyof GetGroupsGroupIdDocumentsHtmlTemplateIdErrors];
 
 export type GetGroupsGroupIdDocumenttemplatesData = {
     body?: never;
@@ -21457,7 +29184,7 @@ export type PostGroupsIdDuplicateData = {
         newName: string;
         copyMembers?: boolean;
         copyPermissions?: boolean;
-        copyAutomaticEmails?: boolean;
+        copyRoutines?: boolean;
     };
     url: '/groups/{groupId}/duplicate';
 };
@@ -21472,238 +29199,6 @@ export type PostGroupsIdDuplicateResponses = {
 };
 
 export type PostGroupsIdDuplicateResponse = PostGroupsIdDuplicateResponses[keyof PostGroupsIdDuplicateResponses];
-
-export type GetGroupsIdEmailsData = {
-    body?: never;
-    path: {
-        /**
-         * ID of group
-         */
-        groupId: number;
-    };
-    query?: never;
-    url: '/groups/{groupId}/emails';
-};
-
-export type GetGroupsIdEmailsErrors = {
-    /**
-     * Bad Request
-     */
-    400: unknown;
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-    /**
-     * Forbidden
-     */
-    403: unknown;
-    /**
-     * Not Found
-     */
-    404: unknown;
-};
-
-export type GetGroupsIdEmailsResponses = {
-    /**
-     * OK
-     */
-    200: {
-        data: Array<AutomaticEmail>;
-        meta: MetaCount;
-    };
-};
-
-export type GetGroupsIdEmailsResponse = GetGroupsIdEmailsResponses[keyof GetGroupsIdEmailsResponses];
-
-export type PostGroupsIdEmailsData = {
-    body: {
-        body: string;
-        isActive: boolean;
-        /**
-         * Only releveant for roleId = requester roles
-         */
-        isForWaitinglist: boolean;
-        /**
-         * Grouptype Role Id; Must be a role of the group
-         */
-        roleId: number;
-        /**
-         * PersonId; Must be a leader in that group
-         */
-        senderId: number | null;
-        subject: string;
-    };
-    path: {
-        /**
-         * ID of group
-         */
-        groupId: number;
-    };
-    query?: never;
-    url: '/groups/{groupId}/emails';
-};
-
-export type PostGroupsIdEmailsErrors = {
-    /**
-     * Bad Request
-     */
-    400: unknown;
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-    /**
-     * Forbidden
-     */
-    403: unknown;
-    /**
-     * Not Found
-     */
-    404: unknown;
-};
-
-export type PostGroupsIdEmailsResponses = {
-    /**
-     * Created
-     */
-    201: {
-        data: AutomaticEmail;
-    };
-};
-
-export type PostGroupsIdEmailsResponse = PostGroupsIdEmailsResponses[keyof PostGroupsIdEmailsResponses];
-
-export type DeleteGroupsIdEmailsIdData = {
-    body?: never;
-    path: {
-        /**
-         * ID or chat GUID of group
-         */
-        groupId: number;
-        emailId: string;
-    };
-    query?: never;
-    url: '/groups/{groupId}/emails/{emailId}';
-};
-
-export type DeleteGroupsIdEmailsIdErrors = {
-    /**
-     * Bad Request
-     */
-    400: unknown;
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-    /**
-     * Forbidden
-     */
-    403: unknown;
-    /**
-     * Not Found
-     */
-    404: unknown;
-};
-
-export type DeleteGroupsIdEmailsIdResponses = {
-    /**
-     * Successfully deleted
-     */
-    204: void;
-};
-
-export type DeleteGroupsIdEmailsIdResponse = DeleteGroupsIdEmailsIdResponses[keyof DeleteGroupsIdEmailsIdResponses];
-
-export type GetGroupsIdEmailsIdData = {
-    body?: never;
-    path: {
-        /**
-         * ID of group
-         */
-        groupId: number;
-        emailId: string;
-    };
-    query?: never;
-    url: '/groups/{groupId}/emails/{emailId}';
-};
-
-export type GetGroupsIdEmailsIdErrors = {
-    /**
-     * Bad Request
-     */
-    400: unknown;
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-    /**
-     * Forbidden
-     */
-    403: unknown;
-    /**
-     * Not Found
-     */
-    404: unknown;
-};
-
-export type GetGroupsIdEmailsIdResponses = {
-    /**
-     * OK
-     */
-    200: {
-        data: AutomaticEmail;
-    };
-};
-
-export type GetGroupsIdEmailsIdResponse = GetGroupsIdEmailsIdResponses[keyof GetGroupsIdEmailsIdResponses];
-
-export type PutGroupsIdEmailsIdData = {
-    body: {
-        body: string;
-        isActive: boolean;
-        /**
-         * SenderID = PersonID of one leader in that group
-         */
-        senderId: number | null;
-        subject: string;
-    };
-    path: {
-        /**
-         * ID of group
-         */
-        groupId: number;
-        emailId: string;
-    };
-    query?: never;
-    url: '/groups/{groupId}/emails/{emailId}';
-};
-
-export type PutGroupsIdEmailsIdErrors = {
-    /**
-     * Bad Request
-     */
-    400: unknown;
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-    /**
-     * Forbidden
-     */
-    403: unknown;
-    /**
-     * Not Found
-     */
-    404: unknown;
-};
-
-export type PutGroupsIdEmailsIdResponses = {
-    /**
-     * OK
-     */
-    200: unknown;
-};
 
 export type GetGroupsGroupIdFollowupsData = {
     body?: never;
@@ -21841,7 +29336,23 @@ export type GetGroupsGroupIdGrouphomepageResponse =
     GetGroupsGroupIdGrouphomepageResponses[keyof GetGroupsGroupIdGrouphomepageResponses];
 
 export type PutGroupsGroupIdGrouphomepageData = {
-    body?: never;
+    body?: {
+        customDescription?: string | null;
+        customTitle?: string | null;
+        defaultView?: 'tile' | 'minitile' | 'list';
+        depth?: number;
+        descriptionMode?: GroupHomepageHeaderContentMode;
+        filters?: Array<GroupHomepageFilter>;
+        isCollapsed?: boolean;
+        isEnabled: boolean;
+        orderBy?: 'name' | 'dateOfFoundation';
+        orderDirection?: 'ASC' | 'DESC';
+        showFilters: boolean;
+        showGroupImages: boolean;
+        showLeaders: boolean;
+        showMap: boolean;
+        titleMode?: GroupHomepageHeaderContentMode;
+    };
     path: {
         /**
          * ID of group
@@ -22011,7 +29522,7 @@ export type GetGroupsGroupIdMeetingsExportData = {
         groupId: number;
     };
     query?: {
-        format?: 'csv' | 'xlsx';
+        format?: ExportOutputFormat;
         type?: 'meetings_members' | 'meetings_overview';
         /**
          * Whether to include canceled group meetings
@@ -22076,7 +29587,7 @@ export type DeleteGroupsGroupIdMeetingsMeetingIdData = {
          * ID of group
          */
         groupId: number;
-        meetingId: string;
+        meetingId: number;
     };
     query?: never;
     url: '/groups/{groupId}/meetings/{meetingId}';
@@ -22099,7 +29610,7 @@ export type GetGroupsGroupIdMeetingsMeetingIdData = {
          * ID of group
          */
         groupId: number;
-        meetingId: string;
+        meetingId: number;
     };
     query?: never;
     url: '/groups/{groupId}/meetings/{meetingId}';
@@ -22124,7 +29635,7 @@ export type PutGroupsGroupIdMeetingsMeetingIdData = {
         isCanceled?: boolean;
         isCompleted?: boolean;
         numGuests?: number | null;
-        pollResult?: string | null;
+        pollResult?: Array<unknown> | null;
         startDate?: string;
     };
     path: {
@@ -22132,7 +29643,7 @@ export type PutGroupsGroupIdMeetingsMeetingIdData = {
          * ID of group
          */
         groupId: number;
-        meetingId: string;
+        meetingId: number;
     };
     query?: never;
     url: '/groups/{groupId}/meetings/{meetingId}';
@@ -22183,7 +29694,7 @@ export type PostGroupsGroupIdMeetingsMeetingIdMembersMissingData = {
          * ID of group
          */
         groupId: number;
-        meetingId: string;
+        meetingId: number;
     };
     query?: never;
     url: '/groups/{groupId}/meetings/{meetingId}/members/missing';
@@ -22203,7 +29714,7 @@ export type PostGroupsGroupIdMeetingsMeetingIdMembersResetData = {
          * ID of group
          */
         groupId: number;
-        meetingId: string;
+        meetingId: number;
     };
     query?: never;
     url: '/groups/{groupId}/meetings/{meetingId}/members/reset';
@@ -22267,7 +29778,7 @@ export type GetGroupsGroupIdMemberfieldsResponse =
     GetGroupsGroupIdMemberfieldsResponses[keyof GetGroupsGroupIdMemberfieldsResponses];
 
 export type PostGroupsGroupIdMemberfieldsGroupData = {
-    body?: never;
+    body: GroupMemberFieldGroupCreate;
     path: {
         /**
          * ID of group
@@ -22280,6 +29791,10 @@ export type PostGroupsGroupIdMemberfieldsGroupData = {
 
 export type PostGroupsGroupIdMemberfieldsGroupErrors = {
     /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
      * Unauthorized
      */
     401: string;
@@ -22287,10 +29802,26 @@ export type PostGroupsGroupIdMemberfieldsGroupErrors = {
      * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
 };
 
 export type PostGroupsGroupIdMemberfieldsGroupError =
     PostGroupsGroupIdMemberfieldsGroupErrors[keyof PostGroupsGroupIdMemberfieldsGroupErrors];
+
+export type PostGroupsGroupIdMemberfieldsGroupResponses = {
+    /**
+     * Created
+     */
+    201: {
+        data: GroupMemberFieldGroup;
+    };
+};
+
+export type PostGroupsGroupIdMemberfieldsGroupResponse =
+    PostGroupsGroupIdMemberfieldsGroupResponses[keyof PostGroupsGroupIdMemberfieldsGroupResponses];
 
 export type DeleteGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdData = {
     body?: never;
@@ -22299,13 +29830,20 @@ export type DeleteGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdData = {
          * ID of group
          */
         groupId: number;
-        groupMemberFieldId: string;
+        /**
+         * ID of the group member field.
+         */
+        groupMemberFieldId: number;
     };
     query?: never;
     url: '/groups/{groupId}/memberfields/group/{groupMemberFieldId}';
 };
 
 export type DeleteGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -22319,14 +29857,77 @@ export type DeleteGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdErrors = {
 export type DeleteGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdError =
     DeleteGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdErrors[keyof DeleteGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdErrors];
 
-export type PutGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdData = {
-    body?: never;
+export type DeleteGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdResponse =
+    DeleteGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdResponses[keyof DeleteGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdResponses];
+
+export type PatchGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdData = {
+    body: GroupMemberFieldGroupPatch;
     path: {
         /**
          * ID of group
          */
         groupId: number;
-        groupMemberFieldId: string;
+        /**
+         * ID of the group member field.
+         */
+        groupMemberFieldId: number;
+    };
+    query?: never;
+    url: '/groups/{groupId}/memberfields/group/{groupMemberFieldId}';
+};
+
+export type PatchGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PatchGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdError =
+    PatchGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdErrors[keyof PatchGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdErrors];
+
+export type PatchGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: GroupMemberFieldGroup;
+    };
+};
+
+export type PatchGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdResponse =
+    PatchGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdResponses[keyof PatchGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdResponses];
+
+export type PutGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdData = {
+    body: GroupMemberFieldGroupUpdate;
+    path: {
+        /**
+         * ID of group
+         */
+        groupId: number;
+        /**
+         * ID of the group member field.
+         */
+        groupMemberFieldId: number;
     };
     query?: never;
     url: '/groups/{groupId}/memberfields/group/{groupMemberFieldId}';
@@ -22334,6 +29935,10 @@ export type PutGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdData = {
 
 export type PutGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdErrors = {
     /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
      * Unauthorized
      */
     401: string;
@@ -22341,25 +29946,41 @@ export type PutGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdErrors = {
      * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
 };
 
 export type PutGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdError =
     PutGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdErrors[keyof PutGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdErrors];
 
-export type DeleteGroupsGroupIdMemberfieldsPersonPersonFieldIdData = {
+export type PutGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: GroupMemberFieldGroup;
+    };
+};
+
+export type PutGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdResponse =
+    PutGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdResponses[keyof PutGroupsGroupIdMemberfieldsGroupGroupMemberFieldIdResponses];
+
+export type DeleteGroupsGroupIdMemberfieldsPersonFieldIdData = {
     body?: never;
     path: {
         /**
          * ID of group
          */
         groupId: number;
-        personFieldId: string;
+        fieldId: string;
     };
     query?: never;
-    url: '/groups/{groupId}/memberfields/person/{personFieldId}';
+    url: '/groups/{groupId}/memberfields/person/{fieldId}';
 };
 
-export type DeleteGroupsGroupIdMemberfieldsPersonPersonFieldIdErrors = {
+export type DeleteGroupsGroupIdMemberfieldsPersonFieldIdErrors = {
     /**
      * Unauthorized
      */
@@ -22370,23 +29991,23 @@ export type DeleteGroupsGroupIdMemberfieldsPersonPersonFieldIdErrors = {
     403: unknown;
 };
 
-export type DeleteGroupsGroupIdMemberfieldsPersonPersonFieldIdError =
-    DeleteGroupsGroupIdMemberfieldsPersonPersonFieldIdErrors[keyof DeleteGroupsGroupIdMemberfieldsPersonPersonFieldIdErrors];
+export type DeleteGroupsGroupIdMemberfieldsPersonFieldIdError =
+    DeleteGroupsGroupIdMemberfieldsPersonFieldIdErrors[keyof DeleteGroupsGroupIdMemberfieldsPersonFieldIdErrors];
 
-export type PutGroupsGroupIdMemberfieldsPersonPersonFieldIdData = {
+export type PutGroupsGroupIdMemberfieldsPersonFieldIdData = {
     body?: never;
     path: {
         /**
          * ID of group
          */
         groupId: number;
-        personFieldId: string;
+        fieldId: string;
     };
     query?: never;
-    url: '/groups/{groupId}/memberfields/person/{personFieldId}';
+    url: '/groups/{groupId}/memberfields/person/{fieldId}';
 };
 
-export type PutGroupsGroupIdMemberfieldsPersonPersonFieldIdErrors = {
+export type PutGroupsGroupIdMemberfieldsPersonFieldIdErrors = {
     /**
      * Unauthorized
      */
@@ -22397,8 +30018,83 @@ export type PutGroupsGroupIdMemberfieldsPersonPersonFieldIdErrors = {
     403: unknown;
 };
 
-export type PutGroupsGroupIdMemberfieldsPersonPersonFieldIdError =
-    PutGroupsGroupIdMemberfieldsPersonPersonFieldIdErrors[keyof PutGroupsGroupIdMemberfieldsPersonPersonFieldIdErrors];
+export type PutGroupsGroupIdMemberfieldsPersonFieldIdError =
+    PutGroupsGroupIdMemberfieldsPersonFieldIdErrors[keyof PutGroupsGroupIdMemberfieldsPersonFieldIdErrors];
+
+export type GetGroupsGroupIdMemberidsData = {
+    body?: never;
+    path: {
+        /**
+         * ID of group
+         */
+        groupId: number;
+    };
+    query?: {
+        /**
+         * Array of roles to filter the members
+         */
+        'role_ids[]'?: Array<number>;
+        /**
+         * Array of person ids to filter the members
+         */
+        'person_id[]'?: Array<number>;
+        /**
+         * Array of group member statuses to filter the members
+         */
+        'group_member_statuses[]'?: Array<MemberStatus>;
+        /**
+         * If true, return only group members, that are allowed to chat in this group
+         */
+        allowed_chat_users_only?: boolean;
+        /**
+         * If true, return only group members that are allowed to write in the chat.
+         */
+        allowed_chat_writers_only?: boolean;
+        /**
+         * searches in first and second name of group member
+         */
+        query?: string;
+        /**
+         * Filter by comment
+         */
+        comment?: string;
+        /**
+         * Filter by whether the membership began after the given date.
+         */
+        member_start_date_after?: DateString;
+        /**
+         * Filter by whether the membership began before the given date.
+         */
+        member_start_date_before?: DateString;
+    };
+    url: '/groups/{groupId}/memberids';
+};
+
+export type GetGroupsGroupIdMemberidsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetGroupsGroupIdMemberidsError = GetGroupsGroupIdMemberidsErrors[keyof GetGroupsGroupIdMemberidsErrors];
+
+export type GetGroupsGroupIdMemberidsResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<number>;
+        meta: MetaCount;
+    };
+};
+
+export type GetGroupsGroupIdMemberidsResponse =
+    GetGroupsGroupIdMemberidsResponses[keyof GetGroupsGroupIdMemberidsResponses];
 
 export type GetGroupsGroupIdMemberpreviewData = {
     body?: never;
@@ -22504,7 +30200,7 @@ export type GetGroupsIdMembersData = {
         /**
          * Include additional information
          */
-        include?: Array<'tags' | 'aggregations'>;
+        include?: Array<'newsletter' | 'tags' | 'aggregations'>;
     };
     url: '/groups/{groupId}/members';
 };
@@ -22539,9 +30235,15 @@ export type GetGroupsGroupIdMembersExportData = {
     };
     query?: {
         /**
-         * Type of export file
+         * Format of export file
          */
-        type?: 'xlsx' | 'csv';
+        format?: ExportOutputFormat;
+        /**
+         * Use `format`
+         *
+         * @deprecated
+         */
+        type?: ExportOutputFormat;
     };
     url: '/groups/{groupId}/members/export';
 };
@@ -22573,9 +30275,15 @@ export type PostGroupsIdMembersExportData = {
     };
     query?: {
         /**
-         * Type of export file
+         * Format of export file
          */
-        type?: 'xlsx' | 'csv';
+        format?: ExportOutputFormat;
+        /**
+         * Use `format`
+         *
+         * @deprecated
+         */
+        type?: ExportOutputFormat;
     };
     url: '/groups/{groupId}/members/export';
 };
@@ -23022,69 +30730,6 @@ export type PutGroupsGroupIdMembersPersonIdResponses = {
 export type PutGroupsGroupIdMembersPersonIdResponse =
     PutGroupsGroupIdMembersPersonIdResponses[keyof PutGroupsGroupIdMembersPersonIdResponses];
 
-export type DeleteGroupsGroupIdMembersPersonIdFollowupData = {
-    body?: never;
-    path: {
-        /**
-         * ID of group
-         */
-        groupId: number;
-        /**
-         * ID of person
-         */
-        personId: number;
-    };
-    query: {
-        /**
-         * Comment
-         */
-        comment: string;
-    };
-    url: '/groups/{groupId}/members/{personId}/followup';
-};
-
-export type DeleteGroupsGroupIdMembersPersonIdFollowupResponses = {
-    /**
-     * No Content
-     */
-    204: void;
-};
-
-export type DeleteGroupsGroupIdMembersPersonIdFollowupResponse =
-    DeleteGroupsGroupIdMembersPersonIdFollowupResponses[keyof DeleteGroupsGroupIdMembersPersonIdFollowupResponses];
-
-export type PostGroupsGroupIdMembersPersonIdFollowupData = {
-    body: {
-        addDiffDays?: number;
-        comment: string;
-        followUpSuccessful: boolean;
-        targetGroupId?: number;
-        targetRoleId?: number;
-    };
-    path: {
-        /**
-         * ID of group
-         */
-        groupId: number;
-        /**
-         * ID of person
-         */
-        personId: number;
-    };
-    query?: never;
-    url: '/groups/{groupId}/members/{personId}/followup';
-};
-
-export type PostGroupsGroupIdMembersPersonIdFollowupResponses = {
-    /**
-     * No Content
-     */
-    204: void;
-};
-
-export type PostGroupsGroupIdMembersPersonIdFollowupResponse =
-    PostGroupsGroupIdMembersPersonIdFollowupResponses[keyof PostGroupsGroupIdMembersPersonIdFollowupResponses];
-
 export type GetGroupsGroupIdMembersPersonIdFollowupsData = {
     body?: never;
     path: {
@@ -23146,7 +30791,7 @@ export type GetGroupsGroupIdMembersPersonIdFollowupsResponse =
     GetGroupsGroupIdMembersPersonIdFollowupsResponses[keyof GetGroupsGroupIdMembersPersonIdFollowupsResponses];
 
 export type PostGroupsIdMembersIdFollowupsData = {
-    body: FollowUp;
+    body: FollowUpCreate;
     path: {
         /**
          * ID of group
@@ -23183,7 +30828,9 @@ export type PostGroupsIdMembersIdFollowupsResponses = {
     /**
      * Created
      */
-    201: FollowUp;
+    201: {
+        data: FollowUp2;
+    };
 };
 
 export type PostGroupsIdMembersIdFollowupsResponse =
@@ -23235,6 +30882,177 @@ export type GetGroupsIdMembersIdFollowupsStatisticsResponses = {
 export type GetGroupsIdMembersIdFollowupsStatisticsResponse =
     GetGroupsIdMembersIdFollowupsStatisticsResponses[keyof GetGroupsIdMembersIdFollowupsStatisticsResponses];
 
+export type GetGroupsGroupIdNewsletterIntegrationsData = {
+    body?: never;
+    path: {
+        /**
+         * ID of group
+         */
+        groupId: number;
+    };
+    query?: never;
+    url: '/groups/{groupId}/newsletter-integrations';
+};
+
+export type GetGroupsGroupIdNewsletterIntegrationsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetGroupsGroupIdNewsletterIntegrationsError =
+    GetGroupsGroupIdNewsletterIntegrationsErrors[keyof GetGroupsGroupIdNewsletterIntegrationsErrors];
+
+export type GetGroupsGroupIdNewsletterIntegrationsResponses = {
+    /**
+     * Successful request
+     */
+    200: {
+        data: Array<NewsletterIntegrationGroupMapping>;
+        meta: MetaCount;
+    };
+};
+
+export type GetGroupsGroupIdNewsletterIntegrationsResponse =
+    GetGroupsGroupIdNewsletterIntegrationsResponses[keyof GetGroupsGroupIdNewsletterIntegrationsResponses];
+
+export type PostGroupsGroupIdNewsletterIntegrationsData = {
+    body: NewsletterIntegrationGroupMappingCreateRequest;
+    path: {
+        /**
+         * ID of group
+         */
+        groupId: number;
+    };
+    query?: never;
+    url: '/groups/{groupId}/newsletter-integrations';
+};
+
+export type PostGroupsGroupIdNewsletterIntegrationsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostGroupsGroupIdNewsletterIntegrationsError =
+    PostGroupsGroupIdNewsletterIntegrationsErrors[keyof PostGroupsGroupIdNewsletterIntegrationsErrors];
+
+export type PostGroupsGroupIdNewsletterIntegrationsResponses = {
+    /**
+     * Created
+     */
+    201: {
+        data: NewsletterIntegrationGroupMapping;
+    };
+};
+
+export type PostGroupsGroupIdNewsletterIntegrationsResponse =
+    PostGroupsGroupIdNewsletterIntegrationsResponses[keyof PostGroupsGroupIdNewsletterIntegrationsResponses];
+
+export type DeleteGroupsGroupIdNewsletterIntegrationsProviderListIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of group
+         */
+        groupId: number;
+        /**
+         * Newsletter provider name.
+         */
+        provider: string;
+        /**
+         * Provider-specific list identifier.
+         */
+        listId: string;
+    };
+    query?: never;
+    url: '/groups/{groupId}/newsletter-integrations/{provider}/{listId}';
+};
+
+export type DeleteGroupsGroupIdNewsletterIntegrationsProviderListIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type DeleteGroupsGroupIdNewsletterIntegrationsProviderListIdError =
+    DeleteGroupsGroupIdNewsletterIntegrationsProviderListIdErrors[keyof DeleteGroupsGroupIdNewsletterIntegrationsProviderListIdErrors];
+
+export type DeleteGroupsGroupIdNewsletterIntegrationsProviderListIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeleteGroupsGroupIdNewsletterIntegrationsProviderListIdResponse =
+    DeleteGroupsGroupIdNewsletterIntegrationsProviderListIdResponses[keyof DeleteGroupsGroupIdNewsletterIntegrationsProviderListIdResponses];
+
+export type PostGroupsGroupIdNewsletterIntegrationsProviderListIdResendOptinsData = {
+    body?: {
+        [key: string]: unknown;
+    };
+    path: {
+        /**
+         * ID of group
+         */
+        groupId: number;
+        /**
+         * Newsletter provider name.
+         */
+        provider: string;
+        /**
+         * Provider-specific list identifier.
+         */
+        listId: string;
+    };
+    query?: never;
+    url: '/groups/{groupId}/newsletter-integrations/{provider}/{listId}/resend-optins';
+};
+
+export type PostGroupsGroupIdNewsletterIntegrationsProviderListIdResendOptinsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostGroupsGroupIdNewsletterIntegrationsProviderListIdResendOptinsError =
+    PostGroupsGroupIdNewsletterIntegrationsProviderListIdResendOptinsErrors[keyof PostGroupsGroupIdNewsletterIntegrationsProviderListIdResendOptinsErrors];
+
+export type PostGroupsGroupIdNewsletterIntegrationsProviderListIdResendOptinsResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PostGroupsGroupIdNewsletterIntegrationsProviderListIdResendOptinsResponse =
+    PostGroupsGroupIdNewsletterIntegrationsProviderListIdResendOptinsResponses[keyof PostGroupsGroupIdNewsletterIntegrationsProviderListIdResendOptinsResponses];
+
 export type GetGroupsOptinsData = {
     body?: never;
     path: {
@@ -23265,14 +31083,7 @@ export type GetGroupsOptinsResponses = {
      * Successful request
      */
     200: {
-        data: {
-            newsletter?: {
-                [key: string]: unknown;
-            };
-            persons?: {
-                [key: string]: unknown;
-            };
-        };
+        data: NewsletterOptInData;
     };
 };
 
@@ -23352,6 +31163,10 @@ export type GetGroupsGroupIdParentsData = {
          * Only show groups which has posts
          */
         has_posts?: boolean;
+        /**
+         * Filter groups based on whether they have an active chat
+         */
+        has_active_chat?: boolean;
         query?: string;
         /**
          * Group visibility
@@ -23434,171 +31249,6 @@ export type PutGroupsGroupIdParentsParentGroupIdResponses = {
      */
     201: unknown;
 };
-
-export type GetGroupsIdPlacesData = {
-    body?: never;
-    path: {
-        /**
-         * ID of group
-         */
-        groupId: number;
-    };
-    query?: never;
-    url: '/groups/{groupId}/places';
-};
-
-export type GetGroupsIdPlacesErrors = {
-    /**
-     * Unauthorized
-     */
-    401: string;
-    /**
-     * Forbidden to see, create, update, or delete resource
-     */
-    403: unknown;
-    /**
-     * Resource not found
-     */
-    404: unknown;
-};
-
-export type GetGroupsIdPlacesError = GetGroupsIdPlacesErrors[keyof GetGroupsIdPlacesErrors];
-
-export type GetGroupsIdPlacesResponses = {
-    /**
-     * OK
-     */
-    200: {
-        data: Array<Place>;
-        meta: MetaCount;
-    };
-};
-
-export type GetGroupsIdPlacesResponse = GetGroupsIdPlacesResponses[keyof GetGroupsIdPlacesResponses];
-
-export type PostGroupsGroupIdPlacesData = {
-    body: PlaceCreate;
-    path: {
-        /**
-         * ID of group
-         */
-        groupId: number;
-    };
-    query?: never;
-    url: '/groups/{groupId}/places';
-};
-
-export type PostGroupsGroupIdPlacesErrors = {
-    /**
-     * Unauthorized
-     */
-    401: string;
-    /**
-     * Forbidden to see, create, update, or delete resource
-     */
-    403: unknown;
-    /**
-     * Resource not found
-     */
-    404: unknown;
-};
-
-export type PostGroupsGroupIdPlacesError = PostGroupsGroupIdPlacesErrors[keyof PostGroupsGroupIdPlacesErrors];
-
-export type PostGroupsGroupIdPlacesResponses = {
-    /**
-     * OK
-     */
-    201: {
-        data: Place;
-    };
-};
-
-export type PostGroupsGroupIdPlacesResponse = PostGroupsGroupIdPlacesResponses[keyof PostGroupsGroupIdPlacesResponses];
-
-export type DeleteGroupsGroupIdPlacesPlaceIdData = {
-    body?: never;
-    path: {
-        /**
-         * ID of group
-         */
-        groupId: number;
-        placeId: number;
-    };
-    query?: never;
-    url: '/groups/{groupId}/places/{placeId}';
-};
-
-export type DeleteGroupsGroupIdPlacesPlaceIdErrors = {
-    /**
-     * Unauthorized
-     */
-    401: string;
-    /**
-     * Forbidden to see, create, update, or delete resource
-     */
-    403: unknown;
-    /**
-     * Resource not found
-     */
-    404: unknown;
-};
-
-export type DeleteGroupsGroupIdPlacesPlaceIdError =
-    DeleteGroupsGroupIdPlacesPlaceIdErrors[keyof DeleteGroupsGroupIdPlacesPlaceIdErrors];
-
-export type DeleteGroupsGroupIdPlacesPlaceIdResponses = {
-    /**
-     * Successfully deleted
-     */
-    204: void;
-};
-
-export type DeleteGroupsGroupIdPlacesPlaceIdResponse =
-    DeleteGroupsGroupIdPlacesPlaceIdResponses[keyof DeleteGroupsGroupIdPlacesPlaceIdResponses];
-
-export type PutGroupsGroupIdPlacesPlaceIdData = {
-    body: PlaceCreate;
-    path: {
-        /**
-         * ID of group
-         */
-        groupId: number;
-        placeId: number;
-    };
-    query?: never;
-    url: '/groups/{groupId}/places/{placeId}';
-};
-
-export type PutGroupsGroupIdPlacesPlaceIdErrors = {
-    /**
-     * Unauthorized
-     */
-    401: string;
-    /**
-     * Forbidden to see, create, update, or delete resource
-     */
-    403: unknown;
-    /**
-     * Resource not found
-     */
-    404: unknown;
-};
-
-export type PutGroupsGroupIdPlacesPlaceIdError =
-    PutGroupsGroupIdPlacesPlaceIdErrors[keyof PutGroupsGroupIdPlacesPlaceIdErrors];
-
-export type PutGroupsGroupIdPlacesPlaceIdResponses = {
-    /**
-     * OK
-     */
-    200: {
-        data: Place;
-    };
-};
-
-export type PutGroupsGroupIdPlacesPlaceIdResponse =
-    PutGroupsGroupIdPlacesPlaceIdResponses[keyof PutGroupsGroupIdPlacesPlaceIdResponses];
 
 export type GetGroupsGroupIdPoststatisticsData = {
     body?: never;
@@ -23900,7 +31550,7 @@ export type GetGroupsIdStatisticsResponses = {
 
 export type GetGroupsIdStatisticsResponse = GetGroupsIdStatisticsResponses[keyof GetGroupsIdStatisticsResponses];
 
-export type GetGroupsGroupIdTagsData = {
+export type GetGroupsIdWikiCategoriesPagesData = {
     body?: never;
     path: {
         /**
@@ -23908,35 +31558,131 @@ export type GetGroupsGroupIdTagsData = {
          */
         groupId: number;
     };
-    query?: never;
-    url: '/groups/{groupId}/tags';
+    query?: {
+        /**
+         * Maximum amount of pages returned per wiki category.
+         */
+        limit?: number;
+    };
+    url: '/groups/{groupId}/wiki/categories/pages';
 };
 
-export type GetGroupsGroupIdTagsResponses = {
+export type GetGroupsIdWikiCategoriesPagesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetGroupsIdWikiCategoriesPagesError =
+    GetGroupsIdWikiCategoriesPagesErrors[keyof GetGroupsIdWikiCategoriesPagesErrors];
+
+export type GetGroupsIdWikiCategoriesPagesResponses = {
     /**
      * OK
      */
     200: {
-        data: Array<{
-            count?: number;
-            id?: number;
-            modifiedAt?: string;
-            modifiedBy?: number;
-            name?: string;
-        }>;
+        data: Array<GroupWikiCategoryPagesItem>;
+        meta: MetaCount;
     };
 };
 
-export type GetGroupsGroupIdTagsResponse = GetGroupsGroupIdTagsResponses[keyof GetGroupsGroupIdTagsResponses];
+export type GetGroupsIdWikiCategoriesPagesResponse =
+    GetGroupsIdWikiCategoriesPagesResponses[keyof GetGroupsIdWikiCategoriesPagesResponses];
+
+export type GetHistoryData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Types of domain objects to retrieve
+         */
+        'domain_types[]': Array<string>;
+        /**
+         * Identifiers of domain objects to retrieve
+         */
+        'domain_identifiers[]': Array<string>;
+        /**
+         * Filters the action of the entry
+         */
+        action?: string;
+        /**
+         * Full-Text Search for the Entry Name.
+         */
+        query?: string;
+        /**
+         * Return entities starting from this date.
+         */
+        from?: DateString;
+        /**
+         * Return entities up to (but not including) this date.
+         */
+        to?: DateString;
+        /**
+         * Return entries created by this person.
+         */
+        actor_id?: number;
+        /**
+         * Return entries with this origin.
+         */
+        origin?: string;
+        /**
+         * Page number to show page in pagination. If empty, start at first page.
+         */
+        page?: number;
+        /**
+         * Number of results per page.
+         */
+        limit?: number;
+    };
+    url: '/history';
+};
+
+export type GetHistoryResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<HistoryEntry>;
+        meta: MetaPagination;
+    };
+};
+
+export type GetHistoryResponse = GetHistoryResponses[keyof GetHistoryResponses];
 
 export type GetHtmltemplatesData = {
     body?: never;
     path?: never;
     query: {
-        domain_type: 'email' | 'bulkletter';
+        /**
+         * Domain type the HTML templates are used for.
+         */
+        domain_type:
+            'email' | 'bulkletter' | 'groupmember-document' | 'donation-receipt-letter' | 'donation-receipt-attachment';
+        /**
+         * Only return templates owned by the current user.
+         */
+        onlyOwn?: boolean;
     };
     url: '/htmltemplates';
 };
+
+export type GetHtmltemplatesErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+};
+
+export type GetHtmltemplatesError = GetHtmltemplatesErrors[keyof GetHtmltemplatesErrors];
 
 export type GetHtmltemplatesResponses = {
     /**
@@ -23951,165 +31697,223 @@ export type GetHtmltemplatesResponses = {
 export type GetHtmltemplatesResponse = GetHtmltemplatesResponses[keyof GetHtmltemplatesResponses];
 
 export type PostHtmltemplatesData = {
-    body: {
-        domainType?: 'email' | 'bulkletter';
-        html?: string;
-        /**
-         * Indicator if HTML template is globally available for all users.
-         */
-        isGlobal?: true | false;
-        mjml?: string;
-        /**
-         * Name of HTML template
-         */
-        name?: string;
-    };
+    body: HtmlTemplateCreate;
     path?: never;
     query?: never;
     url: '/htmltemplates';
 };
+
+export type PostHtmltemplatesErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostHtmltemplatesError = PostHtmltemplatesErrors[keyof PostHtmltemplatesErrors];
 
 export type PostHtmltemplatesResponses = {
     /**
      * OK
      */
     201: {
-        data: Array<HtmlTemplate>;
-        meta: MetaCount;
+        data: HtmlTemplate;
     };
 };
 
 export type PostHtmltemplatesResponse = PostHtmltemplatesResponses[keyof PostHtmltemplatesResponses];
 
-export type DeleteHtmltemplatesData = {
+export type DeleteHtmltemplatesTemplateIdData = {
     body?: never;
     path: {
-        id: number;
+        /**
+         * ID of an HTML template
+         */
+        templateId: number;
     };
-    query?: never;
-    url: '/htmltemplates/{id}';
+    query: {
+        /**
+         * If `true`, the deletion is simulated and a list of dependencies is returned instead of actually deleting the template.
+         */
+        dryRun: boolean;
+    };
+    url: '/htmltemplates/{templateId}';
 };
 
-export type DeleteHtmltemplatesErrors = {
+export type DeleteHtmltemplatesTemplateIdErrors = {
     /**
-     * Not Found
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
      */
     404: unknown;
+    /**
+     * A conflict occurred between the request and the current state of the resource.
+     */
+    409: unknown;
 };
 
-export type DeleteHtmltemplatesResponses = {
+export type DeleteHtmltemplatesTemplateIdError =
+    DeleteHtmltemplatesTemplateIdErrors[keyof DeleteHtmltemplatesTemplateIdErrors];
+
+export type DeleteHtmltemplatesTemplateIdResponses = {
     /**
      * Successfully deleted
      */
     204: void;
 };
 
-export type DeleteHtmltemplatesResponse = DeleteHtmltemplatesResponses[keyof DeleteHtmltemplatesResponses];
+export type DeleteHtmltemplatesTemplateIdResponse =
+    DeleteHtmltemplatesTemplateIdResponses[keyof DeleteHtmltemplatesTemplateIdResponses];
 
-export type GetHtmltemplatesIdData = {
+export type GetHtmltemplatesTemplateIdData = {
     body?: never;
     path: {
-        id: number;
-    };
-    query?: never;
-    url: '/htmltemplates/{id}';
-};
-
-export type GetHtmltemplatesIdErrors = {
-    /**
-     * Not Found
-     */
-    404: unknown;
-};
-
-export type GetHtmltemplatesIdResponses = {
-    /**
-     * OK
-     */
-    200: {
-        data: Array<HtmlTemplate>;
-    };
-};
-
-export type GetHtmltemplatesIdResponse = GetHtmltemplatesIdResponses[keyof GetHtmltemplatesIdResponses];
-
-export type PatchHtmltemplatesData = {
-    body: {
-        html?: string;
         /**
-         * Indicator if HTML template is globally available for all users.
+         * ID of an HTML template
          */
-        isGlobal?: boolean;
-        mjml?: string;
-        /**
-         * Name of HTML template
-         */
-        name?: string;
-    };
-    path: {
-        id: number;
+        templateId: number;
     };
     query?: never;
-    url: '/htmltemplates/{id}';
+    url: '/htmltemplates/{templateId}';
 };
 
-export type PatchHtmltemplatesResponses = {
+export type GetHtmltemplatesTemplateIdErrors = {
     /**
-     * OK
+     * Bad Request
      */
-    200: {
-        data: Array<HtmlTemplate>;
-        meta: MetaCount;
-    };
-};
-
-export type PatchHtmltemplatesResponse = PatchHtmltemplatesResponses[keyof PatchHtmltemplatesResponses];
-
-export type GetHtmltemplatesIdExportData = {
-    body?: never;
-    path: {
-        id: number;
-    };
-    query?: never;
-    url: '/htmltemplates/{id}/export';
-};
-
-export type GetHtmltemplatesIdExportErrors = {
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
     /**
      * Resource not found
      */
     404: unknown;
 };
 
-export type GetHtmltemplatesIdExportResponses = {
+export type GetHtmltemplatesTemplateIdError = GetHtmltemplatesTemplateIdErrors[keyof GetHtmltemplatesTemplateIdErrors];
+
+export type GetHtmltemplatesTemplateIdResponses = {
     /**
      * OK
      */
     200: {
-        data: string;
+        data: HtmlTemplate;
     };
 };
 
-export type GetHtmltemplatesIdExportResponse =
-    GetHtmltemplatesIdExportResponses[keyof GetHtmltemplatesIdExportResponses];
+export type GetHtmltemplatesTemplateIdResponse =
+    GetHtmltemplatesTemplateIdResponses[keyof GetHtmltemplatesTemplateIdResponses];
 
-export type GetHtmltemplatesIdHtmlData = {
-    body?: never;
+export type PatchHtmltemplatesTemplateIdData = {
+    body: HtmlTemplateUpdate;
     path: {
-        id: number;
+        /**
+         * ID of an HTML template
+         */
+        templateId: number;
     };
     query?: never;
-    url: '/htmltemplates/{id}/html';
+    url: '/htmltemplates/{templateId}';
 };
 
-export type GetHtmltemplatesIdHtmlErrors = {
+export type PatchHtmltemplatesTemplateIdErrors = {
     /**
-     * Not Found
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+    /**
+     * Invalid HTML file ID
+     */
+    422: unknown;
+};
+
+export type PatchHtmltemplatesTemplateIdError =
+    PatchHtmltemplatesTemplateIdErrors[keyof PatchHtmltemplatesTemplateIdErrors];
+
+export type PatchHtmltemplatesTemplateIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: HtmlTemplate;
+    };
+};
+
+export type PatchHtmltemplatesTemplateIdResponse =
+    PatchHtmltemplatesTemplateIdResponses[keyof PatchHtmltemplatesTemplateIdResponses];
+
+export type GetHtmltemplatesTemplateIdExportData = {
+    body?: never;
+    path: {
+        /**
+         * ID of an HTML template
+         */
+        templateId: number;
+    };
+    query?: never;
+    url: '/htmltemplates/{templateId}/export';
+};
+
+export type GetHtmltemplatesTemplateIdExportErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
      */
     404: unknown;
 };
 
-export type GetHtmltemplatesIdHtmlResponses = {
+export type GetHtmltemplatesTemplateIdExportError =
+    GetHtmltemplatesTemplateIdExportErrors[keyof GetHtmltemplatesTemplateIdExportErrors];
+
+export type GetHtmltemplatesTemplateIdExportResponses = {
     /**
      * OK
      */
@@ -24118,34 +31922,268 @@ export type GetHtmltemplatesIdHtmlResponses = {
     };
 };
 
-export type GetHtmltemplatesIdHtmlResponse = GetHtmltemplatesIdHtmlResponses[keyof GetHtmltemplatesIdHtmlResponses];
+export type GetHtmltemplatesTemplateIdExportResponse =
+    GetHtmltemplatesTemplateIdExportResponses[keyof GetHtmltemplatesTemplateIdExportResponses];
 
-export type GetHtmltemplatesIdMjmlData = {
+export type GetHtmltemplatesTemplateIdHtmlData = {
     body?: never;
     path: {
-        id: number;
+        /**
+         * ID of an HTML template
+         */
+        templateId: number;
     };
     query?: never;
-    url: '/htmltemplates/{id}/mjml';
+    url: '/htmltemplates/{templateId}/html';
 };
 
-export type GetHtmltemplatesIdMjmlErrors = {
+export type GetHtmltemplatesTemplateIdHtmlErrors = {
     /**
-     * Not Found
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
      */
     404: unknown;
 };
 
-export type GetHtmltemplatesIdMjmlResponses = {
+export type GetHtmltemplatesTemplateIdHtmlError =
+    GetHtmltemplatesTemplateIdHtmlErrors[keyof GetHtmltemplatesTemplateIdHtmlErrors];
+
+export type GetHtmltemplatesTemplateIdHtmlResponses = {
     /**
      * OK
      */
     200: {
-        data: string;
+        data: string | null;
     };
 };
 
-export type GetHtmltemplatesIdMjmlResponse = GetHtmltemplatesIdMjmlResponses[keyof GetHtmltemplatesIdMjmlResponses];
+export type GetHtmltemplatesTemplateIdHtmlResponse =
+    GetHtmltemplatesTemplateIdHtmlResponses[keyof GetHtmltemplatesTemplateIdHtmlResponses];
+
+export type GetHtmltemplatesTemplateIdMjmlData = {
+    body?: never;
+    path: {
+        /**
+         * ID of an HTML template
+         */
+        templateId: number;
+    };
+    query?: never;
+    url: '/htmltemplates/{templateId}/mjml';
+};
+
+export type GetHtmltemplatesTemplateIdMjmlErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetHtmltemplatesTemplateIdMjmlError =
+    GetHtmltemplatesTemplateIdMjmlErrors[keyof GetHtmltemplatesTemplateIdMjmlErrors];
+
+export type GetHtmltemplatesTemplateIdMjmlResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: string | null;
+    };
+};
+
+export type GetHtmltemplatesTemplateIdMjmlResponse =
+    GetHtmltemplatesTemplateIdMjmlResponses[keyof GetHtmltemplatesTemplateIdMjmlResponses];
+
+export type PostHtmltemplatesIdUploadassetsData = {
+    body: {
+        /**
+         * Image files to upload.
+         */
+        'files[]': Array<Blob | File>;
+    };
+    path: {
+        /**
+         * ID of an HTML template
+         */
+        templateId: number;
+    };
+    query?: never;
+    url: '/htmltemplates/{templateId}/uploadassets';
+};
+
+export type PostHtmltemplatesIdUploadassetsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostHtmltemplatesIdUploadassetsError =
+    PostHtmltemplatesIdUploadassetsErrors[keyof PostHtmltemplatesIdUploadassetsErrors];
+
+export type PostHtmltemplatesIdUploadassetsResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<HtmlTemplateAssetUpload>;
+    };
+};
+
+export type PostHtmltemplatesIdUploadassetsResponse =
+    PostHtmltemplatesIdUploadassetsResponses[keyof PostHtmltemplatesIdUploadassetsResponses];
+
+export type GetImagesFileIdHashData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the image file
+         */
+        fileId: number;
+        /**
+         * Hash of the image file, optionally suffixed with an output format
+         */
+        hash: string;
+    };
+    query?: never;
+    url: '/images/{fileId}/{hash}';
+};
+
+export type GetImagesFileIdHashErrors = {
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetImagesFileIdHashResponses = {
+    /**
+     * Image binary
+     */
+    200: Blob | File;
+};
+
+export type GetImagesFileIdHashResponse = GetImagesFileIdHashResponses[keyof GetImagesFileIdHashResponses];
+
+export type GetImagesFileIdHashQueryParamsData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the image file
+         */
+        fileId: number;
+        /**
+         * Hash of the image file, optionally suffixed with an output format
+         */
+        hash: string;
+        /**
+         * URL-encoded image manipulation query string. It is interpreted like the query parameters of `/images/{fileId}/{hash}`. Additional query parameters on this route are ignored.
+         */
+        queryParams: string;
+    };
+    query?: never;
+    url: '/images/{fileId}/{hash}/{queryParams}';
+};
+
+export type GetImagesFileIdHashQueryParamsErrors = {
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetImagesFileIdHashQueryParamsResponses = {
+    /**
+     * Image binary
+     */
+    200: Blob | File;
+};
+
+export type GetImagesFileIdHashQueryParamsResponse =
+    GetImagesFileIdHashQueryParamsResponses[keyof GetImagesFileIdHashQueryParamsResponses];
+
+export type PatchImagesIdData = {
+    body: {
+        /**
+         * Whether the image was generated by artificial intelligence.
+         */
+        aiGenerated?: boolean;
+        annotation?: string | null;
+        annotationLink?: string | null;
+        description?: string | null;
+        options?: string;
+    };
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/images/{id}';
+};
+
+export type PatchImagesIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: {
+            /**
+             * Whether the image was generated by artificial intelligence.
+             */
+            aiGenerated: boolean;
+            annotation: string | null;
+            annotationLink: string | null;
+            description: string | null;
+            domainIdentifier: string;
+            domainType: string;
+            filename: string;
+            id: number;
+            name: string;
+            securityLevelId: number;
+            size: number;
+            url: string;
+        };
+    };
+};
+
+export type PatchImagesIdResponse = PatchImagesIdResponses[keyof PatchImagesIdResponses];
 
 export type PutImagesIdOptionsData = {
     body: {
@@ -24377,6 +32415,7 @@ export type GetLanguagesResponses = {
      */
     200: {
         data: Array<Language>;
+        meta: MetaCount;
     };
 };
 
@@ -24405,6 +32444,13 @@ export type GetLicenseFetchErrors = {
 };
 
 export type GetLicenseFetchError = GetLicenseFetchErrors[keyof GetLicenseFetchErrors];
+
+export type GetLicenseFetchResponses = {
+    /**
+     * License information fetched.
+     */
+    200: unknown;
+};
 
 export type PostLoginData = {
     body: {
@@ -24435,6 +32481,44 @@ export type PostLoginResponses = {
 };
 
 export type PostLoginResponse = PostLoginResponses[keyof PostLoginResponses];
+
+export type PostLoginTokenData = {
+    body: {
+        password: string;
+        /**
+         * Username or email address
+         */
+        username: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/login/token';
+};
+
+export type PostLoginTokenErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Too Many Requests
+     */
+    429: unknown;
+};
+
+export type PostLoginTokenResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: {
+            personId: number;
+            token: string;
+        };
+    };
+};
+
+export type PostLoginTokenResponse = PostLoginTokenResponses[keyof PostLoginTokenResponses];
 
 export type PostLoginTotpData = {
     body: {
@@ -24480,6 +32564,83 @@ export type PostLoginTotpResponses = {
 
 export type PostLoginTotpResponse = PostLoginTotpResponses[keyof PostLoginTotpResponses];
 
+export type PostLoginTwofactorSetupData = {
+    body?: {
+        [key: string]: unknown;
+    };
+    path?: never;
+    query?: never;
+    url: '/login/twofactor/setup';
+};
+
+export type PostLoginTwofactorSetupErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostLoginTwofactorSetupError = PostLoginTwofactorSetupErrors[keyof PostLoginTwofactorSetupErrors];
+
+export type PostLoginTwofactorSetupResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: {
+            qrcode: string;
+            secret: string;
+        };
+    };
+};
+
+export type PostLoginTwofactorSetupResponse = PostLoginTwofactorSetupResponses[keyof PostLoginTwofactorSetupResponses];
+
+export type PostLoginTwofactorSetupActivateData = {
+    body: {
+        /**
+         * the 6-digit verification code
+         */
+        code: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/login/twofactor/setup/activate';
+};
+
+export type PostLoginTwofactorSetupActivateErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostLoginTwofactorSetupActivateError =
+    PostLoginTwofactorSetupActivateErrors[keyof PostLoginTwofactorSetupActivateErrors];
+
+export type PostLoginTwofactorSetupActivateResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: {
+            redirectTo?: string;
+            status: 'success';
+        };
+    };
+};
+
+export type PostLoginTwofactorSetupActivateResponse =
+    PostLoginTwofactorSetupActivateResponses[keyof PostLoginTwofactorSetupActivateResponses];
+
 export type PostLogoutData = {
     body?: never;
     path?: never;
@@ -24509,11 +32670,11 @@ export type GetLogsData = {
          */
         'levels[]'?: Array<string>;
         /**
-         * Filter log messages before that date. (Use ISO-Format)
+         * Filter log messages before that date. (Use DateTime-Format)
          */
         before?: string;
         /**
-         * Filter log messages after that date. (Use ISO-Format)
+         * Filter log messages after that date. (Use DateTime-Format)
          */
         after?: string;
         /**
@@ -24592,15 +32753,12 @@ export type GetLogsStatisticsLoginResponses = {
      */
     200: {
         data: Array<{
-            /**
-             * Last time the user has logged in.
-             */
-            lastLogin?: string;
-            person?: DomainObjectPerson;
+            lastLogin: ZuluDate;
+            person: DomainObjectPerson;
             /**
              * Count of how many times a user has loged in.
              */
-            totalLogins?: number;
+            totalLogins: number;
         }>;
         meta: MetaPagination;
     };
@@ -24741,6 +32899,38 @@ export type GetMasterdataPersonResponses = {
     200: unknown;
 };
 
+export type PostMeetingrequestsReplyData = {
+    body: MeetingRequestIcsReply;
+    path?: never;
+    query?: never;
+    url: '/meetingrequests/reply';
+};
+
+export type PostMeetingrequestsReplyErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostMeetingrequestsReplyResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PostMeetingrequestsReplyResponse =
+    PostMeetingrequestsReplyResponses[keyof PostMeetingrequestsReplyResponses];
+
 export type GetMenuData = {
     body?: never;
     path?: never;
@@ -24789,7 +32979,11 @@ export type GetMenuResponses = {
             }>;
         };
         currentStation?: string | null;
-        family?: Array<DomainObjectPerson>;
+        family?: Array<{
+            href: string;
+            icon: string;
+            label: string;
+        }>;
         help?: {
             actions?: Array<{
                 icon?: string;
@@ -24841,13 +33035,13 @@ export type GetMenuResponses = {
         simulate?: boolean;
         siteName?: string;
         stations?: Array<{
-            address_id?: string;
+            address_id?: string | null;
             association_id?: string;
             bezeichnung?: string;
             created_date?: string;
             created_pid?: string;
             denomination?: string;
-            description?: string;
+            description?: string | null;
             email?: string | null;
             guid?: string;
             id?: string;
@@ -24857,12 +33051,12 @@ export type GetMenuResponses = {
             modified_pid?: string;
             phone?: string | null;
             profile_type?: string;
-            short_name?: string;
+            short_name?: string | null;
             sign_up_group_id?: number | null;
             slug?: string | null;
-            social_media?: string;
+            social_media?: string | null;
             sortkey?: string;
-            tags?: string;
+            tags?: string | null;
             team_title?: string | null;
             visitors?: string;
             website?: string | null;
@@ -24873,7 +33067,7 @@ export type GetMenuResponses = {
             hasAdminRights?: boolean;
             id?: string;
             image?: string;
-            imageId?: string;
+            imageId?: string | number | null;
             imageUrl?: string;
             lastname?: string;
             loggedIn?: boolean;
@@ -24882,6 +33076,39 @@ export type GetMenuResponses = {
 };
 
 export type GetMenuResponse = GetMenuResponses[keyof GetMenuResponses];
+
+export type GetNewsletterIntegrationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/newsletter-integrations';
+};
+
+export type GetNewsletterIntegrationsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetNewsletterIntegrationsError = GetNewsletterIntegrationsErrors[keyof GetNewsletterIntegrationsErrors];
+
+export type GetNewsletterIntegrationsResponses = {
+    /**
+     * Successful request
+     */
+    200: {
+        data: Array<NewsletterIntegrationOptions>;
+        meta: MetaCount;
+    };
+};
+
+export type GetNewsletterIntegrationsResponse =
+    GetNewsletterIntegrationsResponses[keyof GetNewsletterIntegrationsResponses];
 
 export type GetNotesData = {
     body?: never;
@@ -25182,7 +33409,7 @@ export type PostOauthclientsResponses = {
      * OK
      */
     200: {
-        data: OAuthClient;
+        data: OAuthClientCreated;
     };
 };
 
@@ -25246,6 +33473,43 @@ export type PutOauthclientsIdentifierResponses = {
 export type PutOauthclientsIdentifierResponse =
     PutOauthclientsIdentifierResponses[keyof PutOauthclientsIdentifierResponses];
 
+export type GetPermissionsDefinitionsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Permission scope to return
+         */
+        scope?: 'global' | 'internal' | 'all';
+    };
+    url: '/permissions/definitions';
+};
+
+export type GetPermissionsDefinitionsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetPermissionsDefinitionsResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: {
+            modules: Array<PermissionDefinitionModule>;
+        };
+    };
+};
+
+export type GetPermissionsDefinitionsResponse =
+    GetPermissionsDefinitionsResponses[keyof GetPermissionsDefinitionsResponses];
+
 export type GetPermissionsGlobalData = {
     body?: never;
     path?: never;
@@ -25264,6 +33528,176 @@ export type GetPermissionsGlobalResponses = {
 
 export type GetPermissionsGlobalResponse = GetPermissionsGlobalResponses[keyof GetPermissionsGlobalResponses];
 
+export type GetPermissionsGlobalAuthsAuthIdAssignmentSummaryData = {
+    body?: never;
+    path: {
+        /**
+         * Numeric permission key from the internal authorization table
+         */
+        authId: number;
+    };
+    query?: {
+        /**
+         * Selection value of a global permission. Use `-1` for the unrestricted "all current and future values" selection. Omit this parameter for permissions without selection values.
+         */
+        data_id?: number;
+    };
+    url: '/permissions/global/auths/{authId}/assignment-summary';
+};
+
+export type GetPermissionsGlobalAuthsAuthIdAssignmentSummaryErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetPermissionsGlobalAuthsAuthIdAssignmentSummaryResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: PermissionAssignmentSummary;
+    };
+};
+
+export type GetPermissionsGlobalAuthsAuthIdAssignmentSummaryResponse =
+    GetPermissionsGlobalAuthsAuthIdAssignmentSummaryResponses[keyof GetPermissionsGlobalAuthsAuthIdAssignmentSummaryResponses];
+
+export type GetPermissionsGlobalAuthsAuthIdPersonsData = {
+    body?: never;
+    path: {
+        /**
+         * Numeric permission key from the internal authorization table
+         */
+        authId: number;
+    };
+    query?: {
+        /**
+         * Selection value of a global permission. Use `-1` for the unrestricted "all current and future values" selection. Omit this parameter for permissions without selection values.
+         */
+        data_id?: number;
+        /**
+         * Page number to show page in pagination. If empty, start at first page.
+         */
+        page?: number;
+        /**
+         * Number of persons per page; providing it enables pagination
+         */
+        limit?: number;
+        /**
+         * Include source details for every returned person
+         */
+        include?: 'origins';
+    };
+    url: '/permissions/global/auths/{authId}/persons';
+};
+
+export type GetPermissionsGlobalAuthsAuthIdPersonsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetPermissionsGlobalAuthsAuthIdPersonsResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: PermissionPersons;
+    };
+};
+
+export type GetPermissionsGlobalAuthsAuthIdPersonsResponse =
+    GetPermissionsGlobalAuthsAuthIdPersonsResponses[keyof GetPermissionsGlobalAuthsAuthIdPersonsResponses];
+
+export type GetPermissionsGlobalPersonSummaryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/permissions/global/person-summary';
+};
+
+export type GetPermissionsGlobalPersonSummaryErrors = {
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetPermissionsGlobalPersonSummaryResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: {
+            permissions: Array<PermissionPersonSummaryEntry>;
+        };
+    };
+};
+
+export type GetPermissionsGlobalPersonSummaryResponse =
+    GetPermissionsGlobalPersonSummaryResponses[keyof GetPermissionsGlobalPersonSummaryResponses];
+
+export type GetPermissionsInternalEventsEventIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the event.
+         */
+        eventId: number;
+    };
+    query?: never;
+    url: '/permissions/internal/events/{eventId}';
+};
+
+export type GetPermissionsInternalEventsEventIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetPermissionsInternalEventsEventIdError =
+    GetPermissionsInternalEventsEventIdErrors[keyof GetPermissionsInternalEventsEventIdErrors];
+
+export type GetPermissionsInternalEventsEventIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: InternalEventPermissions;
+    };
+};
+
+export type GetPermissionsInternalEventsEventIdResponse =
+    GetPermissionsInternalEventsEventIdResponses[keyof GetPermissionsInternalEventsEventIdResponses];
+
 export type GetPermissionsInternalGroupsData = {
     body?: never;
     path?: never;
@@ -25276,7 +33710,9 @@ export type GetPermissionsInternalGroupsResponses = {
      * OK
      */
     200: {
-        data: InternalGroupPermissions;
+        data: {
+            [key: string]: InternalGroupPermissions;
+        };
     };
 };
 
@@ -25307,6 +33743,54 @@ export type GetPermissionsInternalGroupsGroupIdResponses = {
 export type GetPermissionsInternalGroupsGroupIdResponse =
     GetPermissionsInternalGroupsGroupIdResponses[keyof GetPermissionsInternalGroupsGroupIdResponses];
 
+export type GetPermissionsInternalGroupsGroupIdAuthsAuthIdPersonsData = {
+    body?: never;
+    path: {
+        /**
+         * ID of group
+         */
+        groupId: number;
+        /**
+         * Numeric permission key from the internal authorization table
+         */
+        authId: number;
+    };
+    query?: {
+        /**
+         * Selection value of a permission. Use `-1` to return one result group for every configured selection value. Omit this parameter for permissions without selection values.
+         */
+        data_id?: number;
+    };
+    url: '/permissions/internal/groups/{groupId}/auths/{authId}/persons';
+};
+
+export type GetPermissionsInternalGroupsGroupIdAuthsAuthIdPersonsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetPermissionsInternalGroupsGroupIdAuthsAuthIdPersonsResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: PermissionPersons;
+    };
+};
+
+export type GetPermissionsInternalGroupsGroupIdAuthsAuthIdPersonsResponse =
+    GetPermissionsInternalGroupsGroupIdAuthsAuthIdPersonsResponses[keyof GetPermissionsInternalGroupsGroupIdAuthsAuthIdPersonsResponses];
+
 export type GetPermissionsInternalPersonsIdData = {
     body?: never;
     path: {
@@ -25328,13 +33812,169 @@ export type GetPermissionsInternalPersonsIdResponses = {
 export type GetPermissionsInternalPersonsIdResponse =
     GetPermissionsInternalPersonsIdResponses[keyof GetPermissionsInternalPersonsIdResponses];
 
+export type GetPermissionsLockedData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/permissions/locked';
+};
+
+export type GetPermissionsLockedErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetPermissionsLockedError = GetPermissionsLockedErrors[keyof GetPermissionsLockedErrors];
+
+export type GetPermissionsLockedResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: {
+            isCurrentUserAuthorizedPerson: boolean;
+            permissions: Array<LockedPermission>;
+        };
+    };
+};
+
+export type GetPermissionsLockedResponse = GetPermissionsLockedResponses[keyof GetPermissionsLockedResponses];
+
+export type PutPermissionsLockedData = {
+    body: {
+        add: Array<LockedPermission>;
+        remove: Array<LockedPermission>;
+    };
+    path?: never;
+    query?: never;
+    url: '/permissions/locked';
+};
+
+export type PutPermissionsLockedErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PutPermissionsLockedError = PutPermissionsLockedErrors[keyof PutPermissionsLockedErrors];
+
+export type PutPermissionsLockedResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: {
+            permissions: Array<LockedPermission>;
+        };
+    };
+};
+
+export type PutPermissionsLockedResponse = PutPermissionsLockedResponses[keyof PutPermissionsLockedResponses];
+
+export type GetPermissionsOriginsGlobalPersonsPersonIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of person
+         */
+        personId: number;
+    };
+    query?: never;
+    url: '/permissions/origins/global/persons/{personId}';
+};
+
+export type GetPermissionsOriginsGlobalPersonsPersonIdErrors = {
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetPermissionsOriginsGlobalPersonsPersonIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: {
+            permissions: Array<PermissionWithOrigins>;
+            personId: number;
+        };
+    };
+};
+
+export type GetPermissionsOriginsGlobalPersonsPersonIdResponse =
+    GetPermissionsOriginsGlobalPersonsPersonIdResponses[keyof GetPermissionsOriginsGlobalPersonsPersonIdResponses];
+
+export type GetPermissionsOriginsInternalPersonsPersonIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of person
+         */
+        personId: number;
+    };
+    query?: {
+        /**
+         * If set, only the given target groups are calculated and returned. If not set, all target groups where the person has group internal permissions are returned.
+         */
+        'group_ids[]'?: Array<number>;
+    };
+    url: '/permissions/origins/internal/persons/{personId}';
+};
+
+export type GetPermissionsOriginsInternalPersonsPersonIdErrors = {
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetPermissionsOriginsInternalPersonsPersonIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: {
+            groups: Array<{
+                /**
+                 * ID of the target group the permissions apply to
+                 */
+                groupId: number;
+                permissions: Array<PermissionWithOrigins>;
+            }>;
+            personId: number;
+        };
+    };
+};
+
+export type GetPermissionsOriginsInternalPersonsPersonIdResponse =
+    GetPermissionsOriginsInternalPersonsPersonIdResponses[keyof GetPermissionsOriginsInternalPersonsPersonIdResponses];
+
 export type GetPermissionsPermissionDomainTypeData = {
     body?: never;
     path: {
-        permissionDomainType: 'status' | 'group_type_role' | 'group_role' | 'person';
+        /**
+         * Permission domain type to read or change
+         */
+        domainType: 'status' | 'group_type_role' | 'group_role' | 'person' | 'group_type' | 'group';
     };
     query?: never;
-    url: '/permissions/{permissionDomainType}';
+    url: '/permissions/{domainType}';
 };
 
 export type GetPermissionsPermissionDomainTypeErrors = {
@@ -25356,7 +33996,7 @@ export type GetPermissionsPermissionDomainTypeResponses = {
      * OK
      */
     200: {
-        data: Permission;
+        data: Array<Permission>;
         meta: MetaCount;
     };
 };
@@ -25364,14 +34004,68 @@ export type GetPermissionsPermissionDomainTypeResponses = {
 export type GetPermissionsPermissionDomainTypeResponse =
     GetPermissionsPermissionDomainTypeResponses[keyof GetPermissionsPermissionDomainTypeResponses];
 
+export type DeletePermissionsDomainTypeDomainIdData = {
+    body: PermissionRequest;
+    path: {
+        /**
+         * Permission domain type to read or change
+         */
+        domainType: 'status' | 'group_type_role' | 'group_role' | 'person' | 'group_type' | 'group';
+        /**
+         * ID of the object in the selected permission domain
+         */
+        domainId: number;
+    };
+    query?: never;
+    url: '/permissions/{domainType}/{domainId}';
+};
+
+export type DeletePermissionsDomainTypeDomainIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Gone. The selected permission is no longer supported.
+     */
+    410: unknown;
+};
+
+export type DeletePermissionsDomainTypeDomainIdError =
+    DeletePermissionsDomainTypeDomainIdErrors[keyof DeletePermissionsDomainTypeDomainIdErrors];
+
+export type DeletePermissionsDomainTypeDomainIdResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeletePermissionsDomainTypeDomainIdResponse =
+    DeletePermissionsDomainTypeDomainIdResponses[keyof DeletePermissionsDomainTypeDomainIdResponses];
+
 export type GetPermissionsPermissionDomainTypePermissionDomainIdData = {
     body?: never;
     path: {
-        permissionDomainType: 'status' | 'group_type_role' | 'group_role' | 'person';
-        permissionDomainId: number;
+        /**
+         * Permission domain type to read or change
+         */
+        domainType: 'status' | 'group_type_role' | 'group_role' | 'person' | 'group_type' | 'group';
+        /**
+         * ID of the object in the selected permission domain
+         */
+        domainId: number;
     };
     query?: never;
-    url: '/permissions/{permissionDomainType}/{permissionDomainId}';
+    url: '/permissions/{domainType}/{domainId}';
 };
 
 export type GetPermissionsPermissionDomainTypePermissionDomainIdErrors = {
@@ -25393,13 +34087,486 @@ export type GetPermissionsPermissionDomainTypePermissionDomainIdResponses = {
      * OK
      */
     200: {
-        data: Permission;
+        data: Array<Permission>;
         meta: MetaCount;
     };
 };
 
 export type GetPermissionsPermissionDomainTypePermissionDomainIdResponse =
     GetPermissionsPermissionDomainTypePermissionDomainIdResponses[keyof GetPermissionsPermissionDomainTypePermissionDomainIdResponses];
+
+export type PutPermissionsDomainTypeDomainIdData = {
+    body: PermissionRequest;
+    path: {
+        /**
+         * Permission domain type to read or change
+         */
+        domainType: 'status' | 'group_type_role' | 'group_role' | 'person' | 'group_type' | 'group';
+        /**
+         * ID of the object in the selected permission domain
+         */
+        domainId: number;
+    };
+    query?: never;
+    url: '/permissions/{domainType}/{domainId}';
+};
+
+export type PutPermissionsDomainTypeDomainIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Gone. The selected permission is no longer supported.
+     */
+    410: unknown;
+};
+
+export type PutPermissionsDomainTypeDomainIdError =
+    PutPermissionsDomainTypeDomainIdErrors[keyof PutPermissionsDomainTypeDomainIdErrors];
+
+export type PutPermissionsDomainTypeDomainIdResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PutPermissionsDomainTypeDomainIdResponse =
+    PutPermissionsDomainTypeDomainIdResponses[keyof PutPermissionsDomainTypeDomainIdResponses];
+
+export type GetPersonCommentviewersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/person/commentviewers';
+};
+
+export type GetPersonCommentviewersErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetPersonCommentviewersError = GetPersonCommentviewersErrors[keyof GetPersonCommentviewersErrors];
+
+export type GetPersonCommentviewersResponses = {
+    /**
+     * List of all comment viewers
+     */
+    200: {
+        data: Array<CommentViewer>;
+        meta: MetaCount;
+    };
+};
+
+export type GetPersonCommentviewersResponse = GetPersonCommentviewersResponses[keyof GetPersonCommentviewersResponses];
+
+export type PostPersonCommentviewersData = {
+    body: CommentViewerCreate;
+    path?: never;
+    query?: never;
+    url: '/person/commentviewers';
+};
+
+export type PostPersonCommentviewersErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostPersonCommentviewersError = PostPersonCommentviewersErrors[keyof PostPersonCommentviewersErrors];
+
+export type PostPersonCommentviewersResponses = {
+    /**
+     * Comment viewer created successfully
+     */
+    201: {
+        data: CommentViewer;
+    };
+};
+
+export type PostPersonCommentviewersResponse =
+    PostPersonCommentviewersResponses[keyof PostPersonCommentviewersResponses];
+
+export type DeletePersonCommentviewersIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: {
+        /**
+         * If set to true, the deletion is simulated but nothing will be deleted.
+         */
+        dry_run?: boolean;
+    };
+    url: '/person/commentviewers/{id}';
+};
+
+export type DeletePersonCommentviewersIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+    /**
+     * Conflict during deletion attempt
+     */
+    409: {
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
+    };
+};
+
+export type DeletePersonCommentviewersIdError =
+    DeletePersonCommentviewersIdErrors[keyof DeletePersonCommentviewersIdErrors];
+
+export type DeletePersonCommentviewersIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeletePersonCommentviewersIdResponse =
+    DeletePersonCommentviewersIdResponses[keyof DeletePersonCommentviewersIdResponses];
+
+export type GetPersonCommentviewersIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/person/commentviewers/{id}';
+};
+
+export type GetPersonCommentviewersIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetPersonCommentviewersIdError = GetPersonCommentviewersIdErrors[keyof GetPersonCommentviewersIdErrors];
+
+export type GetPersonCommentviewersIdResponses = {
+    /**
+     * Comment viewer details
+     */
+    200: {
+        data: CommentViewer;
+    };
+};
+
+export type GetPersonCommentviewersIdResponse =
+    GetPersonCommentviewersIdResponses[keyof GetPersonCommentviewersIdResponses];
+
+export type PutPersonCommentviewersIdData = {
+    body: CommentViewerUpdate;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/person/commentviewers/{id}';
+};
+
+export type PutPersonCommentviewersIdErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutPersonCommentviewersIdError = PutPersonCommentviewersIdErrors[keyof PutPersonCommentviewersIdErrors];
+
+export type PutPersonCommentviewersIdResponses = {
+    /**
+     * Comment viewer updated successfully
+     */
+    200: {
+        data: CommentViewer;
+    };
+};
+
+export type PutPersonCommentviewersIdResponse =
+    PutPersonCommentviewersIdResponses[keyof PutPersonCommentviewersIdResponses];
+
+export type GetPersonGrowpathsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/person/growpaths';
+};
+
+export type GetPersonGrowpathsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetPersonGrowpathsError = GetPersonGrowpathsErrors[keyof GetPersonGrowpathsErrors];
+
+export type GetPersonGrowpathsResponses = {
+    /**
+     * List of all growth paths
+     */
+    200: {
+        data: Array<GrowPath>;
+        meta: MetaCount;
+    };
+};
+
+export type GetPersonGrowpathsResponse = GetPersonGrowpathsResponses[keyof GetPersonGrowpathsResponses];
+
+export type PostPersonGrowpathsData = {
+    body: GrowPathCreate;
+    path?: never;
+    query?: never;
+    url: '/person/growpaths';
+};
+
+export type PostPersonGrowpathsErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostPersonGrowpathsError = PostPersonGrowpathsErrors[keyof PostPersonGrowpathsErrors];
+
+export type PostPersonGrowpathsResponses = {
+    /**
+     * Growth path created successfully
+     */
+    201: {
+        data: GrowPath;
+    };
+};
+
+export type PostPersonGrowpathsResponse = PostPersonGrowpathsResponses[keyof PostPersonGrowpathsResponses];
+
+export type DeletePersonGrowpathsIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: {
+        /**
+         * If set to true, the deletion is simulated but nothing will be deleted.
+         */
+        dry_run?: boolean;
+    };
+    url: '/person/growpaths/{id}';
+};
+
+export type DeletePersonGrowpathsIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeletePersonGrowpathsIdError = DeletePersonGrowpathsIdErrors[keyof DeletePersonGrowpathsIdErrors];
+
+export type DeletePersonGrowpathsIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeletePersonGrowpathsIdResponse = DeletePersonGrowpathsIdResponses[keyof DeletePersonGrowpathsIdResponses];
+
+export type GetPersonGrowpathsIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/person/growpaths/{id}';
+};
+
+export type GetPersonGrowpathsIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetPersonGrowpathsIdError = GetPersonGrowpathsIdErrors[keyof GetPersonGrowpathsIdErrors];
+
+export type GetPersonGrowpathsIdResponses = {
+    /**
+     * Growth path details
+     */
+    200: {
+        data: GrowPath;
+    };
+};
+
+export type GetPersonGrowpathsIdResponse = GetPersonGrowpathsIdResponses[keyof GetPersonGrowpathsIdResponses];
+
+export type PutPersonGrowpathsIdData = {
+    body: GrowPathUpdate;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/person/growpaths/{id}';
+};
+
+export type PutPersonGrowpathsIdErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutPersonGrowpathsIdError = PutPersonGrowpathsIdErrors[keyof PutPersonGrowpathsIdErrors];
+
+export type PutPersonGrowpathsIdResponses = {
+    /**
+     * Growth path updated successfully
+     */
+    200: {
+        data: GrowPath;
+    };
+};
+
+export type PutPersonGrowpathsIdResponse = PutPersonGrowpathsIdResponses[keyof PutPersonGrowpathsIdResponses];
 
 export type GetPersonMasterdataData = {
     body?: never;
@@ -25420,7 +34587,6 @@ export type GetPersonMasterdataResponses = {
             commentViewers?: number;
             contactLabels?: number;
             departments?: number;
-            followUpIntervals?: number;
             followUps?: number;
             groupCategories?: number;
             groupMeetingTemplates?: number;
@@ -25428,6 +34594,7 @@ export type GetPersonMasterdataResponses = {
             groupTypes?: number;
             growPaths?: number;
             roles?: number;
+            sexes?: number;
             statuses?: number;
             targetGroups?: number;
         };
@@ -25435,6 +34602,467 @@ export type GetPersonMasterdataResponses = {
 };
 
 export type GetPersonMasterdataResponse = GetPersonMasterdataResponses[keyof GetPersonMasterdataResponses];
+
+export type GetPersonRelationshiptypesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/person/relationshiptypes';
+};
+
+export type GetPersonRelationshiptypesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetPersonRelationshiptypesError = GetPersonRelationshiptypesErrors[keyof GetPersonRelationshiptypesErrors];
+
+export type GetPersonRelationshiptypesResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<RelationshipType>;
+        meta: MetaCount;
+    };
+};
+
+export type GetPersonRelationshiptypesResponse =
+    GetPersonRelationshiptypesResponses[keyof GetPersonRelationshiptypesResponses];
+
+export type PostPersonRelationshiptypesData = {
+    body: RelationshipTypeCreate;
+    path?: never;
+    query?: never;
+    url: '/person/relationshiptypes';
+};
+
+export type PostPersonRelationshiptypesErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostPersonRelationshiptypesError =
+    PostPersonRelationshiptypesErrors[keyof PostPersonRelationshiptypesErrors];
+
+export type PostPersonRelationshiptypesResponses = {
+    /**
+     * Created
+     */
+    201: {
+        data: RelationshipType;
+    };
+};
+
+export type PostPersonRelationshiptypesResponse =
+    PostPersonRelationshiptypesResponses[keyof PostPersonRelationshiptypesResponses];
+
+export type DeletePersonRelationshiptypesIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: {
+        /**
+         * If true, return deletion references without deleting the relationship type.
+         */
+        dryRun?: boolean;
+    };
+    url: '/person/relationshiptypes/{id}';
+};
+
+export type DeletePersonRelationshiptypesIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+    /**
+     * Conflict during deletion attempt
+     */
+    409: {
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
+    };
+};
+
+export type DeletePersonRelationshiptypesIdError =
+    DeletePersonRelationshiptypesIdErrors[keyof DeletePersonRelationshiptypesIdErrors];
+
+export type DeletePersonRelationshiptypesIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeletePersonRelationshiptypesIdResponse =
+    DeletePersonRelationshiptypesIdResponses[keyof DeletePersonRelationshiptypesIdResponses];
+
+export type GetPersonRelationshiptypesIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/person/relationshiptypes/{id}';
+};
+
+export type GetPersonRelationshiptypesIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetPersonRelationshiptypesIdError =
+    GetPersonRelationshiptypesIdErrors[keyof GetPersonRelationshiptypesIdErrors];
+
+export type GetPersonRelationshiptypesIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: RelationshipType;
+    };
+};
+
+export type GetPersonRelationshiptypesIdResponse =
+    GetPersonRelationshiptypesIdResponses[keyof GetPersonRelationshiptypesIdResponses];
+
+export type PutPersonRelationshiptypesIdData = {
+    body: RelationshipTypeCreate;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/person/relationshiptypes/{id}';
+};
+
+export type PutPersonRelationshiptypesIdErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutPersonRelationshiptypesIdError =
+    PutPersonRelationshiptypesIdErrors[keyof PutPersonRelationshiptypesIdErrors];
+
+export type PutPersonRelationshiptypesIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: RelationshipType;
+    };
+};
+
+export type PutPersonRelationshiptypesIdResponse =
+    PutPersonRelationshiptypesIdResponses[keyof PutPersonRelationshiptypesIdResponses];
+
+export type GetPersonSexesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/person/sexes';
+};
+
+export type GetPersonSexesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetPersonSexesError = GetPersonSexesErrors[keyof GetPersonSexesErrors];
+
+export type GetPersonSexesResponses = {
+    /**
+     * List of all sexes
+     */
+    200: {
+        data: Array<Sex>;
+        meta: MetaCount;
+    };
+};
+
+export type GetPersonSexesResponse = GetPersonSexesResponses[keyof GetPersonSexesResponses];
+
+export type PostPersonSexesData = {
+    body: SexCreate;
+    path?: never;
+    query?: never;
+    url: '/person/sexes';
+};
+
+export type PostPersonSexesErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostPersonSexesError = PostPersonSexesErrors[keyof PostPersonSexesErrors];
+
+export type PostPersonSexesResponses = {
+    /**
+     * OK
+     */
+    201: {
+        data: Sex;
+    };
+};
+
+export type PostPersonSexesResponse = PostPersonSexesResponses[keyof PostPersonSexesResponses];
+
+export type DeletePersonSexesIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: {
+        /**
+         * If set to true, the deletion is simulated but nothing will be deleted.
+         */
+        dry_run?: boolean;
+    };
+    url: '/person/sexes/{id}';
+};
+
+export type DeletePersonSexesIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+    /**
+     * Conflict during deletion attempt
+     */
+    409: {
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
+    };
+};
+
+export type DeletePersonSexesIdError = DeletePersonSexesIdErrors[keyof DeletePersonSexesIdErrors];
+
+export type DeletePersonSexesIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeletePersonSexesIdResponse = DeletePersonSexesIdResponses[keyof DeletePersonSexesIdResponses];
+
+export type GetPersonSexesIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/person/sexes/{id}';
+};
+
+export type GetPersonSexesIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetPersonSexesIdError = GetPersonSexesIdErrors[keyof GetPersonSexesIdErrors];
+
+export type GetPersonSexesIdResponses = {
+    /**
+     * Sex entry details
+     */
+    200: {
+        data: Sex;
+    };
+};
+
+export type GetPersonSexesIdResponse = GetPersonSexesIdResponses[keyof GetPersonSexesIdResponses];
+
+export type PutPersonSexesIdData = {
+    body: SexUpdate;
+    path: {
+        /**
+         * ID of Entity
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/person/sexes/{id}';
+};
+
+export type PutPersonSexesIdErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutPersonSexesIdError = PutPersonSexesIdErrors[keyof PutPersonSexesIdErrors];
+
+export type PutPersonSexesIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Sex;
+    };
+};
+
+export type PutPersonSexesIdResponse = PutPersonSexesIdResponses[keyof PutPersonSexesIdResponses];
 
 export type GetPersonsData = {
     body?: never;
@@ -25468,6 +35096,34 @@ export type GetPersonsData = {
          * Show only persons with locked/not locked account
          */
         is_account_locked?: boolean;
+        /**
+         * Show only persons with or without a system user account
+         */
+        is_system_user?: boolean;
+        /**
+         * Filter by first name (case-insensitive substring match)
+         */
+        firstName?: string;
+        /**
+         * Filter by nickname (case-insensitive substring match)
+         */
+        nickName?: string;
+        /**
+         * Filter by last name (case-insensitive substring match)
+         */
+        lastName?: string;
+        /**
+         * Filter by a substring in first name, last name, or nickname (case-insensitive)
+         */
+        query?: string;
+        /**
+         * Filter by an email address substring (case-insensitive)
+         */
+        email?: string;
+        /**
+         * Filter by an exact email address
+         */
+        'email-exact'?: string;
         /**
          * Page number to show page in pagination. If empty, start at first page.
          */
@@ -25509,7 +35165,7 @@ export type GetPersonsResponse = GetPersonsResponses[keyof GetPersonsResponses];
 
 export type PostPersonsData = {
     /**
-     * The default values are used if no value is provides.
+     * Required IDs must be resolved from this installation's masterdata; optional fields may be omitted.
      */
     body: {
         addressAddition?: string;
@@ -25517,6 +35173,9 @@ export type PostPersonsData = {
         birthName?: string;
         birthday?: string | null;
         birthplace?: string;
+        /**
+         * ID of a campus returned by `GET /person/masterdata`.
+         */
         campusId?: number;
         city?: string;
         cmsUserId?: string;
@@ -25527,9 +35186,9 @@ export type PostPersonsData = {
         dateOfEntry?: string | null;
         dateOfResign?: string | null;
         /**
-         * Department IDs. At least one department MUST be set for a person.
+         * Department IDs returned by `GET /person/masterdata`. At least one department must be set.
          */
-        departmentIds?: Array<number>;
+        departmentIds: Array<number>;
         email?: string;
         /**
          * Save many eMail addresses for person. If `emails` is present in request `email` is ignored.
@@ -25550,16 +35209,39 @@ export type PostPersonsData = {
         phoneWork?: string;
         placeOfBaptism?: string;
         /**
-         * This object can be optional or required. Depending on your ChurchTools data security settings.
+         * Legacy representation of the privacy agreement. Use the three flat `privacyPolicyAgreement*` fields instead. When this object is used, all three values must be provided if privacy agreement fields are mandatory.
+         *
+         * @deprecated
          */
         privacyPolicyAgreement?: {
             date?: string | null;
+            /**
+             * How the agreement was obtained: 1 group registration, 2 self-confirmation, 3 outside ChurchTools, 4 check-in.
+             */
             typeId?: number | null;
+            /**
+             * Who gave the agreement: 1 the person themself, 2 a parent, 10000 the person responsible for a group signup.
+             */
             whoId?: number | null;
         };
+        /**
+         * Date of the privacy policy agreement. Required together with agreement type and person when `privacy_policy_fields_mandatory` is enabled.
+         */
+        privacyPolicyAgreementDate?: string;
+        /**
+         * How the agreement was obtained: 1 group registration, 2 self-confirmation, 3 outside ChurchTools, 4 check-in. This is independent from who gave the agreement. Required together with agreement date and person when `privacy_policy_fields_mandatory` is enabled.
+         */
+        privacyPolicyAgreementTypeId?: 1 | 2 | 3 | 4;
+        /**
+         * Who gave the agreement: 1 the person themself, 2 a parent, 10000 the person responsible for a group signup. This is independent from how the agreement was obtained. Required together with agreement date and type when `privacy_policy_fields_mandatory` is enabled.
+         */
+        privacyPolicyAgreementWhoId?: 1 | 2 | 10000;
         referredBy?: string;
         referredTo?: string;
         sexId?: number | null;
+        /**
+         * ID of a person status returned by `GET /person/masterdata`.
+         */
         statusId?: number;
         street?: string;
         title?: string;
@@ -25573,7 +35255,7 @@ export type PostPersonsData = {
          */
         force?: boolean;
         /**
-         * If given fields for privacy policy agreements are not mandotory. Can only be used if setting is allowed in admin settings.
+         * Omits the otherwise mandatory privacy policy agreement fields. Only effective when `privacy_policy_fields_mandatory_api` is disabled in the ChurchTools configuration. Clients must verify that configuration before using this parameter and must not use it as a fallback for missing agreement information.
          */
         without_privacy_policy_agreement?: boolean;
     };
@@ -25585,8 +35267,28 @@ export type PostPersonsErrors = {
      * Bad Request / Duplicate Person
      */
     400: {
-        args?: Array<string>;
-        errors?: Array<string>;
+        /**
+         * Validation errors use an empty array. Duplicate-person errors use an object whose `duplicatePersonId` property is the integer ID of the existing person.
+         */
+        args?:
+            | Array<unknown>
+            | {
+                  /**
+                   * ID of the person identified as a duplicate.
+                   */
+                  duplicatePersonId: number;
+              };
+        /**
+         * Field validation errors. A missing or empty `departmentIds` field produces an entry with `fieldId` `departmentIds` and `messageKey` `validation.not.empty`.
+         */
+        errors?: Array<{
+            args: {
+                [key: string]: unknown;
+            };
+            fieldId: string;
+            message: string;
+            messageKey: string;
+        }>;
         message?: string;
         messageKey?: string;
         translatedMessage?: string;
@@ -25654,6 +35356,10 @@ export type GetPersonsBirthdaysData = {
          * Filter by people in my groups
          */
         my_groups?: boolean;
+        /**
+         * Filter by status ids
+         */
+        'status_ids[]'?: Array<number>;
     };
     url: '/persons/birthdays';
 };
@@ -25679,27 +35385,20 @@ export type GetPersonsBirthdaysResponses = {
      */
     200: {
         data: Array<{
+            '@deprecated'?: string;
             /**
              * Calculated age. (see note to that endpoint)
              */
             age: number;
+            anniversary?: DateString;
+            anniversaryInitialDate?: DateString;
             /**
              * Actually birthday
+             *
+             * @deprecated
              */
             date: string;
-            person?: {
-                apiUrl: string;
-                domainAttributes: {
-                    firstName: string;
-                    guid: string;
-                    lastName: string;
-                };
-                domainIdentifier: string;
-                domainType: string;
-                frontendUrl: string;
-                imageUrl: string;
-                title: string;
-            };
+            person?: DomainObjectPerson;
             /**
              * Type of Date
              */
@@ -25731,6 +35430,9 @@ export type GetPersonsDuplicatesResponses = {
         }>;
         meta: {
             count?: number;
+            counts_marked?: {
+                [key: string]: number;
+            };
             duration?: number;
             evaluations?: number;
             memory_used?: string;
@@ -25766,9 +35468,12 @@ export type PostPersonsExportError = PostPersonsExportErrors[keyof PostPersonsEx
 
 export type PostPersonsPropertiesData = {
     /**
-     * List all person IDs for which you want the property information. If empty, all person IDs are used
+     * List all person IDs for which you want the property information. If the list is empty or omitted, no person properties are returned.
      */
-    body?: {
+    body: {
+        /**
+         * Person IDs for which properties should be returned
+         */
         ids?: Array<number>;
     };
     path?: never;
@@ -25780,17 +35485,27 @@ export type PostPersonsPropertiesErrors = {
     /**
      * Unauthorized
      */
-    401: unknown;
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
 };
+
+export type PostPersonsPropertiesError = PostPersonsPropertiesErrors[keyof PostPersonsPropertiesErrors];
 
 export type PostPersonsPropertiesResponses = {
     /**
      * Get properties for people. Key = Person ID, Value = Object with person properties
      */
     200: {
+        /**
+         * Person properties keyed by person ID
+         */
         data: {
             [key: string]: PersonProperties;
         };
+        meta: MetaCount;
     };
 };
 
@@ -25818,10 +35533,13 @@ export type GetPersonsRelationshipsResponses = {
      */
     200: {
         data: Array<{
+            '@deprecated'?: {
+                [key: string]: string;
+            };
             /**
              * @deprecated
              */
-            degreeOfRelationship?: number;
+            degreeOfRelationship?: number | string;
             id?: number;
             personAId?: number;
             personBId?: number;
@@ -26049,7 +35767,7 @@ export type PatchPersonsIdResponses = {
 
 export type PatchPersonsIdResponse = PatchPersonsIdResponses[keyof PatchPersonsIdResponses];
 
-export type GetPersonsAbsencesData = {
+export type GetPersonsPersonIdAbsencesData = {
     body?: never;
     path: {
         /**
@@ -26071,7 +35789,7 @@ export type GetPersonsAbsencesData = {
     url: '/persons/{personId}/absences';
 };
 
-export type GetPersonsAbsencesErrors = {
+export type GetPersonsPersonIdAbsencesErrors = {
     /**
      * Unauthorized
      */
@@ -26082,7 +35800,7 @@ export type GetPersonsAbsencesErrors = {
     403: unknown;
 };
 
-export type GetPersonsAbsencesResponses = {
+export type GetPersonsPersonIdAbsencesResponses = {
     /**
      * OK
      */
@@ -26092,9 +35810,10 @@ export type GetPersonsAbsencesResponses = {
     };
 };
 
-export type GetPersonsAbsencesResponse = GetPersonsAbsencesResponses[keyof GetPersonsAbsencesResponses];
+export type GetPersonsPersonIdAbsencesResponse =
+    GetPersonsPersonIdAbsencesResponses[keyof GetPersonsPersonIdAbsencesResponses];
 
-export type PostPersonsAbsencesData = {
+export type PostPersonsPersonIdAbsencesData = {
     /**
      * Absences can be all-day or with a specific time. Either `startDate`, `endDate`  or `startTime`, `endTime` MUST be present. If `*Time` is given, the `*Date` value will be ignored.
      */
@@ -26112,7 +35831,7 @@ export type PostPersonsAbsencesData = {
         /**
          * Date used for all-day absences. If startTime is present, startDate is ignored.
          */
-        startDate?: string;
+        startDate: string;
         startTime?: string;
     };
     path: {
@@ -26125,7 +35844,7 @@ export type PostPersonsAbsencesData = {
     url: '/persons/{personId}/absences';
 };
 
-export type PostPersonsAbsencesResponses = {
+export type PostPersonsPersonIdAbsencesResponses = {
     /**
      * Created
      */
@@ -26134,9 +35853,10 @@ export type PostPersonsAbsencesResponses = {
     };
 };
 
-export type PostPersonsAbsencesResponse = PostPersonsAbsencesResponses[keyof PostPersonsAbsencesResponses];
+export type PostPersonsPersonIdAbsencesResponse =
+    PostPersonsPersonIdAbsencesResponses[keyof PostPersonsPersonIdAbsencesResponses];
 
-export type DeletePersonsAbsenceData = {
+export type DeletePersonsPersonIdAbsencesIdData = {
     body?: never;
     path: {
         /**
@@ -26152,7 +35872,7 @@ export type DeletePersonsAbsenceData = {
     url: '/persons/{personId}/absences/{id}';
 };
 
-export type DeletePersonsAbsenceErrors = {
+export type DeletePersonsPersonIdAbsencesIdErrors = {
     /**
      * Unauthorized
      */
@@ -26163,16 +35883,17 @@ export type DeletePersonsAbsenceErrors = {
     403: unknown;
 };
 
-export type DeletePersonsAbsenceResponses = {
+export type DeletePersonsPersonIdAbsencesIdResponses = {
     /**
      * Successfully deleted
      */
     204: void;
 };
 
-export type DeletePersonsAbsenceResponse = DeletePersonsAbsenceResponses[keyof DeletePersonsAbsenceResponses];
+export type DeletePersonsPersonIdAbsencesIdResponse =
+    DeletePersonsPersonIdAbsencesIdResponses[keyof DeletePersonsPersonIdAbsencesIdResponses];
 
-export type GetPersonsAbsenceData = {
+export type GetPersonsPersonIdAbsencesIdData = {
     body?: never;
     path: {
         /**
@@ -26188,7 +35909,7 @@ export type GetPersonsAbsenceData = {
     url: '/persons/{personId}/absences/{id}';
 };
 
-export type GetPersonsAbsenceErrors = {
+export type GetPersonsPersonIdAbsencesIdErrors = {
     /**
      * Unauthorized
      */
@@ -26203,7 +35924,7 @@ export type GetPersonsAbsenceErrors = {
     404: unknown;
 };
 
-export type GetPersonsAbsenceResponses = {
+export type GetPersonsPersonIdAbsencesIdResponses = {
     /**
      * OK
      */
@@ -26212,9 +35933,10 @@ export type GetPersonsAbsenceResponses = {
     };
 };
 
-export type GetPersonsAbsenceResponse = GetPersonsAbsenceResponses[keyof GetPersonsAbsenceResponses];
+export type GetPersonsPersonIdAbsencesIdResponse =
+    GetPersonsPersonIdAbsencesIdResponses[keyof GetPersonsPersonIdAbsencesIdResponses];
 
-export type PutPersonsAbsenceData = {
+export type PutPersonsPersonIdAbsencesIdData = {
     /**
      * Absences can be all-day or with a specific time. Either `startDate`, `endDate`  or `startTime`, `endTime` MUST be present. If `*Time` is given, the `*Date` value will be ignored.
      */
@@ -26246,7 +35968,7 @@ export type PutPersonsAbsenceData = {
     url: '/persons/{personId}/absences/{id}';
 };
 
-export type PutPersonsAbsenceErrors = {
+export type PutPersonsPersonIdAbsencesIdErrors = {
     /**
      * Bad Request
      */
@@ -26265,7 +35987,7 @@ export type PutPersonsAbsenceErrors = {
     404: unknown;
 };
 
-export type PutPersonsAbsenceResponses = {
+export type PutPersonsPersonIdAbsencesIdResponses = {
     /**
      * OK
      */
@@ -26274,7 +35996,8 @@ export type PutPersonsAbsenceResponses = {
     };
 };
 
-export type PutPersonsAbsenceResponse = PutPersonsAbsenceResponses[keyof PutPersonsAbsenceResponses];
+export type PutPersonsPersonIdAbsencesIdResponse =
+    PutPersonsPersonIdAbsencesIdResponses[keyof PutPersonsPersonIdAbsencesIdResponses];
 
 export type PostPersonsPersonIdArchiveData = {
     body: {
@@ -26302,6 +36025,86 @@ export type PostPersonsPersonIdArchiveResponses = {
 
 export type PostPersonsPersonIdArchiveResponse =
     PostPersonsPersonIdArchiveResponses[keyof PostPersonsPersonIdArchiveResponses];
+
+export type DeletePersonsPersonIdConfidentialityagreementData = {
+    body?: never;
+    path: {
+        /**
+         * ID of person
+         */
+        personId: number;
+    };
+    query?: never;
+    url: '/persons/{personId}/confidentialityagreement';
+};
+
+export type DeletePersonsPersonIdConfidentialityagreementErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeletePersonsPersonIdConfidentialityagreementError =
+    DeletePersonsPersonIdConfidentialityagreementErrors[keyof DeletePersonsPersonIdConfidentialityagreementErrors];
+
+export type DeletePersonsPersonIdConfidentialityagreementResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeletePersonsPersonIdConfidentialityagreementResponse =
+    DeletePersonsPersonIdConfidentialityagreementResponses[keyof DeletePersonsPersonIdConfidentialityagreementResponses];
+
+export type PutPersonsPersonIdConfidentialityagreementData = {
+    body?: never;
+    path: {
+        /**
+         * ID of person
+         */
+        personId: number;
+    };
+    query?: never;
+    url: '/persons/{personId}/confidentialityagreement';
+};
+
+export type PutPersonsPersonIdConfidentialityagreementErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutPersonsPersonIdConfidentialityagreementError =
+    PutPersonsPersonIdConfidentialityagreementErrors[keyof PutPersonsPersonIdConfidentialityagreementErrors];
+
+export type PutPersonsPersonIdConfidentialityagreementResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PutPersonsPersonIdConfidentialityagreementResponse =
+    PutPersonsPersonIdConfidentialityagreementResponses[keyof PutPersonsPersonIdConfidentialityagreementResponses];
 
 export type GetPersonsPersonIdDevicesData = {
     body?: never;
@@ -26748,6 +36551,85 @@ export type PutPersonsIdExchangerequestsIdResponses = {
     200: unknown;
 };
 
+export type GetPersonsIdExternalLoginsData = {
+    body?: never;
+    path: {
+        /**
+         * ID of person
+         */
+        personId: number;
+    };
+    query?: never;
+    url: '/persons/{personId}/external-logins';
+};
+
+export type GetPersonsIdExternalLoginsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetPersonsIdExternalLoginsError = GetPersonsIdExternalLoginsErrors[keyof GetPersonsIdExternalLoginsErrors];
+
+export type GetPersonsIdExternalLoginsResponses = {
+    /**
+     * Linked external login providers
+     */
+    200: {
+        data: Array<ExternalLoginPersonMapping>;
+        meta: MetaCount;
+    };
+};
+
+export type GetPersonsIdExternalLoginsResponse =
+    GetPersonsIdExternalLoginsResponses[keyof GetPersonsIdExternalLoginsResponses];
+
+export type DeletePersonsIdExternalLoginsIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of person
+         */
+        personId: number;
+        externalLoginId: number;
+    };
+    query?: never;
+    url: '/persons/{personId}/external-logins/{externalLoginId}';
+};
+
+export type DeletePersonsIdExternalLoginsIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeletePersonsIdExternalLoginsIdError =
+    DeletePersonsIdExternalLoginsIdErrors[keyof DeletePersonsIdExternalLoginsIdErrors];
+
+export type DeletePersonsIdExternalLoginsIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeletePersonsIdExternalLoginsIdResponse =
+    DeletePersonsIdExternalLoginsIdResponses[keyof DeletePersonsIdExternalLoginsIdResponses];
+
 export type GetPersonsPersonIdFollowupsData = {
     body?: never;
     path: {
@@ -26940,12 +36822,7 @@ export type PostPersonsIdInviteData = {
          */
         personId: number;
     };
-    query?: {
-        /**
-         * Url used in the mail sent to the user. Esample: https://homepage.de/$loginString/$userId
-         */
-        setPasswordUrlTemplate?: string;
-    };
+    query?: never;
     url: '/persons/{personId}/invite';
 };
 
@@ -27130,8 +37007,13 @@ export type GetPersonsPersonidMergeDuplicateidResponses = {
     /**
      * OK
      */
-    200: unknown;
+    200: {
+        data: PersonMergeInfo;
+    };
 };
+
+export type GetPersonsPersonidMergeDuplicateidResponse =
+    GetPersonsPersonidMergeDuplicateidResponses[keyof GetPersonsPersonidMergeDuplicateidResponses];
 
 export type PatchPersonsPersonidMergeDuplicateidData = {
     /**
@@ -27387,7 +37269,7 @@ export type PutPersonsIdPrivacypolicyErrors = {
 
 export type PutPersonsIdPrivacypolicyError = PutPersonsIdPrivacypolicyErrors[keyof PutPersonsIdPrivacypolicyErrors];
 
-export type GetPersonsIdRelationshipsData = {
+export type GetPersonsPersonIdRelationshipsData = {
     body?: never;
     path: {
         /**
@@ -27399,18 +37281,21 @@ export type GetPersonsIdRelationshipsData = {
     url: '/persons/{personId}/relationships';
 };
 
-export type GetPersonsIdRelationshipsErrors = {
+export type GetPersonsPersonIdRelationshipsErrors = {
     /**
      * Unauthorized
      */
-    401: unknown;
+    401: string;
     /**
-     * Forbidden
+     * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
 };
 
-export type GetPersonsIdRelationshipsResponses = {
+export type GetPersonsPersonIdRelationshipsError =
+    GetPersonsPersonIdRelationshipsErrors[keyof GetPersonsPersonIdRelationshipsErrors];
+
+export type GetPersonsPersonIdRelationshipsResponses = {
     /**
      * Relationships of person
      */
@@ -27419,8 +37304,97 @@ export type GetPersonsIdRelationshipsResponses = {
     };
 };
 
-export type GetPersonsIdRelationshipsResponse =
-    GetPersonsIdRelationshipsResponses[keyof GetPersonsIdRelationshipsResponses];
+export type GetPersonsPersonIdRelationshipsResponse =
+    GetPersonsPersonIdRelationshipsResponses[keyof GetPersonsPersonIdRelationshipsResponses];
+
+export type PostPersonsPersonIdRelationshipsData = {
+    body: {
+        otherPersonId: number;
+        relationshipTypeId: number;
+    };
+    path: {
+        /**
+         * ID of person
+         */
+        personId: number;
+    };
+    query?: never;
+    url: '/persons/{personId}/relationships';
+};
+
+export type PostPersonsPersonIdRelationshipsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostPersonsPersonIdRelationshipsError =
+    PostPersonsPersonIdRelationshipsErrors[keyof PostPersonsPersonIdRelationshipsErrors];
+
+export type PostPersonsPersonIdRelationshipsResponses = {
+    /**
+     * OK
+     */
+    201: {
+        data: PersonRelationship;
+    };
+};
+
+export type PostPersonsPersonIdRelationshipsResponse =
+    PostPersonsPersonIdRelationshipsResponses[keyof PostPersonsPersonIdRelationshipsResponses];
+
+export type DeletePersonsPersonIdRelationshipsRelationshipIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of person
+         */
+        personId: number;
+        /**
+         * ID of a person's relationship
+         */
+        relationshipId: number;
+    };
+    query?: never;
+    url: '/persons/{personId}/relationships/{relationshipId}';
+};
+
+export type DeletePersonsPersonIdRelationshipsRelationshipIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeletePersonsPersonIdRelationshipsRelationshipIdError =
+    DeletePersonsPersonIdRelationshipsRelationshipIdErrors[keyof DeletePersonsPersonIdRelationshipsRelationshipIdErrors];
+
+export type DeletePersonsPersonIdRelationshipsRelationshipIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeletePersonsPersonIdRelationshipsRelationshipIdResponse =
+    DeletePersonsPersonIdRelationshipsRelationshipIdResponses[keyof DeletePersonsPersonIdRelationshipsRelationshipIdResponses];
 
 export type GetPersonsIdServicerequestsData = {
     body?: never;
@@ -28050,19 +38024,14 @@ export type PutPersonsIdSettingsModuleAttributeResponses = {
 export type PutPersonsIdSettingsModuleAttributeResponse =
     PutPersonsIdSettingsModuleAttributeResponses[keyof PutPersonsIdSettingsModuleAttributeResponses];
 
-export type GetPersonsIdTagsData = {
+export type GetPlaceholdersEmailData = {
     body?: never;
-    path: {
-        /**
-         * ID of person
-         */
-        personId: number;
-    };
+    path?: never;
     query?: never;
-    url: '/persons/{personId}/tags';
+    url: '/placeholders/email';
 };
 
-export type GetPersonsIdTagsErrors = {
+export type GetPlaceholdersEmailErrors = {
     /**
      * Unauthorized
      */
@@ -28073,18 +38042,90 @@ export type GetPersonsIdTagsErrors = {
     403: unknown;
 };
 
-export type GetPersonsIdTagsError = GetPersonsIdTagsErrors[keyof GetPersonsIdTagsErrors];
+export type GetPlaceholdersEmailError = GetPlaceholdersEmailErrors[keyof GetPlaceholdersEmailErrors];
 
-export type GetPersonsIdTagsResponses = {
+export type GetPlaceholdersEmailResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<PlaceholderItem>;
+    };
+};
+
+export type GetPlaceholdersEmailResponse = GetPlaceholdersEmailResponses[keyof GetPlaceholdersEmailResponses];
+
+export type GetPlaceholdersGroupIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the group used to build group-specific placeholders
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/placeholders/group/{id}';
+};
+
+export type GetPlaceholdersGroupIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetPlaceholdersGroupIdError = GetPlaceholdersGroupIdErrors[keyof GetPlaceholdersGroupIdErrors];
+
+export type GetPlaceholdersGroupIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<PlaceholderItem>;
+    };
+};
+
+export type GetPlaceholdersGroupIdResponse = GetPlaceholdersGroupIdResponses[keyof GetPlaceholdersGroupIdResponses];
+
+export type GetPollfornewsData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Filters for which domain types the changes should be checked.
+         */
+        'domain_types[]': Array<string>;
+        /**
+         * The date when you last called the API.
+         */
+        since: ZuluDate;
+    };
+    url: '/pollfornews';
+};
+
+export type GetPollfornewsResponses = {
     /**
      * Tags of person
      */
     200: {
-        data: Array<Tag>;
+        data: Array<PollForNewsResult>;
+        meta: PollForNewsMeta;
     };
 };
 
-export type GetPersonsIdTagsResponse = GetPersonsIdTagsResponses[keyof GetPersonsIdTagsResponses];
+export type GetPollfornewsResponse = GetPollfornewsResponses[keyof GetPollfornewsResponses];
 
 export type GetPostGroupsData = {
     body?: never;
@@ -28406,15 +38447,15 @@ export type GetPostsData = {
     path?: never;
     query?: {
         /**
-         * If set, only posts created before this date are returned. The date must be in RFC3339 format (Zulu-Date).
+         * If set, only posts published before this date are returned. The date must be in RFC3339 format (Zulu-Date).
          */
         before?: ZuluDate;
         /**
-         * If set, posts created at the "before" date are included in the result, if the guids of the posts are lexically smaller than the last_post_indentifier. Will be ignored if "before" is not set.
+         * If set, posts published at the `before` date are included in the result, if the guids of the posts are lexically smaller than the `last_post_identifier`. Will be ignored if `before` is not set.
          */
-        last_post_indentifier?: string;
+        last_post_identifier?: string;
         /**
-         * If set, only posts created after this date are returned. The date must be in RFC3339 format (Zulu-Date).
+         * If set, only posts published at or after this date are returned. The date must be in RFC3339 format (Zulu-Date).
          */
         after?: ZuluDate;
         /**
@@ -28742,6 +38783,9 @@ export type DeletePostsPostIdCommentsCommentIdData = {
          * ID of post
          */
         postId: number;
+        /**
+         * ID of the post comment.
+         */
         commentId: number;
     };
     query?: never;
@@ -28775,6 +38819,146 @@ export type DeletePostsPostIdCommentsCommentIdResponses = {
 
 export type DeletePostsPostIdCommentsCommentIdResponse =
     DeletePostsPostIdCommentsCommentIdResponses[keyof DeletePostsPostIdCommentsCommentIdResponses];
+
+export type GetPostsPostIdCommentsCommentIdReactionsData = {
+    body?: never;
+    path: {
+        /**
+         * ID of post
+         */
+        postId: number;
+        /**
+         * ID of the post comment.
+         */
+        commentId: number;
+    };
+    query?: never;
+    url: '/posts/{postId}/comments/{commentId}/reactions';
+};
+
+export type GetPostsPostIdCommentsCommentIdReactionsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetPostsPostIdCommentsCommentIdReactionsError =
+    GetPostsPostIdCommentsCommentIdReactionsErrors[keyof GetPostsPostIdCommentsCommentIdReactionsErrors];
+
+export type GetPostsPostIdCommentsCommentIdReactionsResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<PostCommentReaction>;
+    };
+};
+
+export type GetPostsPostIdCommentsCommentIdReactionsResponse =
+    GetPostsPostIdCommentsCommentIdReactionsResponses[keyof GetPostsPostIdCommentsCommentIdReactionsResponses];
+
+export type PutPostsPostIdCommentsCommentIdReactionsData = {
+    body: PostCommentReactionCreate;
+    path: {
+        /**
+         * ID of post
+         */
+        postId: number;
+        /**
+         * ID of the post comment.
+         */
+        commentId: number;
+    };
+    query?: never;
+    url: '/posts/{postId}/comments/{commentId}/reactions';
+};
+
+export type PutPostsPostIdCommentsCommentIdReactionsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutPostsPostIdCommentsCommentIdReactionsError =
+    PutPostsPostIdCommentsCommentIdReactionsErrors[keyof PutPostsPostIdCommentsCommentIdReactionsErrors];
+
+export type PutPostsPostIdCommentsCommentIdReactionsResponses = {
+    /**
+     * OK
+     */
+    201: {
+        data: PostCommentReaction;
+    };
+};
+
+export type PutPostsPostIdCommentsCommentIdReactionsResponse =
+    PutPostsPostIdCommentsCommentIdReactionsResponses[keyof PutPostsPostIdCommentsCommentIdReactionsResponses];
+
+export type DeletePostsPostIdCommentsCommentIdReactionsEmojiData = {
+    body?: never;
+    path: {
+        /**
+         * ID of post
+         */
+        postId: number;
+        /**
+         * ID of the post comment.
+         */
+        commentId: number;
+        /**
+         * Emoji used as reaction.
+         */
+        emoji: string;
+    };
+    query?: never;
+    url: '/posts/{postId}/comments/{commentId}/reactions/{emoji}';
+};
+
+export type DeletePostsPostIdCommentsCommentIdReactionsEmojiErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type DeletePostsPostIdCommentsCommentIdReactionsEmojiError =
+    DeletePostsPostIdCommentsCommentIdReactionsEmojiErrors[keyof DeletePostsPostIdCommentsCommentIdReactionsEmojiErrors];
+
+export type DeletePostsPostIdCommentsCommentIdReactionsEmojiResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeletePostsPostIdCommentsCommentIdReactionsEmojiResponse =
+    DeletePostsPostIdCommentsCommentIdReactionsEmojiResponses[keyof DeletePostsPostIdCommentsCommentIdReactionsEmojiResponses];
 
 export type PutPostsPostIdExpireData = {
     body?: never;
@@ -28980,14 +39164,6 @@ export type GetPrMasterdataErrors = {
      * Unauthorized
      */
     401: string;
-    /**
-     * Forbidden to see, create, update, or delete resource
-     */
-    403: unknown;
-    /**
-     * Resource not found
-     */
-    404: unknown;
 };
 
 export type GetPrMasterdataError = GetPrMasterdataErrors[keyof GetPrMasterdataErrors];
@@ -28996,14 +39172,14 @@ export type GetPrMasterdataResponses = {
     /**
      * OK
      */
-    201: {
+    200: {
         data: PublicRelationsMasterData;
         meta: {
-            associations?: number;
-            denominations?: number;
-            groupHomepages?: number;
-            socialMedia?: number;
-            tags?: number;
+            associations: number;
+            denominations: number;
+            groupHomepages: number;
+            socialMedia: number;
+            tags: number;
         };
     };
 };
@@ -29022,21 +39198,17 @@ export type GetPrintersErrors = {
      * Unauthorized
      */
     401: string;
-    /**
-     * Forbidden to see, create, update, or delete resource
-     */
-    403: unknown;
 };
 
 export type GetPrintersError = GetPrintersErrors[keyof GetPrintersErrors];
 
 export type GetPrintersResponses = {
     /**
-     * Successful request
+     * OK
      */
     200: {
         data: Array<Printer>;
-        meta: MetaPagination;
+        meta: MetaCount;
     };
 };
 
@@ -29066,6 +39238,50 @@ export type GetProfilesResponses = {
 
 export type GetProfilesResponse = GetProfilesResponses[keyof GetProfilesResponses];
 
+export type PutProfilesCampusesIdData = {
+    body: ProfileUpdate;
+    path: {
+        /**
+         * Campus profile ID
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/profiles/campuses/{id}';
+};
+
+export type PutProfilesCampusesIdErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutProfilesCampusesIdError = PutProfilesCampusesIdErrors[keyof PutProfilesCampusesIdErrors];
+
+export type PutProfilesCampusesIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Profile;
+    };
+};
+
+export type PutProfilesCampusesIdResponse = PutProfilesCampusesIdResponses[keyof PutProfilesCampusesIdResponses];
+
 export type GetProfilesChurchData = {
     body?: never;
     path?: never;
@@ -29091,12 +39307,29 @@ export type PutProfilesChurchData = {
     url: '/profiles/church';
 };
 
+export type PutProfilesChurchErrors = {
+    /**
+     * Validation errors. See response for details
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PutProfilesChurchError = PutProfilesChurchErrors[keyof PutProfilesChurchErrors];
+
 export type PutProfilesChurchResponses = {
     /**
      * OK
      */
     200: {
-        data: Campus;
+        data: Profile;
     };
 };
 
@@ -29110,7 +39343,12 @@ export type GetProfilesSlugcheckSlugData = {
          */
         slug: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * GUID of the profile currently being edited. If this profile already uses the slug, the slug is considered available.
+         */
+        guid?: string;
+    };
     url: '/profiles/slugcheck/{slug}';
 };
 
@@ -29170,8 +39408,16 @@ export type GetPublicgroupsIdResponses = {
             };
             maxMemberCount?: number;
             name?: string;
+            /**
+             * @deprecated
+             */
             requestedPlacesCount?: number;
+            requestedSeatsCount?: number;
+            /**
+             * @deprecated
+             */
             requestedWaitinglistPlacesCount?: number;
+            requestedWaitinglistSeatsCount?: number;
             settings?: {
                 allowChildRegistration?: boolean;
                 allowOtherRegistration?: boolean;
@@ -29180,7 +39426,12 @@ export type GetPublicgroupsIdResponses = {
                 hideContactLeader?: boolean;
                 hideLogin?: boolean;
                 showStreet?: boolean;
+                signUpEmailRequiredForAll?: boolean;
                 signUpNotificationSent?: string | null;
+                /**
+                 * Require anonymous users to verify their email address before accessing the group sign up form.
+                 */
+                verifyEmailAddress?: boolean;
             };
             signUpConditions?: {
                 canContactLeader?: boolean;
@@ -29413,7 +39664,7 @@ export type PostPublicgroupsGroupIdSignupResponse =
 
 export type PostPublicgroupsGroupIdTokenData = {
     /**
-     * You MUST provide either `personId` OR `email`. Both fields cannot be present at the same time.
+     * Provide either `personId` OR `email`. Both fields cannot be present at the same time. When email verification is disabled for the group, both fields may be omitted.
      */
     body: {
         /**
@@ -29422,7 +39673,9 @@ export type PostPublicgroupsGroupIdTokenData = {
          */
         clicked?: Array<unknown>;
         /**
-         * eMail address of not logged in user or new user.
+         * eMail address of not logged in user or new user. Ignored when email verification is disabled for the group.
+         *
+         * @deprecated
          */
         email?: string;
         /**
@@ -29655,42 +39908,37 @@ export type PostRegistrationsResponses = {
 
 export type PostRegistrationsResponse = PostRegistrationsResponses[keyof PostRegistrationsResponses];
 
-export type DeleteRegistrationsGuidData = {
+export type DeleteRegistrationsRegistrationGuidData = {
     body?: never;
     path: {
-        /**
-         * GUID for Entity
-         */
-        guid: string;
+        registrationGuid: string;
     };
     query?: never;
-    url: '/registrations/{guid}';
+    url: '/registrations/{registrationGuid}';
 };
 
-export type DeleteRegistrationsGuidResponses = {
+export type DeleteRegistrationsRegistrationGuidResponses = {
     /**
      * Successfully deleted
      */
     204: void;
 };
 
-export type DeleteRegistrationsGuidResponse = DeleteRegistrationsGuidResponses[keyof DeleteRegistrationsGuidResponses];
+export type DeleteRegistrationsRegistrationGuidResponse =
+    DeleteRegistrationsRegistrationGuidResponses[keyof DeleteRegistrationsRegistrationGuidResponses];
 
-export type PostRegistrationsGuidConfirmData = {
+export type PostRegistrationsRegistrationGuidConfirmData = {
     body?: never;
     path: {
-        /**
-         * GUID for Entity
-         */
-        guid: string;
+        registrationGuid: string;
     };
     query: {
         token: string;
     };
-    url: '/registrations/{guid}/confirm';
+    url: '/registrations/{registrationGuid}/confirm';
 };
 
-export type PostRegistrationsGuidConfirmResponses = {
+export type PostRegistrationsRegistrationGuidConfirmResponses = {
     /**
      * OK
      */
@@ -29699,10 +39947,10 @@ export type PostRegistrationsGuidConfirmResponses = {
     };
 };
 
-export type PostRegistrationsGuidConfirmResponse =
-    PostRegistrationsGuidConfirmResponses[keyof PostRegistrationsGuidConfirmResponses];
+export type PostRegistrationsRegistrationGuidConfirmResponse =
+    PostRegistrationsRegistrationGuidConfirmResponses[keyof PostRegistrationsRegistrationGuidConfirmResponses];
 
-export type PostRegistrationsGuidConvertData = {
+export type PostRegistrationsRegistrationGuidConvertData = {
     body: {
         formData: Array<{
             [key: string]: unknown;
@@ -29713,48 +39961,52 @@ export type PostRegistrationsGuidConvertData = {
         personId?: number;
     };
     path: {
-        /**
-         * GUID for Entity
-         */
-        guid: string;
+        registrationGuid: string;
     };
     query: {
         token: string;
     };
-    url: '/registrations/{guid}/convert';
+    url: '/registrations/{registrationGuid}/convert';
 };
 
-export type PostRegistrationsGuidConvertResponses = {
+export type PostRegistrationsRegistrationGuidConvertErrors = {
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostRegistrationsRegistrationGuidConvertResponses = {
     /**
      * No Content
      */
     204: void;
 };
 
-export type PostRegistrationsGuidConvertResponse =
-    PostRegistrationsGuidConvertResponses[keyof PostRegistrationsGuidConvertResponses];
+export type PostRegistrationsRegistrationGuidConvertResponse =
+    PostRegistrationsRegistrationGuidConvertResponses[keyof PostRegistrationsRegistrationGuidConvertResponses];
 
-export type PostRegistrationsGuidResendData = {
+export type PostRegistrationsRegistrationGuidResendData = {
     body?: never;
     path: {
         /**
-         * GUID for Entity
+         * Registration Guid of the self-registration
          */
-        guid: string;
+        registrationGuid: string;
     };
     query?: never;
-    url: '/registrations/{guid}/resend';
+    url: '/registrations/{registrationGuid}/resend';
 };
 
-export type PostRegistrationsGuidResendResponses = {
+export type PostRegistrationsRegistrationGuidResendResponses = {
     /**
      * No Content
      */
     204: void;
 };
 
-export type PostRegistrationsGuidResendResponse =
-    PostRegistrationsGuidResendResponses[keyof PostRegistrationsGuidResendResponses];
+export type PostRegistrationsRegistrationGuidResendResponse =
+    PostRegistrationsRegistrationGuidResendResponses[keyof PostRegistrationsRegistrationGuidResendResponses];
 
 export type PostResetPasswordData = {
     body: {
@@ -29889,31 +40141,33 @@ export type DeleteResourcesResourceIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -30131,31 +40385,33 @@ export type DeleteResourcetypesResourceTypeIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -30493,8 +40749,73 @@ export type GetRoutinesRoutineIdRunsResponses = {
 export type GetRoutinesRoutineIdRunsResponse =
     GetRoutinesRoutineIdRunsResponses[keyof GetRoutinesRoutineIdRunsResponses];
 
+export type PostRoutinesRoutineIdRunsBulkRunActionData = {
+    body: {
+        runIds: Array<number>;
+        /**
+         * Update the waiting since date for a special:wait step
+         */
+        waitingSince?: string;
+    };
+    path: {
+        /**
+         * ID of a routine
+         */
+        routineId: number;
+        /**
+         * The action to apply to the runs
+         */
+        runAction: 'pause' | 'resume' | 'restart-routine' | 'restart-step' | 'skip-step';
+    };
+    query?: never;
+    url: '/routines/{routineId}/runs/bulk/{runAction}';
+};
+
+export type PostRoutinesRoutineIdRunsBulkRunActionErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostRoutinesRoutineIdRunsBulkRunActionError =
+    PostRoutinesRoutineIdRunsBulkRunActionErrors[keyof PostRoutinesRoutineIdRunsBulkRunActionErrors];
+
+export type PostRoutinesRoutineIdRunsBulkRunActionResponses = {
+    /**
+     * OK
+     */
+    201: {
+        data: Array<RoutineRun>;
+        meta: MetaCount;
+    };
+};
+
+export type PostRoutinesRoutineIdRunsBulkRunActionResponse =
+    PostRoutinesRoutineIdRunsBulkRunActionResponses[keyof PostRoutinesRoutineIdRunsBulkRunActionResponses];
+
 export type PostRoutinesIdRunsIdRunActionData = {
-    body?: never;
+    /**
+     * Only used when runAction is 'update'. At most one of `currentIteration` or `waitingSince` can be provided.
+     */
+    body: {
+        /**
+         * Update the current iteration for a special:repeat step
+         */
+        currentIteration?: number;
+        /**
+         * Update the waiting since date for a special:wait step
+         */
+        waitingSince?: string;
+    };
     path: {
         /**
          * ID of a routine
@@ -30504,7 +40825,7 @@ export type PostRoutinesIdRunsIdRunActionData = {
          * ID of a routine run
          */
         runId: number;
-        runAction: 'pause' | 'resume' | 'restart';
+        runAction: 'pause' | 'resume' | 'restart-routine' | 'restart-step' | 'skip-step' | 'update';
     };
     query?: never;
     url: '/routines/{routineId}/runs/{runId}/{runAction}';
@@ -30687,11 +41008,7 @@ export type GetSecuritylevelsResponses = {
      * OK
      */
     200: {
-        data: Array<{
-            id?: number;
-            name?: string;
-            sortkey?: string;
-        }>;
+        data: Array<SecurityLevel>;
         meta: MetaCount;
     };
 };
@@ -30706,7 +41023,12 @@ export type DeleteSecuritylevelsIdData = {
          */
         id: number;
     };
-    query?: never;
+    query?: {
+        /**
+         * If set to true, the deletion is simulated but nothing will be deleted.
+         */
+        dry_run?: boolean;
+    };
     url: '/securitylevels/{id}';
 };
 
@@ -30719,7 +41041,41 @@ export type DeleteSecuritylevelsIdErrors = {
      * Not Found
      */
     404: unknown;
+    /**
+     * Conflict during deletion attempt
+     */
+    409: {
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
+    };
 };
+
+export type DeleteSecuritylevelsIdError = DeleteSecuritylevelsIdErrors[keyof DeleteSecuritylevelsIdErrors];
 
 export type DeleteSecuritylevelsIdResponses = {
     /**
@@ -30856,14 +41212,107 @@ export type GetServicegroupsResponses = {
 
 export type GetServicegroupsResponse = GetServicegroupsResponses[keyof GetServicegroupsResponses];
 
-export type GetServicegroupsIdData = {
+export type PostServicegroupsData = {
+    body: ServiceGroupWrite;
+    path?: never;
+    query?: never;
+    url: '/servicegroups';
+};
+
+export type PostServicegroupsErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostServicegroupsError = PostServicegroupsErrors[keyof PostServicegroupsErrors];
+
+export type PostServicegroupsResponses = {
+    /**
+     * Service group created
+     */
+    201: {
+        data: ServiceGroup;
+    };
+};
+
+export type PostServicegroupsResponse = PostServicegroupsResponses[keyof PostServicegroupsResponses];
+
+export type DeleteServicegroupsIdData = {
     body?: never;
     path: {
-        serviceGroupId: string;
+        /**
+         * ID of the service group
+         */
+        serviceGroupId: number;
     };
     query?: never;
     url: '/servicegroups/{serviceGroupId}';
 };
+
+export type DeleteServicegroupsIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+    /**
+     * A conflict occurred between the request and the current state of the resource.
+     */
+    409: unknown;
+};
+
+export type DeleteServicegroupsIdError = DeleteServicegroupsIdErrors[keyof DeleteServicegroupsIdErrors];
+
+export type DeleteServicegroupsIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeleteServicegroupsIdResponse = DeleteServicegroupsIdResponses[keyof DeleteServicegroupsIdResponses];
+
+export type GetServicegroupsIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the service group
+         */
+        serviceGroupId: number;
+    };
+    query?: never;
+    url: '/servicegroups/{serviceGroupId}';
+};
+
+export type GetServicegroupsIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetServicegroupsIdError = GetServicegroupsIdErrors[keyof GetServicegroupsIdErrors];
 
 export type GetServicegroupsIdResponses = {
     /**
@@ -30876,12 +41325,65 @@ export type GetServicegroupsIdResponses = {
 
 export type GetServicegroupsIdResponse = GetServicegroupsIdResponses[keyof GetServicegroupsIdResponses];
 
+export type PutServicegroupsIdData = {
+    body: ServiceGroupWrite;
+    path: {
+        /**
+         * ID of the service group
+         */
+        serviceGroupId: number;
+    };
+    query?: never;
+    url: '/servicegroups/{serviceGroupId}';
+};
+
+export type PutServicegroupsIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutServicegroupsIdError = PutServicegroupsIdErrors[keyof PutServicegroupsIdErrors];
+
+export type PutServicegroupsIdResponses = {
+    /**
+     * Service group updated
+     */
+    200: {
+        data: ServiceGroup;
+    };
+};
+
+export type PutServicegroupsIdResponse = PutServicegroupsIdResponses[keyof PutServicegroupsIdResponses];
+
 export type GetServicesData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/services';
 };
+
+export type GetServicesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+};
+
+export type GetServicesError = GetServicesErrors[keyof GetServicesErrors];
 
 export type GetServicesResponses = {
     /**
@@ -30895,14 +41397,107 @@ export type GetServicesResponses = {
 
 export type GetServicesResponse = GetServicesResponses[keyof GetServicesResponses];
 
-export type GetServicesIdData = {
+export type PostServicesData = {
+    body: ServiceWrite;
+    path?: never;
+    query?: never;
+    url: '/services';
+};
+
+export type PostServicesErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostServicesError = PostServicesErrors[keyof PostServicesErrors];
+
+export type PostServicesResponses = {
+    /**
+     * Service created
+     */
+    201: {
+        data: Service;
+    };
+};
+
+export type PostServicesResponse = PostServicesResponses[keyof PostServicesResponses];
+
+export type DeleteServicesIdData = {
     body?: never;
     path: {
-        serviceId: string;
+        /**
+         * ID of the service
+         */
+        serviceId: number;
     };
     query?: never;
     url: '/services/{serviceId}';
 };
+
+export type DeleteServicesIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+    /**
+     * A conflict occurred between the request and the current state of the resource.
+     */
+    409: unknown;
+};
+
+export type DeleteServicesIdError = DeleteServicesIdErrors[keyof DeleteServicesIdErrors];
+
+export type DeleteServicesIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeleteServicesIdResponse = DeleteServicesIdResponses[keyof DeleteServicesIdResponses];
+
+export type GetServicesIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the service
+         */
+        serviceId: number;
+    };
+    query?: never;
+    url: '/services/{serviceId}';
+};
+
+export type GetServicesIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetServicesIdError = GetServicesIdErrors[keyof GetServicesIdErrors];
 
 export type GetServicesIdResponses = {
     /**
@@ -30915,6 +41510,50 @@ export type GetServicesIdResponses = {
 
 export type GetServicesIdResponse = GetServicesIdResponses[keyof GetServicesIdResponses];
 
+export type PutServicesIdData = {
+    body: ServiceWrite;
+    path: {
+        /**
+         * ID of the service
+         */
+        serviceId: number;
+    };
+    query?: never;
+    url: '/services/{serviceId}';
+};
+
+export type PutServicesIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutServicesIdError = PutServicesIdErrors[keyof PutServicesIdErrors];
+
+export type PutServicesIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Service;
+    };
+};
+
+export type PutServicesIdResponse = PutServicesIdResponses[keyof PutServicesIdResponses];
+
 export type DeleteSimulateData = {
     body?: never;
     path?: never;
@@ -30922,13 +41561,22 @@ export type DeleteSimulateData = {
     url: '/simulate';
 };
 
+export type DeleteSimulateErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+};
+
+export type DeleteSimulateError = DeleteSimulateErrors[keyof DeleteSimulateErrors];
+
 export type DeleteSimulateResponses = {
     /**
      * OK
      */
     200: {
         data: {
-            redirect?: string;
+            redirect: string;
         };
     };
 };
@@ -30937,12 +41585,25 @@ export type DeleteSimulateResponse = DeleteSimulateResponses[keyof DeleteSimulat
 
 export type PostSimulateData = {
     body: {
-        personId?: number;
+        personId: number;
     };
     path?: never;
     query?: never;
     url: '/simulate';
 };
+
+export type PostSimulateErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostSimulateError = PostSimulateErrors[keyof PostSimulateErrors];
 
 export type PostSimulateResponses = {
     /**
@@ -30952,6 +41613,358 @@ export type PostSimulateResponses = {
 };
 
 export type PostSimulateResponse = PostSimulateResponses[keyof PostSimulateResponses];
+
+export type GetSongCategoriesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/song/categories';
+};
+
+export type GetSongCategoriesResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<SongCategory>;
+        meta: MetaCount;
+    };
+};
+
+export type GetSongCategoriesResponse = GetSongCategoriesResponses[keyof GetSongCategoriesResponses];
+
+export type PostSongCategoriesData = {
+    body: SongCategoryWrite;
+    path?: never;
+    query?: never;
+    url: '/song/categories';
+};
+
+export type PostSongCategoriesErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostSongCategoriesError = PostSongCategoriesErrors[keyof PostSongCategoriesErrors];
+
+export type PostSongCategoriesResponses = {
+    /**
+     * Song category created
+     */
+    201: {
+        data: SongCategory;
+    };
+};
+
+export type PostSongCategoriesResponse = PostSongCategoriesResponses[keyof PostSongCategoriesResponses];
+
+export type DeleteSongCategoriesIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the song category
+         */
+        songCategoryId: number;
+    };
+    query?: never;
+    url: '/song/categories/{songCategoryId}';
+};
+
+export type DeleteSongCategoriesIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+    /**
+     * A conflict occurred between the request and the current state of the resource.
+     */
+    409: unknown;
+};
+
+export type DeleteSongCategoriesIdError = DeleteSongCategoriesIdErrors[keyof DeleteSongCategoriesIdErrors];
+
+export type DeleteSongCategoriesIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeleteSongCategoriesIdResponse = DeleteSongCategoriesIdResponses[keyof DeleteSongCategoriesIdResponses];
+
+export type GetSongCategoriesIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the song category
+         */
+        songCategoryId: number;
+    };
+    query?: never;
+    url: '/song/categories/{songCategoryId}';
+};
+
+export type GetSongCategoriesIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetSongCategoriesIdError = GetSongCategoriesIdErrors[keyof GetSongCategoriesIdErrors];
+
+export type GetSongCategoriesIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: SongCategory;
+    };
+};
+
+export type GetSongCategoriesIdResponse = GetSongCategoriesIdResponses[keyof GetSongCategoriesIdResponses];
+
+export type PutSongCategoriesIdData = {
+    body: SongCategoryWrite;
+    path: {
+        /**
+         * ID of the song category
+         */
+        songCategoryId: number;
+    };
+    query?: never;
+    url: '/song/categories/{songCategoryId}';
+};
+
+export type PutSongCategoriesIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutSongCategoriesIdError = PutSongCategoriesIdErrors[keyof PutSongCategoriesIdErrors];
+
+export type PutSongCategoriesIdResponses = {
+    /**
+     * Song category updated
+     */
+    200: {
+        data: SongCategory;
+    };
+};
+
+export type PutSongCategoriesIdResponse = PutSongCategoriesIdResponses[keyof PutSongCategoriesIdResponses];
+
+export type GetSongSourcesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/song/sources';
+};
+
+export type GetSongSourcesResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<SongSource>;
+        meta: MetaCount;
+    };
+};
+
+export type GetSongSourcesResponse = GetSongSourcesResponses[keyof GetSongSourcesResponses];
+
+export type PostSongSourcesData = {
+    body: SongSourceWrite;
+    path?: never;
+    query?: never;
+    url: '/song/sources';
+};
+
+export type PostSongSourcesErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type PostSongSourcesError = PostSongSourcesErrors[keyof PostSongSourcesErrors];
+
+export type PostSongSourcesResponses = {
+    /**
+     * Song source created
+     */
+    201: {
+        data: SongSource;
+    };
+};
+
+export type PostSongSourcesResponse = PostSongSourcesResponses[keyof PostSongSourcesResponses];
+
+export type DeleteSongSourcesIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the song source
+         */
+        songSourceId: number;
+    };
+    query?: never;
+    url: '/song/sources/{songSourceId}';
+};
+
+export type DeleteSongSourcesIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+    /**
+     * A conflict occurred between the request and the current state of the resource.
+     */
+    409: unknown;
+};
+
+export type DeleteSongSourcesIdError = DeleteSongSourcesIdErrors[keyof DeleteSongSourcesIdErrors];
+
+export type DeleteSongSourcesIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeleteSongSourcesIdResponse = DeleteSongSourcesIdResponses[keyof DeleteSongSourcesIdResponses];
+
+export type GetSongSourcesIdData = {
+    body?: never;
+    path: {
+        /**
+         * ID of the song source
+         */
+        songSourceId: number;
+    };
+    query?: never;
+    url: '/song/sources/{songSourceId}';
+};
+
+export type GetSongSourcesIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetSongSourcesIdError = GetSongSourcesIdErrors[keyof GetSongSourcesIdErrors];
+
+export type GetSongSourcesIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: SongSource;
+    };
+};
+
+export type GetSongSourcesIdResponse = GetSongSourcesIdResponses[keyof GetSongSourcesIdResponses];
+
+export type PutSongSourcesIdData = {
+    body: SongSourceWrite;
+    path: {
+        /**
+         * ID of the song source
+         */
+        songSourceId: number;
+    };
+    query?: never;
+    url: '/song/sources/{songSourceId}';
+};
+
+export type PutSongSourcesIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PutSongSourcesIdError = PutSongSourcesIdErrors[keyof PutSongSourcesIdErrors];
+
+export type PutSongSourcesIdResponses = {
+    /**
+     * Song source updated
+     */
+    200: {
+        data: SongSource;
+    };
+};
+
+export type PutSongSourcesIdResponse = PutSongSourcesIdResponses[keyof PutSongSourcesIdResponses];
 
 export type GetSongsData = {
     body?: never;
@@ -30970,15 +41983,15 @@ export type GetSongsData = {
          */
         practice?: boolean;
         /**
-         * Filter by arrangement key. (Song plus all its arrangements are returned, if one arrangement meets the filter criterion)
+         * Filter by arrangement key. Song plus all its arrangements are returned if one arrangement meets the filter criterion.
          */
         key_of_arrangement?: ArrangementKey;
         /**
-         * Search by song title
+         * Search by song title.
          */
         name?: string;
         /**
-         * Search by song title or author
+         * Search by song title or author.
          */
         query?: string;
         /**
@@ -30999,18 +42012,20 @@ export type GetSongsData = {
 
 export type GetSongsErrors = {
     /**
-     * Bad Request.
+     * Bad Request
      */
     400: unknown;
     /**
      * Unauthorized
      */
-    401: unknown;
+    401: string;
     /**
-     * Forbidden
+     * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
 };
+
+export type GetSongsError = GetSongsErrors[keyof GetSongsErrors];
 
 export type GetSongsResponses = {
     /**
@@ -31046,7 +42061,7 @@ export type PostSongsError = PostSongsErrors[keyof PostSongsErrors];
 
 export type PostSongsResponses = {
     /**
-     * OK
+     * Created
      */
     201: {
         data: Song;
@@ -31478,7 +42493,7 @@ export type GetSsoLoginsResponses = {
      * OK
      */
     200: {
-        data: Array<SsoLogins>;
+        data: Array<SsoLogin>;
         meta: MetaCount;
     };
 };
@@ -31699,7 +42714,8 @@ export type GetSubscriptionsPersonIdSubjectData = {
          * ID of person
          */
         personId: number;
-        subject: 'post' | 'post_summary' | 'group' | 'public_channel' | 'meetingrequests' | 'servicerequests';
+        subject:
+            'post' | 'post_summary' | 'group' | 'public_channel' | 'meetingrequest' | 'servicerequest' | 'resource';
     };
     query?: never;
     url: '/subscriptions/{personId}/{subject}';
@@ -31738,7 +42754,8 @@ export type DeleteSubscriptionsPersonIdSubjectSubjectIdentifierData = {
          * ID of person
          */
         personId: number;
-        subject: 'post' | 'post_summary' | 'group' | 'public_channel' | 'meetingrequests' | 'servicerequests';
+        subject:
+            'post' | 'post_summary' | 'group' | 'public_channel' | 'meetingrequest' | 'servicerequest' | 'resource';
         subjectIdentifier: string;
     };
     query?: never;
@@ -31776,7 +42793,8 @@ export type GetSubscriptionsPersonIdSubjectSubjectIdentifierData = {
          * ID of person
          */
         personId: number;
-        subject: 'post' | 'post_summary' | 'group' | 'public_channel' | 'meetingrequests' | 'servicerequests';
+        subject:
+            'post' | 'post_summary' | 'group' | 'public_channel' | 'meetingrequest' | 'servicerequest' | 'resource';
         subjectIdentifier: string;
     };
     query?: never;
@@ -31816,7 +42834,8 @@ export type PutSubscriptionsPersonIdSubjectSubjectIdentifierData = {
          * ID of person
          */
         personId: number;
-        subject: 'post' | 'post_summary' | 'group' | 'public_channel' | 'meetingrequests' | 'servicerequests';
+        subject:
+            'post' | 'post_summary' | 'group' | 'public_channel' | 'meetingrequest' | 'servicerequest' | 'resource';
         subjectIdentifier: string;
     };
     query?: never;
@@ -31979,31 +42998,33 @@ export type DeleteSyncAdaptersIdErrors = {
      * Conflict during deletion attempt
      */
     409: {
-        data?: {
-            deleteable?: boolean;
-            references?: Array<{
-                /**
-                 * Indicator if those references are blocking the deletion.
-                 */
-                blocksDeletion?: boolean;
-                /**
-                 * Column name of the reference / foreign key.
-                 */
-                columnName?: string;
-                /**
-                 * Number of references in that table.
-                 */
-                count?: number;
-                /**
-                 * Table name, with reference / foreign key constraint.
-                 */
-                tableName?: string;
-                /**
-                 * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
-                 */
-                type?: string;
-            }>;
-        };
+        deletable: boolean;
+        deletionBlockers: Array<{
+            message: string;
+        }>;
+        message: string | null;
+        references: Array<{
+            /**
+             * Indicator if those references are blocking the deletion.
+             */
+            blocksDeletion: boolean;
+            /**
+             * Column name of the reference / foreign key.
+             */
+            columnName: string;
+            /**
+             * Number of references in that table.
+             */
+            count: number;
+            /**
+             * Table name, with reference / foreign key constraint.
+             */
+            tableName: string;
+            /**
+             * Type of reference. 'ENTRY' (entry links to this object) or 'REFERENCE' (this object has a foreign key to this table)
+             */
+            type: 'ENTRY' | 'REFERENCE';
+        }>;
     };
 };
 
@@ -32664,7 +43685,7 @@ export type GetSyncExternalsystemsResponses = {
      * OK
      */
     200: {
-        data: Array<ExternalSystemReturn>;
+        data: Array<ExternalSystem>;
         meta: MetaCount;
     };
 };
@@ -32672,7 +43693,7 @@ export type GetSyncExternalsystemsResponses = {
 export type GetSyncExternalsystemsResponse = GetSyncExternalsystemsResponses[keyof GetSyncExternalsystemsResponses];
 
 export type PostSyncExternalsystemsData = {
-    body: ExternalSystem;
+    body: ExternalSystemCreate;
     path?: never;
     query?: never;
     url: '/sync/externalsystems';
@@ -32683,11 +43704,81 @@ export type PostSyncExternalsystemsResponses = {
      * OK
      */
     201: {
-        data: ExternalSystemReturn;
+        data: ExternalSystem;
     };
 };
 
 export type PostSyncExternalsystemsResponse = PostSyncExternalsystemsResponses[keyof PostSyncExternalsystemsResponses];
+
+export type DeleteSyncExternalsystemsExternalSystemIdData = {
+    body?: never;
+    path: {
+        /**
+         * Id of external system
+         */
+        externalSystemId: string;
+    };
+    query?: never;
+    url: '/sync/externalsystems/{externalSystemId}';
+};
+
+export type DeleteSyncExternalsystemsExternalSystemIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeleteSyncExternalsystemsExternalSystemIdResponse =
+    DeleteSyncExternalsystemsExternalSystemIdResponses[keyof DeleteSyncExternalsystemsExternalSystemIdResponses];
+
+export type GetSyncExternalsystemsExternalSystemIdData = {
+    body?: never;
+    path: {
+        /**
+         * Id of external system
+         */
+        externalSystemId: string;
+    };
+    query?: never;
+    url: '/sync/externalsystems/{externalSystemId}';
+};
+
+export type GetSyncExternalsystemsExternalSystemIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: ExternalSystem;
+    };
+};
+
+export type GetSyncExternalsystemsExternalSystemIdResponse =
+    GetSyncExternalsystemsExternalSystemIdResponses[keyof GetSyncExternalsystemsExternalSystemIdResponses];
+
+export type PutSyncExternalsystemsExternalSystemIdData = {
+    body: ExternalSystem;
+    path: {
+        /**
+         * Id of external system
+         */
+        externalSystemId: string;
+    };
+    query?: never;
+    url: '/sync/externalsystems/{externalSystemId}';
+};
+
+export type PutSyncExternalsystemsExternalSystemIdResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: ExternalSystem;
+    };
+};
+
+export type PutSyncExternalsystemsExternalSystemIdResponse =
+    PutSyncExternalsystemsExternalSystemIdResponses[keyof PutSyncExternalsystemsExternalSystemIdResponses];
 
 export type DeleteSyncExternalsystemsIdFieldmappingsDomainTypeData = {
     body?: never;
@@ -33401,76 +44492,6 @@ export type PostSyncExternalsystemsIdTestResponses = {
 export type PostSyncExternalsystemsIdTestResponse =
     PostSyncExternalsystemsIdTestResponses[keyof PostSyncExternalsystemsIdTestResponses];
 
-export type DeleteSyncExternalsystemsIdData = {
-    body?: never;
-    path: {
-        /**
-         * ID of Entity
-         */
-        id: number;
-    };
-    query?: never;
-    url: '/sync/externalsystems/{id}';
-};
-
-export type DeleteSyncExternalsystemsIdResponses = {
-    /**
-     * Successfully deleted
-     */
-    204: void;
-};
-
-export type DeleteSyncExternalsystemsIdResponse =
-    DeleteSyncExternalsystemsIdResponses[keyof DeleteSyncExternalsystemsIdResponses];
-
-export type GetSyncExternalsystemsIdData = {
-    body?: never;
-    path: {
-        /**
-         * ID of Entity
-         */
-        id: number;
-    };
-    query?: never;
-    url: '/sync/externalsystems/{id}';
-};
-
-export type GetSyncExternalsystemsIdResponses = {
-    /**
-     * OK
-     */
-    200: {
-        data: ExternalSystemReturn;
-    };
-};
-
-export type GetSyncExternalsystemsIdResponse =
-    GetSyncExternalsystemsIdResponses[keyof GetSyncExternalsystemsIdResponses];
-
-export type PutSyncExternalsystemsIdData = {
-    body: ExternalSystem;
-    path: {
-        /**
-         * ID of Entity
-         */
-        id: number;
-    };
-    query?: never;
-    url: '/sync/externalsystems/{id}';
-};
-
-export type PutSyncExternalsystemsIdResponses = {
-    /**
-     * OK
-     */
-    200: {
-        data: ExternalSystemReturn;
-    };
-};
-
-export type PutSyncExternalsystemsIdResponse =
-    PutSyncExternalsystemsIdResponses[keyof PutSyncExternalsystemsIdResponses];
-
 export type GetSyncJobconfigsData = {
     body?: never;
     path?: never;
@@ -33638,7 +44659,7 @@ export type GetTagsDomainTypeData = {
         /**
          * Domain types that tags can be used with
          */
-        domainType: 'person' | 'group' | 'song';
+        domainType: 'person' | 'group' | 'appointment' | 'song';
     };
     query?: never;
     url: '/tags/{domainType}';
@@ -33662,7 +44683,7 @@ export type PostTagsDomainTypeData = {
         /**
          * Domain types that tags can be used with
          */
-        domainType: 'person' | 'group' | 'song';
+        domainType: 'person' | 'group' | 'appointment' | 'song';
     };
     query?: never;
     url: '/tags/{domainType}';
@@ -33686,7 +44707,7 @@ export type PostTagsDomainTypeResponses = {
      * The newly created tag
      */
     201: {
-        data: Tag;
+        data: TagWithCount;
     };
 };
 
@@ -33698,7 +44719,7 @@ export type GetTagsDomainTypeDomainIdData = {
         /**
          * Domain types that tags can be used with
          */
-        domainType: 'person' | 'group' | 'song';
+        domainType: 'person' | 'group' | 'appointment' | 'song';
         /**
          * the domain id
          */
@@ -33730,7 +44751,7 @@ export type GetTagsDomainTypeDomainIdResponses = {
      * The specified tag
      */
     200: {
-        data: Array<Tag>;
+        data: Array<TagWithCount>;
         meta: MetaCount;
     };
 };
@@ -33746,7 +44767,7 @@ export type PostTagsDomainTypeDomainIdData = {
         /**
          * Domain types that tags can be used with
          */
-        domainType: 'person' | 'group' | 'song';
+        domainType: 'person' | 'group' | 'appointment' | 'song';
         /**
          * the domain id
          */
@@ -33774,7 +44795,7 @@ export type PostTagsDomainTypeDomainIdResponses = {
      * The newly added tag
      */
     201: {
-        data: Tag;
+        data: TagWithCount;
     };
 };
 
@@ -33787,7 +44808,7 @@ export type DeleteTagsDomainTypeDomainIdTagIdData = {
         /**
          * Domain types that tags can be used with
          */
-        domainType: 'person' | 'group' | 'song';
+        domainType: 'person' | 'group' | 'appointment' | 'song';
         /**
          * the domain id
          */
@@ -33817,7 +44838,7 @@ export type PutTagsDomainTypeDomainIdTagIdData = {
         /**
          * Domain types that tags can be used with
          */
-        domainType: 'person' | 'group' | 'song';
+        domainType: 'person' | 'group' | 'appointment' | 'song';
         /**
          * the domain id
          */
@@ -33849,8 +44870,8 @@ export type PutTagsDomainTypeDomainIdTagIdResponses = {
     /**
      * The newly added tag
      */
-    200: {
-        data: Tag;
+    201: {
+        data: TagWithCount;
     };
 };
 
@@ -33919,7 +44940,7 @@ export type GetTagsTagIdResponses = {
      * The created tag
      */
     200: {
-        data: Tag;
+        data: TagWithCount;
     };
 };
 
@@ -33956,7 +44977,7 @@ export type PutTagsTagIdResponses = {
      * The updated tag
      */
     201: {
-        data: Tag;
+        data: TagWithCount;
     };
 };
 
@@ -34361,6 +45382,15 @@ export type GetWikiCategoriesData = {
     url: '/wiki/categories';
 };
 
+export type GetWikiCategoriesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+};
+
+export type GetWikiCategoriesError = GetWikiCategoriesErrors[keyof GetWikiCategoriesErrors];
+
 export type GetWikiCategoriesResponses = {
     /**
      * OK
@@ -34369,7 +45399,7 @@ export type GetWikiCategoriesResponses = {
         data: Array<WikiCategory>;
         meta: MetaCount;
         permissions: {
-            editMasterData?: boolean;
+            editMasterData: boolean;
         };
     };
 };
@@ -34377,13 +45407,17 @@ export type GetWikiCategoriesResponses = {
 export type GetWikiCategoriesResponse = GetWikiCategoriesResponses[keyof GetWikiCategoriesResponses];
 
 export type PostWikiCategoriesData = {
-    body?: never;
+    body: WikiCategoryCreate;
     path?: never;
     query?: never;
     url: '/wiki/categories';
 };
 
 export type PostWikiCategoriesErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -34392,26 +45426,22 @@ export type PostWikiCategoriesErrors = {
      * Forbidden to see, create, update, or delete resource
      */
     403: unknown;
-    /**
-     * Resource not found
-     */
-    404: unknown;
 };
 
 export type PostWikiCategoriesError = PostWikiCategoriesErrors[keyof PostWikiCategoriesErrors];
 
 export type PostWikiCategoriesResponses = {
     /**
-     * OK
+     * Created
      */
-    200: {
+    201: {
         data: WikiCategory;
     };
 };
 
 export type PostWikiCategoriesResponse = PostWikiCategoriesResponses[keyof PostWikiCategoriesResponses];
 
-export type PutWikiCategoriesIdData = {
+export type DeleteWikiCategoriesIdData = {
     body?: never;
     path: {
         /**
@@ -34423,7 +45453,45 @@ export type PutWikiCategoriesIdData = {
     url: '/wiki/categories/{wikiCategoryId}';
 };
 
+export type DeleteWikiCategoriesIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type DeleteWikiCategoriesIdError = DeleteWikiCategoriesIdErrors[keyof DeleteWikiCategoriesIdErrors];
+
+export type DeleteWikiCategoriesIdResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeleteWikiCategoriesIdResponse = DeleteWikiCategoriesIdResponses[keyof DeleteWikiCategoriesIdResponses];
+
+export type PutWikiCategoriesIdData = {
+    body: WikiCategoryCreate;
+    path: {
+        /**
+         * ID of WikiCategory
+         */
+        wikiCategoryId: number;
+    };
+    query?: never;
+    url: '/wiki/categories/{wikiCategoryId}';
+};
+
 export type PutWikiCategoriesIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
     /**
      * Unauthorized
      */
@@ -34442,7 +45510,7 @@ export type PutWikiCategoriesIdError = PutWikiCategoriesIdErrors[keyof PutWikiCa
 
 export type PutWikiCategoriesIdResponses = {
     /**
-     * OK
+     * Updated
      */
     200: {
         data: WikiCategory;
@@ -34463,6 +45531,19 @@ export type GetWikiCategoriesIdPagesData = {
     url: '/wiki/categories/{wikiCategoryId}/pages';
 };
 
+export type GetWikiCategoriesIdPagesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetWikiCategoriesIdPagesError = GetWikiCategoriesIdPagesErrors[keyof GetWikiCategoriesIdPagesErrors];
+
 export type GetWikiCategoriesIdPagesResponses = {
     /**
      * OK
@@ -34476,6 +45557,91 @@ export type GetWikiCategoriesIdPagesResponses = {
 export type GetWikiCategoriesIdPagesResponse =
     GetWikiCategoriesIdPagesResponses[keyof GetWikiCategoriesIdPagesResponses];
 
+export type PostWikiCategoriesIdPagesData = {
+    body: WikiPageCreate;
+    path: {
+        /**
+         * ID of WikiCategory
+         */
+        wikiCategoryId: number;
+    };
+    query?: never;
+    url: '/wiki/categories/{wikiCategoryId}/pages';
+};
+
+export type PostWikiCategoriesIdPagesErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PostWikiCategoriesIdPagesError = PostWikiCategoriesIdPagesErrors[keyof PostWikiCategoriesIdPagesErrors];
+
+export type PostWikiCategoriesIdPagesResponses = {
+    /**
+     * Created
+     */
+    201: {
+        data: WikiPage;
+    };
+};
+
+export type PostWikiCategoriesIdPagesResponse =
+    PostWikiCategoriesIdPagesResponses[keyof PostWikiCategoriesIdPagesResponses];
+
+export type DeleteWikiCategoriesIdPagesIdentifierData = {
+    body?: never;
+    path: {
+        /**
+         * ID of WikiCategory
+         */
+        wikiCategoryId: number;
+        /**
+         * GUID of the wiki page. Titles are not accepted for this operation.
+         */
+        identifier: string;
+    };
+    query?: never;
+    url: '/wiki/categories/{wikiCategoryId}/pages/{identifier}';
+};
+
+export type DeleteWikiCategoriesIdPagesIdentifierErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type DeleteWikiCategoriesIdPagesIdentifierError =
+    DeleteWikiCategoriesIdPagesIdentifierErrors[keyof DeleteWikiCategoriesIdPagesIdentifierErrors];
+
+export type DeleteWikiCategoriesIdPagesIdentifierResponses = {
+    /**
+     * Successfully deleted
+     */
+    204: void;
+};
+
+export type DeleteWikiCategoriesIdPagesIdentifierResponse =
+    DeleteWikiCategoriesIdPagesIdentifierResponses[keyof DeleteWikiCategoriesIdPagesIdentifierResponses];
+
 export type GetWikiCategoriesIdPagesIdentifierData = {
     body?: never;
     path: {
@@ -34484,7 +45650,58 @@ export type GetWikiCategoriesIdPagesIdentifierData = {
          */
         wikiCategoryId: number;
         /**
-         * Can either be the pages identifier or its title
+         * GUID of the wiki page. (For backwards compatibility reasons, the page title is accepted too, but no longer recommended for use.)
+         */
+        identifier: string;
+    };
+    query?: {
+        /**
+         * Optional version number. If omitted, the latest version is returned.
+         */
+        version?: number;
+    };
+    url: '/wiki/categories/{wikiCategoryId}/pages/{identifier}';
+};
+
+export type GetWikiCategoriesIdPagesIdentifierErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetWikiCategoriesIdPagesIdentifierError =
+    GetWikiCategoriesIdPagesIdentifierErrors[keyof GetWikiCategoriesIdPagesIdentifierErrors];
+
+export type GetWikiCategoriesIdPagesIdentifierResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: WikiPage;
+    };
+};
+
+export type GetWikiCategoriesIdPagesIdentifierResponse =
+    GetWikiCategoriesIdPagesIdentifierResponses[keyof GetWikiCategoriesIdPagesIdentifierResponses];
+
+export type PatchWikiCategoriesIdPagesIdentifierData = {
+    body: WikiPageUpdate;
+    path: {
+        /**
+         * ID of WikiCategory
+         */
+        wikiCategoryId: number;
+        /**
+         * GUID of the wiki page. Titles are not accepted for this operation.
          */
         identifier: string;
     };
@@ -34492,18 +45709,39 @@ export type GetWikiCategoriesIdPagesIdentifierData = {
     url: '/wiki/categories/{wikiCategoryId}/pages/{identifier}';
 };
 
-export type GetWikiCategoriesIdPagesIdentifierResponses = {
+export type PatchWikiCategoriesIdPagesIdentifierErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type PatchWikiCategoriesIdPagesIdentifierError =
+    PatchWikiCategoriesIdPagesIdentifierErrors[keyof PatchWikiCategoriesIdPagesIdentifierErrors];
+
+export type PatchWikiCategoriesIdPagesIdentifierResponses = {
     /**
      * OK
      */
     200: {
-        data: Array<WikiPage>;
-        meta: MetaCount;
+        data: WikiPage;
     };
 };
 
-export type GetWikiCategoriesIdPagesIdentifierResponse =
-    GetWikiCategoriesIdPagesIdentifierResponses[keyof GetWikiCategoriesIdPagesIdentifierResponses];
+export type PatchWikiCategoriesIdPagesIdentifierResponse =
+    PatchWikiCategoriesIdPagesIdentifierResponses[keyof PatchWikiCategoriesIdPagesIdentifierResponses];
 
 export type GetWikiCategoriesIdPagesIdentifierVersionsData = {
     body?: never;
@@ -34513,13 +45751,27 @@ export type GetWikiCategoriesIdPagesIdentifierVersionsData = {
          */
         wikiCategoryId: number;
         /**
-         * Can either be the pages identifier or its title
+         * GUID of the wiki page. (For backwards compatibility reasons, the page title is accepted too, but no longer recommended for use.)
          */
         identifier: string;
     };
     query?: never;
     url: '/wiki/categories/{wikiCategoryId}/pages/{identifier}/versions';
 };
+
+export type GetWikiCategoriesIdPagesIdentifierVersionsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+};
+
+export type GetWikiCategoriesIdPagesIdentifierVersionsError =
+    GetWikiCategoriesIdPagesIdentifierVersionsErrors[keyof GetWikiCategoriesIdPagesIdentifierVersionsErrors];
 
 export type GetWikiCategoriesIdPagesIdentifierVersionsResponses = {
     /**
@@ -34541,15 +45793,36 @@ export type GetWikiCategoriesIdPagesIdVersionsIdData = {
          * ID of WikiCategory
          */
         wikiCategoryId: number;
-        version: string;
         /**
-         * Can either be the pages identifier or its title
+         * GUID of the wiki page. (For backwards compatibility reasons, the page title is accepted too, but no longer recommended for use.)
          */
         identifier: string;
+        /**
+         * Version number of the wiki page
+         */
+        version: number;
     };
     query?: never;
     url: '/wiki/categories/{wikiCategoryId}/pages/{identifier}/versions/{version}';
 };
+
+export type GetWikiCategoriesIdPagesIdVersionsIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: string;
+    /**
+     * Forbidden to see, create, update, or delete resource
+     */
+    403: unknown;
+    /**
+     * Resource not found
+     */
+    404: unknown;
+};
+
+export type GetWikiCategoriesIdPagesIdVersionsIdError =
+    GetWikiCategoriesIdPagesIdVersionsIdErrors[keyof GetWikiCategoriesIdPagesIdVersionsIdErrors];
 
 export type GetWikiCategoriesIdPagesIdVersionsIdResponses = {
     /**
@@ -34563,25 +45836,108 @@ export type GetWikiCategoriesIdPagesIdVersionsIdResponses = {
 export type GetWikiCategoriesIdPagesIdVersionsIdResponse =
     GetWikiCategoriesIdPagesIdVersionsIdResponses[keyof GetWikiCategoriesIdPagesIdVersionsIdResponses];
 
-export type GetWikiSearchData = {
+export type GetWikiPagesData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Page number to show page in pagination. If empty, start at first page.
+         */
+        page?: number;
+        /**
+         * Number of results per page.
+         */
+        limit?: number;
+        /**
+         * Search term for page titles and content. If provided, results are ordered by search relevance unless explicit order fields are given.
+         */
         query?: string;
         /**
-         * wiki categories that should be searched. if noone is given all categories are searched
+         * Wiki category IDs that should be included. If none are given, all categories the user can view are included. Categories the user is not allowed to view are silently filtered out.
+         */
+        'wiki_category_ids[]'?: Array<number>;
+        /**
+         * Fields used to sort the result. Multiple fields are applied in the given order. If omitted while `query` is present, results are sorted by search relevance.
+         */
+        'order_fields[]'?: Array<
+            'title' | 'wikiCategoryId' | 'wikiCategoryName' | 'createdDate' | 'modifiedDate' | 'modifiedPerson'
+        >;
+        /**
+         * Sort directions matching `order_fields[]` by position. Missing directions default to `ASC`.
+         */
+        'order_directions[]'?: Array<'ASC' | 'DESC'>;
+        /**
+         * Optional content fields to include. Without this parameter, page content is omitted. Use `text` for full raw page text and `preview` for a bounded coarse text preview.
+         */
+        'include[]'?: Array<'text' | 'preview'>;
+        /**
+         * Maximum number of characters returned in `textPreview` when `include[]=preview` is requested. Ignored without `include[]=preview`.
+         */
+        preview_length?: number;
+    };
+    url: '/wiki/pages';
+};
+
+export type GetWikiPagesErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+};
+
+export type GetWikiPagesError = GetWikiPagesErrors[keyof GetWikiPagesErrors];
+
+export type GetWikiPagesResponses = {
+    /**
+     * OK
+     */
+    200: {
+        data: Array<SimpleWikiPage>;
+        meta: MetaPagination;
+    };
+};
+
+export type GetWikiPagesResponse = GetWikiPagesResponses[keyof GetWikiPagesResponses];
+
+export type GetWikiSearchData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Search term. Must contain at least one character.
+         */
+        query: string;
+        /**
+         * Wiki categories that should be searched. If none are given, all categories the user can view are searched. Categories the user is not allowed to view are silently filtered out.
          */
         'wiki_category_ids[]'?: Array<number>;
     };
     url: '/wiki/search';
 };
 
+export type GetWikiSearchErrors = {
+    /**
+     * Bad Request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: string;
+};
+
+export type GetWikiSearchError = GetWikiSearchErrors[keyof GetWikiSearchErrors];
+
 export type GetWikiSearchResponses = {
     /**
      * OK
      */
     200: {
-        data: Array<SearchResult>;
+        data: Array<WikiSearchResult>;
         meta: MetaCount;
     };
 };

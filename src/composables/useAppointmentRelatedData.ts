@@ -6,9 +6,9 @@ import type {
     GetEventsIdResponse,
     GetGroupsResponse,
     Group,
-} from '@churchtools/api-types';
+} from '../utils/ct-types';
 import { churchtoolsClient } from '@churchtools/churchtools-client';
-import { getParams, GROUP_STATUS_ID } from '@churchtools/utils';
+import { getParams, GROUP_STATUS_ID } from '../utils/churchtoolsApi';
 import { computed, ref, toValue, watch, type MaybeRefOrGetter } from 'vue';
 
 import type { PublisherDataField } from '../domain/appointmentDataFields';

@@ -1,4 +1,4 @@
-import type { CustomModuleDataCategory, CustomModuleDataValue } from '@churchtools/api-types';
+import type { CustomModuleDataCategory, CustomModuleDataValue } from '../utils/ct-types';
 import { describe, expect, it } from 'vitest';
 
 import { createImageFocusByTemplate } from '../domain/imageFocus';
