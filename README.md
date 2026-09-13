@@ -4,6 +4,12 @@ Der ChurchTools Publisher ist ein browserbasierter Mehrseiten-Layouteditor für 
 
 Eine vollständige Produktbeschreibung steht in [EXTENSION_STORE.md](EXTENSION_STORE.md), der technische Audit und priorisierte Backlog in [analyse.md](analyse.md).
 
+## Erste Version
+
+`v0.1.0` ist die erste öffentliche Vorschau. Funktionsumfang und bekannte Einschränkungen stehen im [Changelog](CHANGELOG.md). Die Releases enthalten neben dem Quellcode ein gebautes ZIP zur Installation als ChurchTools-Extension.
+
+Das Installationspaket verwendet den Extension-Key `publisher-26` und den Pfad `/ccm/publisher-26/`. Der Key des Custom Modules muss dazu passen. Für einen anderen Key kann ein eigenes Paket gebaut werden. Dokumente und Vorlagen benötigen das CCM-Modul mit passenden Berechtigungen; ohne verfügbaren Remote-Speicher bleibt die lokale Recovery-Kopie nutzbar.
+
 ## Technischer Aufbau
 
 - Vue 3, TypeScript und Pinia
@@ -33,11 +39,32 @@ git/
 ```
 
 ```bash
+cp .env-example .env
 npm install
 npm run dev
 ```
 
 Die lokale Konfiguration basiert auf `.env-example`. Der Vite-Basispfad lautet `/ccm/<VITE_KEY>/`.
+
+Der Quellcode ist derzeit nicht unabhängig vom ChurchTools-Monorepo baubar. Zum Installieren des fertigen Release-ZIPs werden die lokalen Entwicklungspakete nicht benötigt.
+
+## Release erstellen
+
+Nach erfolgreicher Verifikation erzeugt dieser Befehl den Produktionsbuild und das Installationspaket unter `releases/`:
+
+```bash
+npm run release
+```
+
+Das Paket heißt `churchtools-publisher-v<VERSION>-<COMMIT>.zip` und enthält ausschließlich `dist/`, ohne Source Maps. Der Release-Build setzt lokale Anmeldedaten, Instanz-URL und den E2E-Modus ausdrücklich zurück und verwendet die Anmeldung der ChurchTools-Hostseite. `.env`-Dateien werden nicht veröffentlicht.
+
+Ein abweichender Extension-Key kann explizit angegeben werden:
+
+```bash
+VITE_KEY=mein-publisher npm run release
+```
+
+Für eine neue Version `package.json`, `package-lock.json` und `CHANGELOG.md` gemeinsam aktualisieren, die Prüfungen ausführen, den Release-Stand committen und erst dann das ZIP bauen. Den geprüften Commit mit `v<VERSION>` taggen und das ZIP als GitHub-Release-Asset anhängen. Solange die im Audit beschriebenen Risiken offen sind, Releases als Vorschau (Pre-release) kennzeichnen.
 
 ## Verifikation
 

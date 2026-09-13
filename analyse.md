@@ -4,6 +4,8 @@ Stand: 9. September 2026
 Untersuchter Stand: fortgeschriebener Arbeitsstand einschließlich Canvas-Refactoring, Datenautomation und UI-Grundlagen
 Status: Audit plus Umsetzung der priorisierten Architektur-, Persistenz-, Automations- und Bediengrundlagen
 
+Release-Ergänzung vom 13. September 2026: Die erste öffentliche Vorschau ist als `v0.1.0` versioniert. `CHANGELOG.md` und README beschreiben Installation, bekannte Einschränkungen und den manuellen Releaseprozess. `npm run release` erstellt ein ZIP für `publisher-26`, ohne lokale Anmeldedaten, Instanz-URL oder E2E-Modus zu übernehmen. Die lokalen ChurchTools-Pakete bleiben Voraussetzung für den Quellcode-Build; eine unabhängige CI-Pipeline ist daher noch offen. Die unten dokumentierten Produktrisiken bleiben bestehen und werden durch die Veröffentlichung nicht als behoben eingestuft.
+
 ## Kurzfazit
 
 Der Publisher ist kein kleiner Prototyp mehr, auch wenn Teile des Datenmodells noch aus dieser Phase stammen. Er ist bereits ein umfangreicher Mehrseiten-Editor mit eigener Szenenlogik, Hierarchie, Auto-Layout, Datenbindungen, dynamischen Farben, Effekten, CCM-Persistenz und Export-Pipeline. Die fachliche Breite ist gut erkennbar und viele pure Domain-Funktionen sind ordentlich getestet.

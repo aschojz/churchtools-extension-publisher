@@ -1,7 +1,7 @@
 {
     "name": "churchtools-publisher",
     "private": true,
-    "version": "0.0.1",
+    "version": "0.1.0",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -11,7 +11,8 @@
         "test": "vitest run",
         "test:e2e": "playwright test",
         "preview": "vite preview",
-        "deploy": "npm run build && node scripts/package.js"
+        "deploy": "npm run build && node scripts/package.js",
+        "release": "node scripts/release.js"
     },
     "dependencies": {
         "@churchtools/api-types": "file:../churchtools/frontend-packages/api-types",
